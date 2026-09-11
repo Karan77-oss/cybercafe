@@ -7,7 +7,7 @@
     "start": "node dist/server.js",
     "dev": "tsc && node dist/server.js",
     "test": "jest",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },
@@ -16,6 +16,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@prisma/client": "^5.22.0",
     "@supabase/supabase-js": "^2.112.4",
     "@types/multer": "^2.2.0",
     "bcrypt": "^6.0.0",
@@ -31,7 +32,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@prisma/client": "^5.22.0",
     "@swc/core": "^1.16.1",
     "@swc/jest": "^0.2.39",
     "@types/bcrypt": "^6.0.0",
