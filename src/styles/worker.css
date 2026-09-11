@@ -1,0 +1,130 @@
+.worker-layout {
+  display: flex;
+  height: 100vh;
+  background-color: var(--bg-main);
+  overflow: hidden;
+}
+
+.worker-sidebar {
+  width: 260px;
+  background-color: #0f172a;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.worker-sidebar-header {
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: white;
+  border-bottom: 1px solid #1e293b;
+}
+
+.worker-sidebar-nav {
+  padding: 20px 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.worker-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  color: #94a3b8;
+  text-decoration: none;
+  transition: all 0.2s;
+  font-size: 0.95rem;
+}
+
+.worker-nav-item:hover {
+  background-color: #1e293b;
+  color: white;
+}
+
+.worker-nav-item.active {
+  background-color: rgba(83, 100, 249, 0.15);
+  color: var(--brand-blue);
+  border-right: 3px solid var(--brand-blue);
+}
+
+.worker-nav-section {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+  margin: 20px 24px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.worker-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.worker-topbar {
+  height: 70px;
+  background: white;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+}
+
+.worker-content {
+  flex: 1;
+  padding: 32px;
+  overflow-y: auto;
+}
+
+/* Specific UI */
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  border: 1px solid var(--border-color);
+}
+.stat-card-title {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+.stat-card-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.w-badge {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.w-badge.available { background: rgba(83, 100, 249, 0.1); color: var(--brand-blue); }
+.w-badge.in-progress { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.w-badge.completed { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+
+.chat-bubble {
+  padding: 12px 16px;
+  border-radius: 12px;
+  max-width: 80%;
+  font-size: 0.9rem;
+}
+.chat-bubble.customer {
+  background: var(--bg-main);
+  border-bottom-left-radius: 0;
+}
+.chat-bubble.worker {
+  background: var(--brand-blue);
+  color: white;
+  border-bottom-right-radius: 0;
+  margin-left: auto;
+}

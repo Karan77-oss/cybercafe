@@ -1,0 +1,321 @@
+.customer-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #f8f9fc;
+  overflow-y: auto;
+  height: 100vh;
+}
+.customer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 40px;
+  background: white;
+  border-bottom: 1px solid #eaedf4;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.customer-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--brand-blue);
+  text-decoration: none;
+}
+.customer-nav {
+  display: flex;
+  gap: 32px;
+}
+.customer-nav a {
+  text-decoration: none;
+  color: var(--text-main);
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+.customer-nav a:hover, .customer-nav a.active {
+  color: var(--brand-blue);
+}
+.customer-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.customer-main {
+  flex: 1;
+  padding: 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+.hero-section {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 24px;
+  margin-bottom: 40px;
+  box-shadow: var(--shadow-sm);
+}
+.hero-section h1 {
+  font-size: 3rem;
+  color: var(--brand-blue);
+  margin-bottom: 16px;
+}
+.hero-section p {
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  max-width: 600px;
+  margin: 0 auto 32px;
+}
+.search-bar-large {
+  display: flex;
+  max-width: 600px;
+  margin: 0 auto;
+  gap: 12px;
+}
+.search-bar-large input {
+  flex: 1;
+  padding: 16px 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 30px;
+  font-size: 1rem;
+  outline: none;
+}
+.search-bar-large button {
+  padding: 16px 32px;
+  border-radius: 30px;
+}
+.service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+  margin-bottom: 40px;
+}
+.service-card {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid var(--border-color);
+  transition: all 0.2s;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+}
+.service-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--brand-blue);
+}
+.service-card-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.service-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(83, 100, 249, 0.1);
+  color: var(--brand-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.service-card h3 {
+  font-size: 1.1rem;
+  margin-bottom: 4px;
+}
+.service-card p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  flex: 1;
+}
+.service-card-footer {
+  margin-top: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  color: var(--brand-blue);
+}
+
+.category-tabs {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  margin-bottom: 24px;
+}
+.category-tab {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+  background: white;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.category-tab.active {
+  background: var(--brand-blue);
+  color: white;
+  border-color: var(--brand-blue);
+}
+
+/* Forms */
+.form-card {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 24px;
+}
+.form-group {
+  margin-bottom: 20px;
+}
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+.form-control {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 1rem;
+  outline: none;
+}
+.form-control:focus {
+  border-color: var(--brand-blue);
+}
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.progress-steps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 40px;
+}
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.step.active {
+  color: var(--brand-blue);
+  font-weight: 600;
+}
+.step-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+.step.active .step-number {
+  background: var(--brand-blue);
+  color: white;
+  border-color: var(--brand-blue);
+}
+
+.order-row {
+  background: white;
+  border-radius: 12px;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  border: 1px solid var(--border-color);
+}
+.order-row:hover {
+  border-color: var(--brand-blue);
+}
+.timeline {
+  padding: 20px 0;
+}
+.timeline-item {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.timeline-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+.timeline-item.completed .timeline-icon {
+  background: var(--green);
+}
+.timeline-item.active .timeline-icon {
+  background: var(--brand-blue);
+  box-shadow: 0 0 0 4px rgba(83, 100, 249, 0.2);
+}
+
+@media (max-width: 768px) {
+  .customer-header { padding: 16px 20px; }
+  .customer-nav { display: none; }
+  .customer-main { padding: 20px; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .order-row { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .hero-section h1 { font-size: 2rem; }
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  color: var(--text-main);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+.dropdown-item:hover {
+  background: var(--bg-main);
+  color: var(--brand-blue);
+}
+.search-result-item:hover {
+  background: var(--bg-main);
+}
+.form-control.error {
+  border-color: var(--red);
+  background: rgba(239, 68, 68, 0.02);
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-receipt, #printable-receipt * {
+    visibility: visible;
+  }
+  #printable-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 24px;
+    background: white !important;
+  }
+}

@@ -1,0 +1,10 @@
+.topbar { height: 70px; background: var(--card-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; }
+.topbar-left { display: flex; align-items: center; gap: 20px; flex: 1; }
+.menu-toggle { background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.topbar-right { display: flex; align-items: center; gap: 24px; }
+.notifications { position: relative; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; }
+.notifications .badge { position: absolute; top: -5px; right: -5px; background: var(--red); color: white; font-size: 0.6rem; font-weight: 700; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid white; }
+.user-profile { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.user-profile img { width: 36px; height: 36px; border-radius: 50%; }
+.user-info .name { display: block; font-size: 0.9rem; font-weight: 600; }
+.user-info .role { display: block; font-size: 0.75rem; color: var(--text-muted); }

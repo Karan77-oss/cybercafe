@@ -1,0 +1,239 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  CUSTOMER
+  WORKER
+  ADMIN
+}
+
+enum ServiceStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum ApprovalStatus {
+  PENDING_APPROVAL
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum OrderStatus {
+  PAYMENT_PENDING
+  PAID
+  AVAILABLE
+  ASSIGNED
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  SUBMITTED
+  REVISION_REQUIRED
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum JobStatus {
+  ASSIGNED
+  IN_PROGRESS
+  SUBMITTED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PayoutStatus {
+  PENDING
+  ELIGIBLE
+  RELEASED
+  FAILED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(CUSTOMER)
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ordersAsCustomer Order[]   @relation("CustomerOrders")
+  jobsAsWorker     Job[]     @relation("WorkerJobs")
+  createdServices  Service[] @relation("WorkerCreatedServices")
+  approvedServices Service[] @relation("AdminApprovedServices")
+  serviceProposals ServiceProposal[]
+  documentsAsCustomer Document[] @relation("CustomerDocuments")
+  documentsAsWorker Document[] @relation("WorkerDocuments")
+  payouts          Payout[]
+  auditLogs        AuditLog[]
+  
+  @@index([email])
+}
+
+model Service {
+  id               String         @id @default(uuid())
+  name             String
+  description      String
+  category         String
+  pricePaise       Int
+  estimatedTime    String
+  requiredDocuments String[]
+  formSchema       Json?
+  status           ServiceStatus  @default(INACTIVE)
+  approvalStatus   ApprovalStatus @default(PENDING_APPROVAL)
+  
+  createdByWorkerId String?
+  createdByWorker   User?         @relation("WorkerCreatedServices", fields: [createdByWorkerId], references: [id])
+  
+  approvedByAdminId String?
+  approvedByAdmin   User?         @relation("AdminApprovedServices", fields: [approvedByAdminId], references: [id])
+  
+  approvedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  orders           Order[]
+}
+
+model ServiceProposal {
+  id               String         @id @default(uuid())
+  workerId         String
+  worker           User           @relation(fields: [workerId], references: [id])
+  name             String
+  description      String
+  category         String
+  suggestedPricePaise Int
+  estimatedTime    String
+  requiredDocuments String[]
+  formSchema       Json?
+  status           ApprovalStatus @default(PENDING_APPROVAL)
+  adminComment     String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model Order {
+  id               String       @id @default(uuid())
+  customerId       String
+  customer         User         @relation("CustomerOrders", fields: [customerId], references: [id])
+  serviceId        String
+  service          Service      @relation(fields: [serviceId], references: [id])
+  serviceSnapshot  Json         // Immutable snapshot
+  pricing          Json         // Immutable pricing
+  status           OrderStatus  @default(PAYMENT_PENDING)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  job              Job?         // 1-to-1 relationship guarantees ONLY ONE active assignment
+  payments         Payment[]
+  documents        Document[]
+  
+  @@index([customerId])
+  @@index([serviceId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Job {
+  id               String       @id @default(uuid())
+  orderId          String       @unique // CRITICAL: Only one Job per Order
+  order            Order        @relation(fields: [orderId], references: [id])
+  workerId         String
+  worker           User         @relation("WorkerJobs", fields: [workerId], references: [id])
+  status           JobStatus    @default(ASSIGNED)
+  
+  acceptedAt       DateTime     @default(now())
+  startedAt        DateTime?
+  submittedAt      DateTime?
+  completedAt      DateTime?
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  documents        Document[]
+  payout           Payout?      // 1-to-1 relationship guarantees ONLY ONE payout per job
+  
+  @@index([workerId])
+  @@index([status])
+}
+
+model Payment {
+  id               String       @id @default(uuid())
+  orderId          String
+  order            Order        @relation(fields: [orderId], references: [id])
+  provider         String
+  providerOrderId  String?      @unique
+  providerPaymentId String?     @unique
+  amountPaise      Int
+  status           PaymentStatus @default(PENDING)
+  verifiedAt       DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  
+  @@index([orderId])
+}
+
+model Payout {
+  id               String       @id @default(uuid())
+  jobId            String       @unique // CRITICAL: Only one payout per job
+  job              Job          @relation(fields: [jobId], references: [id])
+  workerId         String
+  worker           User         @relation(fields: [workerId], references: [id])
+  amountPaise      Int
+  status           PayoutStatus @default(PENDING)
+  releasedAt       DateTime?
+  createdAt        DateTime     @default(now())
+
+  @@index([workerId])
+}
+
+model Document {
+  id               String       @id @default(uuid())
+  orderId          String?
+  order            Order?       @relation(fields: [orderId], references: [id])
+  jobId            String?
+  job              Job?         @relation(fields: [jobId], references: [id])
+  customerId       String
+  customer         User         @relation("CustomerDocuments", fields: [customerId], references: [id])
+  workerId         String?
+  worker           User?        @relation("WorkerDocuments", fields: [workerId], references: [id])
+  
+  type             String
+  fileName         String
+  mimeType         String
+  size             Int
+  storageKey       String       @unique
+  
+  createdAt        DateTime     @default(now())
+  
+  @@index([orderId])
+  @@index([customerId])
+  @@index([jobId])
+}
+
+model AuditLog {
+  id               String       @id @default(uuid())
+  actorUserId      String?
+  actor            User?        @relation(fields: [actorUserId], references: [id])
+  action           String
+  entityType       String
+  entityId         String
+  metadata         Json?
+  createdAt        DateTime     @default(now())
+}
