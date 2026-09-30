@@ -55,7 +55,7 @@ export const webhookController = {
           
           await tx.order.update({
             where: { id: payment.orderId },
-            data: { status: 'PAID' }
+            data: { status: 'AVAILABLE' }
           });
           
           await tx.auditLog.create({
@@ -64,7 +64,28 @@ export const webhookController = {
           
           return updated;
         });
+
+        // Also synchronize in-memory resilient store & append double-entry ledger
+        try {
+          const { localStore } = await import('./catalogData');
+          const localOrder = localStore.getOrder(providerOrderId) || Array.from(localStore.orders.values()).find(o => o.payment?.providerOrderId === providerOrderId);
+          if (localOrder) {
+            localOrder.status = 'AVAILABLE';
+            localOrder.paymentStatus = 'PAID';
+            localOrder.earningStatus = 'PENDING';
+            localOrder.paidAt = new Date().toISOString();
+            localStore.appendLedgerEntry({
+              orderId: localOrder.id,
+              amountPaise: localOrder.customerPaidAmount || localOrder.pricePaise || amountPaise,
+              type: 'ORDER_PAYMENT',
+              idempotencyKey: `PAYMENT_SUCCESS_${providerPaymentId}`,
+              referenceNote: `Customer paid via payment ${providerPaymentId}`
+            });
+            localStore.saveOrder(localOrder);
+          }
+        } catch {}
       }
+
       
       return res.json({ success: true });
     } catch (e: any) {

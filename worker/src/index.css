@@ -1,0 +1,33 @@
+@import './styles/variables.css';
+@import './styles/components.css';
+@import './styles/customer.css';
+@import './styles/worker.css';
+
+/* View Header */
+.view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 24px;
+}
+.view-header h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+.view-header .subtitle {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+.date-picker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: white;
+    padding: 8px 16px;
+    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--border-color);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    cursor: pointer;
+}

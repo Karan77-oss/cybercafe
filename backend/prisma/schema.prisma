@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -15,9 +15,12 @@ enum Role {
 }
 
 enum ServiceStatus {
+  DRAFT
   ACTIVE
   INACTIVE
   ARCHIVED
+  REJECTED
+  SUSPENDED
 }
 
 enum ApprovalStatus {
@@ -28,21 +31,27 @@ enum ApprovalStatus {
 }
 
 enum OrderStatus {
+  CREATED
   PAYMENT_PENDING
   PAID
   AVAILABLE
   ASSIGNED
+  ACCEPTED
   IN_PROGRESS
+  WORK_COMPLETED
+  RECEIPT_SUBMITTED
   WAITING_FOR_CUSTOMER
-  SUBMITTED
-  REVISION_REQUIRED
   COMPLETED
   CANCELLED
+  REJECTED
   DISPUTED
+  REFUND_PENDING
+  REFUNDED
 }
 
 enum JobStatus {
   ASSIGNED
+  ACCEPTED
   IN_PROGRESS
   SUBMITTED
   COMPLETED
@@ -51,8 +60,11 @@ enum JobStatus {
 
 enum PaymentStatus {
   PENDING
+  PROCESSING
   PAID
   FAILED
+  CANCELLED
+  REFUND_PENDING
   REFUNDED
 }
 
@@ -64,176 +76,424 @@ enum PayoutStatus {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      Role     @default(CUSTOMER)
-  phone     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  password           String
+  name               String
+  role               Role      @default(CUSTOMER)
+  status             String    @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED, BLOCKED, PENDING
+  phone              String?
+  address            String?
+  city               String?
+  profileImage       String?
+  isOnline           Boolean   @default(false)
+  businessName       String?
+  verificationStatus String?   @default("PENDING") // PENDING, VERIFIED, REJECTED
+  verifiedAt         DateTime?
+  verifiedBy         String?
+  bankDetails        Json?
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  ordersAsCustomer Order[]   @relation("CustomerOrders")
-  jobsAsWorker     Job[]     @relation("WorkerJobs")
-  createdServices  Service[] @relation("WorkerCreatedServices")
-  approvedServices Service[] @relation("AdminApprovedServices")
-  serviceProposals ServiceProposal[]
-  documentsAsCustomer Document[] @relation("CustomerDocuments")
-  documentsAsWorker Document[] @relation("WorkerDocuments")
-  payouts          Payout[]
-  auditLogs        AuditLog[]
-  
+  ordersAsCustomer    Order[]             @relation("CustomerOrders")
+  assignedOrders      Order[]             @relation("WorkerAssignedOrders")
+  jobsAsWorker        Job[]               @relation("WorkerJobs")
+  createdServices     Service[]           @relation("WorkerCreatedServices")
+  approvedServices    Service[]           @relation("AdminApprovedServices")
+  serviceProposals    ServiceProposal[]
+  documentsAsCustomer Document[]          @relation("CustomerDocuments")
+  documentsAsWorker   Document[]          @relation("WorkerDocuments")
+  payouts             Payout[]
+  auditLogs           AuditLog[]
+  workerEarnings      WorkerEarning[]
+  withdrawals         Withdrawal[]
+  complaints          Complaint[]
+  refunds             Refund[]
+  notifications       Notification[]
+  reviews             Review[]
+  ledgerEntries       FinancialLedger[]
+
   @@index([email])
+  @@index([role])
+  @@index([status])
 }
 
 model Service {
-  id               String         @id @default(uuid())
-  name             String
-  description      String
-  category         String
-  pricePaise       Int
-  estimatedTime    String
-  requiredDocuments String[]
-  formSchema       Json?
-  status           ServiceStatus  @default(INACTIVE)
-  approvalStatus   ApprovalStatus @default(PENDING_APPROVAL)
-  
-  createdByWorkerId String?
-  createdByWorker   User?         @relation("WorkerCreatedServices", fields: [createdByWorkerId], references: [id])
-  
-  approvedByAdminId String?
-  approvedByAdmin   User?         @relation("AdminApprovedServices", fields: [approvedByAdminId], references: [id])
-  
-  approvedAt       DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id                   String         @id @default(uuid())
+  name                 String
+  slug                 String?        @unique
+  description          String
+  category             String
+  pricePaise           Int
+  workerAmountPaise    Int            @default(0)
+  adminCommissionPaise Int            @default(0)
+  platformFeePaise     Int            @default(0)
+  currency             String         @default("INR")
+  estimatedTime        String
+  requiredDocuments    String[]
+  formSchema           Json?
+  status               ServiceStatus  @default(INACTIVE)
+  approvalStatus       ApprovalStatus @default(PENDING_APPROVAL)
 
-  orders           Order[]
+  createdByWorkerId    String?
+  createdByWorker      User?          @relation("WorkerCreatedServices", fields: [createdByWorkerId], references: [id])
+
+  approvedByAdminId    String?
+  approvedByAdmin      User?          @relation("AdminApprovedServices", fields: [approvedByAdminId], references: [id])
+
+  approvedAt           DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  orders               Order[]
+  reviews              Review[]
+
+  @@index([category])
+  @@index([status])
 }
 
 model ServiceProposal {
-  id               String         @id @default(uuid())
-  workerId         String
-  worker           User           @relation(fields: [workerId], references: [id])
-  name             String
-  description      String
-  category         String
+  id                  String         @id @default(uuid())
+  workerId            String
+  worker              User           @relation(fields: [workerId], references: [id])
+  name                String
+  description         String
+  category            String
   suggestedPricePaise Int
-  estimatedTime    String
-  requiredDocuments String[]
-  formSchema       Json?
-  status           ApprovalStatus @default(PENDING_APPROVAL)
-  adminComment     String?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  requestedWorkerAmountPaise Int?
+  estimatedTime       String
+  requiredDocuments   String[]
+  formSchema          Json?
+  status              ApprovalStatus @default(PENDING_APPROVAL)
+  adminComment        String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([workerId])
+  @@index([status])
 }
 
 model Order {
-  id               String       @id @default(uuid())
-  customerId       String
-  customer         User         @relation("CustomerOrders", fields: [customerId], references: [id])
-  serviceId        String
-  service          Service      @relation(fields: [serviceId], references: [id])
-  serviceSnapshot  Json         // Immutable snapshot
-  pricing          Json         // Immutable pricing
-  status           OrderStatus  @default(PAYMENT_PENDING)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id                      String         @id @default(uuid())
+  orderNumber             String         @unique
+  customerId              String
+  customer                User           @relation("CustomerOrders", fields: [customerId], references: [id])
+  serviceId               String
+  service                 Service        @relation(fields: [serviceId], references: [id])
+  assignedWorkerId        String?
+  assignedWorker          User?          @relation("WorkerAssignedOrders", fields: [assignedWorkerId], references: [id])
 
-  job              Job?         // 1-to-1 relationship guarantees ONLY ONE active assignment
-  payments         Payment[]
-  documents        Document[]
-  
+  // Immutable price snapshots & financial breakdown
+  serviceSnapshot         Json
+  pricing                 Json
+  workerAmountPaise       Int            @default(0)
+  adminCommissionPaise    Int            @default(0)
+  platformFeePaise        Int            @default(0)
+  customerPaidAmountPaise Int            @default(0)
+  currency                String         @default("INR")
+
+  // Decoupled state machines
+  status                  OrderStatus    @default(PAYMENT_PENDING)
+  paymentStatus           PaymentStatus  @default(PENDING)
+  earningStatus           String         @default("PENDING") // PENDING, AVAILABLE, ON_HOLD, RELEASED, ADJUSTED
+
+  acceptedAt              DateTime?
+  startedAt               DateTime?
+  workCompletedAt         DateTime?
+  receiptSubmittedAt      DateTime?
+  completedAt             DateTime?
+  cancelledAt             DateTime?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  job                     Job?           // 1-to-1 relationship guarantees ONLY ONE active assignment
+  payments                Payment[]
+  documents               Document[]
+  receipts                Receipt[]
+  workerEarnings          WorkerEarning[]
+  complaints              Complaint[]
+  refunds                 Refund[]
+  ledgerEntries           FinancialLedger[]
+  review                  Review?
+
   @@index([customerId])
   @@index([serviceId])
+  @@index([assignedWorkerId])
   @@index([status])
+  @@index([paymentStatus])
   @@index([createdAt])
 }
 
 model Job {
-  id               String       @id @default(uuid())
-  orderId          String       @unique // CRITICAL: Only one Job per Order
-  order            Order        @relation(fields: [orderId], references: [id])
-  workerId         String
-  worker           User         @relation("WorkerJobs", fields: [workerId], references: [id])
-  status           JobStatus    @default(ASSIGNED)
-  
-  acceptedAt       DateTime     @default(now())
-  startedAt        DateTime?
-  submittedAt      DateTime?
-  completedAt      DateTime?
-  
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id          String     @id @default(uuid())
+  orderId     String     @unique // CRITICAL: Only one Job per Order
+  order       Order      @relation(fields: [orderId], references: [id])
+  workerId    String
+  worker      User       @relation("WorkerJobs", fields: [workerId], references: [id])
+  status      JobStatus  @default(ASSIGNED)
 
-  documents        Document[]
-  payout           Payout?      // 1-to-1 relationship guarantees ONLY ONE payout per job
-  
+  acceptedAt  DateTime   @default(now())
+  startedAt   DateTime?
+  submittedAt DateTime?
+  completedAt DateTime?
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  documents   Document[]
+  payout      Payout?    // 1-to-1 relationship guarantees ONLY ONE payout per job
+
   @@index([workerId])
   @@index([status])
 }
 
 model Payment {
-  id               String       @id @default(uuid())
-  orderId          String
-  order            Order        @relation(fields: [orderId], references: [id])
-  provider         String
-  providerOrderId  String?      @unique
-  providerPaymentId String?     @unique
-  amountPaise      Int
-  status           PaymentStatus @default(PENDING)
-  verifiedAt       DateTime?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  
+  id                String        @id @default(uuid())
+  orderId           String
+  order             Order         @relation(fields: [orderId], references: [id])
+  provider          String        @default("RAZORPAY")
+  providerOrderId   String?       @unique
+  providerPaymentId String?       @unique
+  amountPaise       Int
+  currency          String        @default("INR")
+  status            PaymentStatus @default(PENDING)
+  signature         String?
+  paidAt            DateTime?
+  verifiedAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
   @@index([orderId])
+  @@index([status])
+  @@index([providerPaymentId])
 }
 
 model Payout {
-  id               String       @id @default(uuid())
-  jobId            String       @unique // CRITICAL: Only one payout per job
-  job              Job          @relation(fields: [jobId], references: [id])
-  workerId         String
-  worker           User         @relation(fields: [workerId], references: [id])
-  amountPaise      Int
-  status           PayoutStatus @default(PENDING)
-  releasedAt       DateTime?
-  createdAt        DateTime     @default(now())
+  id          String       @id @default(uuid())
+  jobId       String       @unique // CRITICAL: Only one payout per job
+  job         Job          @relation(fields: [jobId], references: [id])
+  workerId    String
+  worker      User         @relation(fields: [workerId], references: [id])
+  amountPaise Int
+  status      PayoutStatus @default(PENDING)
+  releasedAt  DateTime?
+  createdAt   DateTime     @default(now())
 
   @@index([workerId])
+  @@index([status])
+}
+
+model WorkerEarning {
+  id                 String    @id @default(uuid())
+  workerId           String
+  worker             User      @relation(fields: [workerId], references: [id])
+  orderId            String
+  order              Order     @relation(fields: [orderId], references: [id])
+  amountPaise        Int
+  currency           String    @default("INR")
+  status             String    @default("PENDING") // PENDING, AVAILABLE, ON_HOLD, RELEASED, ADJUSTED
+  holdReason         String?
+  holdAt             DateTime?
+  releasedFromHoldAt DateTime?
+  releasedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([workerId])
+  @@index([orderId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model FinancialLedger {
+  id             String   @id @default(uuid())
+  workerId       String?
+  worker         User?    @relation(fields: [workerId], references: [id])
+  orderId        String?
+  order          Order?   @relation(fields: [orderId], references: [id])
+  withdrawalId   String?
+  refundId       String?
+  type           String   // ORDER_PAYMENT, WORKER_EARNING_PENDING, WORKER_EARNING_RELEASE, WITHDRAWAL_RESERVED, WITHDRAWAL_PAID, etc.
+  amountPaise    Int
+  currency       String   @default("INR")
+  status         String   @default("COMPLETED")
+  reference      String?
+  idempotencyKey String   @unique
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([workerId])
+  @@index([orderId])
+  @@index([withdrawalId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model Withdrawal {
+  id               String    @id @default(uuid())
+  workerId         String
+  worker           User      @relation(fields: [workerId], references: [id])
+  amountPaise      Int
+  currency         String    @default("INR")
+  status           String    @default("REQUESTED") // REQUESTED, APPROVED, COMPLETED, REJECTED, CANCELLED
+  method           String    @default("BANK") // BANK, UPI
+  payoutDetails    Json?
+  paymentReference String?
+  adminNote        String?
+  approvedBy       String?
+  processedBy      String?
+  requestedAt      DateTime  @default(now())
+  approvedAt       DateTime?
+  processedAt      DateTime?
+  completedAt      DateTime?
+  rejectedAt       DateTime?
+
+  @@index([workerId])
+  @@index([status])
+  @@index([requestedAt])
+}
+
+model Receipt {
+  id           String    @id @default(uuid())
+  orderId      String
+  order        Order     @relation(fields: [orderId], references: [id])
+  workerId     String
+  customerId   String
+  storagePath  String
+  fileName     String
+  mimeType     String?
+  sizeBytes    Int?
+  status       String    @default("SUBMITTED") // SUBMITTED, AVAILABLE, VIEWED, DOWNLOADED
+  submittedAt  DateTime  @default(now())
+  viewedAt     DateTime?
+  downloadedAt DateTime?
+
+  @@index([orderId])
+  @@index([workerId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model Complaint {
+  id          String    @id @default(uuid())
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id])
+  customerId  String
+  customer    User      @relation(fields: [customerId], references: [id])
+  workerId    String?
+  reason      String
+  description String
+  status      String    @default("OPEN") // OPEN, UNDER_REVIEW, RESOLVED, REJECTED
+  resolution  String?
+  resolvedBy  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([orderId])
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Refund {
+  id               String    @id @default(uuid())
+  orderId          String
+  order            Order     @relation(fields: [orderId], references: [id])
+  paymentId        String?
+  customerId       String
+  customer         User      @relation(fields: [customerId], references: [id])
+  amountPaise      Int
+  currency         String    @default("INR")
+  reason           String?
+  status           String    @default("REQUESTED") // REQUESTED, UNDER_REVIEW, APPROVED, PROCESSING, REFUNDED, REJECTED, FAILED
+  providerRefundId String?
+  approvedBy       String?
+  processedBy      String?
+  requestedAt      DateTime  @default(now())
+  approvedAt       DateTime?
+  processedAt      DateTime?
+
+  @@index([orderId])
+  @@index([customerId])
+  @@index([status])
+  @@index([requestedAt])
+}
+
+model Notification {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  type       String
+  title      String
+  message    String
+  entityType String?
+  entityId   String?
+  isRead     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  readAt     DateTime?
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  orderId    String   @unique
+  order      Order    @relation(fields: [orderId], references: [id])
+  customerId String
+  customer   User     @relation(fields: [customerId], references: [id])
+  workerId   String?
+  serviceId  String
+  service    Service  @relation(fields: [serviceId], references: [id])
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([customerId])
+  @@index([workerId])
+  @@index([serviceId])
 }
 
 model Document {
-  id               String       @id @default(uuid())
-  orderId          String?
-  order            Order?       @relation(fields: [orderId], references: [id])
-  jobId            String?
-  job              Job?         @relation(fields: [jobId], references: [id])
-  customerId       String
-  customer         User         @relation("CustomerDocuments", fields: [customerId], references: [id])
-  workerId         String?
-  worker           User?        @relation("WorkerDocuments", fields: [workerId], references: [id])
-  
-  type             String
-  fileName         String
-  mimeType         String
-  size             Int
-  storageKey       String       @unique
-  
-  createdAt        DateTime     @default(now())
-  
+  id         String   @id @default(uuid())
+  orderId    String?
+  order      Order?   @relation(fields: [orderId], references: [id])
+  jobId      String?
+  job        Job?     @relation(fields: [jobId], references: [id])
+  customerId String
+  customer   User     @relation("CustomerDocuments", fields: [customerId], references: [id])
+  workerId   String?
+  worker     User?    @relation("WorkerDocuments", fields: [workerId], references: [id])
+
+  type       String
+  fileName   String
+  mimeType   String
+  size       Int
+  storageKey String   @unique
+
+  createdAt  DateTime @default(now())
+
   @@index([orderId])
   @@index([customerId])
   @@index([jobId])
 }
 
 model AuditLog {
-  id               String       @id @default(uuid())
-  actorUserId      String?
-  actor            User?        @relation(fields: [actorUserId], references: [id])
-  action           String
-  entityType       String
-  entityId         String
-  metadata         Json?
-  createdAt        DateTime     @default(now())
+  id          String   @id @default(uuid())
+  actorUserId String?
+  actor       User?    @relation(fields: [actorUserId], references: [id])
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([actorUserId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }

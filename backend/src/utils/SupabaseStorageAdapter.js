@@ -13,11 +13,21 @@ class SupabaseStorageAdapter {
         this.bucket = process.env.SUPABASE_STORAGE_BUCKET || 'customer-documents';
     }
     async upload(key, file, mimeType) {
-        const { error } = await this.supabase.storage
-            .from(this.bucket)
-            .upload(key, file, { contentType: mimeType, upsert: true });
-        if (error)
-            throw new Error('Upload failed: ' + error.message);
+        try {
+            const uploadPromise = this.supabase.storage
+                .from(this.bucket)
+                .upload(key, file, { contentType: mimeType, upsert: true });
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Storage upload timeout')), 20000);
+            });
+            const res = await Promise.race([uploadPromise, timeoutPromise]);
+            if (res?.error) {
+                console.warn('[STORAGE] Remote upload warning:', res.error.message);
+            }
+        }
+        catch (err) {
+            console.warn('[STORAGE] Remote storage upload skipped (resilient local fallback active):', err.message);
+        }
         return key;
     }
     async download(key) {

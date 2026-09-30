@@ -79,8 +79,10 @@ export function startBackgroundTimers() {
     }
   }, 30000);
 
-  // Unref so Jest and CLI tools exit cleanly without leaking timers
-  if (backgroundTimer.unref) backgroundTimer.unref();
+  // In test environments, unref to allow Jest to exit cleanly. In server mode, keep process alive.
+  if (process.env.NODE_ENV === 'test' && backgroundTimer.unref) {
+    backgroundTimer.unref();
+  }
 
   return backgroundTimer;
 }

@@ -2,8 +2,9 @@ import { Request, Response } from 'express';
 import { SupabaseStorageAdapter } from './utils/SupabaseStorageAdapter';
 import { localStore } from './catalogData';
 import { prisma, checkDb } from './db';
+import { fileBufferStore, generateOfficialReceiptBuffer } from './utils/fileStore';
 
-const storage = new SupabaseStorageAdapter();
+export const storage = new SupabaseStorageAdapter();
 
 export const servicesController = {
   getServices: async (req: Request, res: Response) => {
@@ -83,7 +84,8 @@ export const workersController = {
       // Proceed to fallback
     }
 
-    return res.json({ success: true, workers: localStore.getWorkers() });
+    const activeWorkers = localStore.getWorkers().filter(w => w.accountStatus === 'ACTIVE' && w.status !== 'PAUSED' && w.status !== 'DELETED');
+    return res.json({ success: true, workers: activeWorkers });
   }
 };
 
@@ -149,14 +151,50 @@ const processCustomerOrder = async (order: any) => {
     pricePaise: (order.pricing as any)?.pricePaise || 0
   };
 
-  const assignedWorker = order.job?.worker || (order.worker ? order.worker : null);
-  const customerStatus = currentStatus === 'OFFERED' ? 'ASSIGNED' : currentStatus;
+  // Sanitized assigned worker
+  const assignedWorker = order.assignedWorkerId ? (localStore.getWorker(order.assignedWorkerId) || order.worker || (order.job?.worker ? order.job.worker : null)) : null;
+  const customerStatus = currentStatus === 'OFFERED' ? (order.assignedWorkerId ? 'ASSIGNED' : 'AVAILABLE') : currentStatus;
+
+  // Deliverables: ensure customer can view and download all deliverables & receipts submitted by worker
+  const deliverables = order.deliverables || snapshot.completion?.deliverableFiles || localStore.getOrder(order.id)?.deliverables || [];
+  if (!snapshot.completion) {
+    snapshot.completion = {};
+  }
+  snapshot.completion.deliverableFiles = deliverables;
+  if (deliverables.length > 0 && !snapshot.completion.receiptUrl) {
+    snapshot.completion.receiptUrl = deliverables[0].url;
+  }
+
+  // Time Slot synchronization: customer sees time slot ONLY after worker sets/provides it
+  const rawStoreOrder = localStore.getOrder(order.id);
+  const effectiveTimeSlot = order.timeSlot || rawStoreOrder?.timeSlot;
+  if (effectiveTimeSlot && (effectiveTimeSlot.startTime || effectiveTimeSlot.timeSlotStr)) {
+    const formattedSlot = effectiveTimeSlot.timeSlotStr || `${effectiveTimeSlot.date || 'Today'}, ${effectiveTimeSlot.startTime} - ${effectiveTimeSlot.endTime}`;
+    snapshot.scheduling = {
+      ...(snapshot.scheduling || {}),
+      timeSlot: formattedSlot,
+      date: effectiveTimeSlot.date || 'Today',
+      startTime: effectiveTimeSlot.startTime,
+      endTime: effectiveTimeSlot.endTime,
+      status: effectiveTimeSlot.status || snapshot.scheduling?.status || 'PROPOSED',
+      proposedBy: effectiveTimeSlot.proposedBy || 'WORKER',
+      rescheduleNote: effectiveTimeSlot.rescheduleNote || snapshot.scheduling?.rescheduleNote || null
+    };
+  } else if (!snapshot.scheduling || !snapshot.scheduling.timeSlot) {
+    snapshot.scheduling = {
+      status: 'UNSCHEDULED',
+      timeSlot: null,
+      rescheduleNote: null
+    };
+  }
 
   return {
     ...order,
+    orderNumber: order.orderNumber || order.id,
     status: customerStatus,
     pricing: customerPricing,
     serviceSnapshot: snapshot,
+    deliverables,
     worker: assignedWorker
   };
 };
@@ -183,29 +221,31 @@ export const ordersController = {
         return res.status(400).json({ success: false, error: { code: 'INVALID_SERVICE' } });
       }
 
+      // Idempotency / Deduplication Guard:
+      // Prevent duplicate order creation if a customer submits the same service within 5 seconds (rapid clicks, refresh, reconnect)
+      const fiveSecondsAgo = Date.now() - 5000;
+      const recentDuplicate = Array.from(localStore.orders.values()).find(o => 
+        o.customerId === customerId &&
+        o.serviceId === serviceId &&
+        ['AVAILABLE', 'ACCEPTED', 'ASSIGNED', 'PAYMENT_PENDING'].includes(o.status) &&
+        new Date(o.createdAt).getTime() > fiveSecondsAgo
+      );
+      if (recentDuplicate) {
+        console.log(`[Orders] Idempotency guard: Returning existing order ${recentDuplicate.id} to prevent duplicate.`);
+        const processed = await processCustomerOrder(recentDuplicate);
+        return res.json({ success: true, order: processed || recentDuplicate });
+      }
+
       const pricePaise = service.pricePaise || 19900;
       const platformCommissionPaise = Math.floor(pricePaise * 0.2);
       const workerPayoutPaise = pricePaise - platformCommissionPaise;
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-      // Worker assignment logic (Section 8: Backend-controlled assignment)
-      let selectedWorker: any = null;
-      if (workerSelection?.mode === 'preferred' && workerSelection.preferredWorkerId) {
-        const pref = localStore.getWorker(workerSelection.preferredWorkerId);
-        if (pref && pref.isOnline && pref.accountStatus === 'ACTIVE') {
-          selectedWorker = pref;
-        } else {
-          // Preferred is offline: do not wait -> move to another suitable Online worker
-          selectedWorker = localStore.findBestSuitableWorker(service.category);
-        }
-      } else {
-        // Auto-assign: lowest workload, tie -> faster average completion speed
-        selectedWorker = localStore.findBestSuitableWorker(service.category);
-      }
-
-      const isPaid = !!paymentMethod;
-      const initialStatus = isPaid ? (selectedWorker ? 'OFFERED' : 'AVAILABLE') : 'PAYMENT_PENDING';
-      const offerExpiresAt = (isPaid && selectedWorker) ? new Date(Date.now() + 10 * 60 * 1000).toISOString() : null;
+      // If valid upfront paymentMethod is provided (simulation/in-order payment), make AVAILABLE immediately
+      const isUpfrontPaid = Boolean(paymentMethod);
+      const initialStatus = isUpfrontPaid ? 'AVAILABLE' : 'PAYMENT_PENDING';
+      const initialPaymentStatus = isUpfrontPaid ? 'PAID' : 'PENDING';
+      const paymentProvider = (typeof paymentMethod === 'string' ? paymentMethod : paymentMethod?.provider || paymentMethod?.type) || 'UPI';
 
       const initialSnapshot = {
         name: service.name || service.title,
@@ -217,8 +257,8 @@ export const ordersController = {
         workerSelection: workerSelection || { mode: 'auto' },
         expiresAt,
         scheduling: {
-          status: 'PROPOSED',
-          timeSlot: 'Today, 4:00 PM - 5:00 PM',
+          status: 'UNSCHEDULED',
+          timeSlot: null,
           rescheduleNote: null
         },
         completion: {
@@ -232,20 +272,52 @@ export const ordersController = {
 
       const generatedOrderId = 'ord_' + Date.now();
 
+      // Resolve customer name/phone/email from the authenticated user record
+      // so that the worker workspace and admin always see real customer data.
+      const customerUser = localStore.findUserById(customerId);
+      const resolvedCustomerName = customerUser?.name || (details as any)?.fullName || 'Customer';
+      const resolvedCustomerPhone = customerUser?.phone || (details as any)?.phone || null;
+      const resolvedCustomerEmail = customerUser?.email || (details as any)?.email || null;
+
       const orderData = {
         id: generatedOrderId,
+        orderNumber: generatedOrderId,
         customerId,
+        // Populated at the root level so Worker Workspace & Admin always see real details
+        customerName: resolvedCustomerName,
+        customerPhone: resolvedCustomerPhone,
+        customerEmail: resolvedCustomerEmail,
+        // formData mirrors serviceSnapshot.details so the worker JobWorkspace
+        // can render the form fields without needing to dig into serviceSnapshot
+        formData: details || {},
         serviceId,
         serviceName: service.name || service.title,
+        category: service.category || null,
         status: initialStatus,
+        paymentStatus: initialPaymentStatus,
+        earningStatus: 'PENDING',
+        workerAmount: workerPayoutPaise,
+        adminCommission: platformCommissionPaise,
+        platformFee: 0,
+        customerPaidAmount: pricePaise,
         serviceSnapshot: initialSnapshot,
+        pricePaise,
+        workerEarningsPaise: workerPayoutPaise,
         pricing: { pricePaise, platformCommissionPaise, workerPayoutPaise },
-        assignedWorkerId: selectedWorker ? selectedWorker.id : null,
-        worker: selectedWorker ? { id: selectedWorker.id, name: selectedWorker.name, phone: selectedWorker.phone } : null,
-        job: selectedWorker ? { worker: { id: selectedWorker.id, name: selectedWorker.name, phone: selectedWorker.phone } } : null,
-        offerExpiresAt,
-        documents: [],
-        deliverables: [],
+        assignedWorkerId: null,
+        worker: null,
+        job: null,
+        timeSlot: null,
+        offerExpiresAt: null,
+        paidAt: isUpfrontPaid ? new Date().toISOString() : null,
+        payment: isUpfrontPaid ? {
+          status: 'PAID',
+          provider: paymentProvider,
+          amountPaise: pricePaise,
+          paidAt: new Date().toISOString()
+        } : null,
+        documents: [] as any[],
+        deliverables: [] as any[],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -253,24 +325,40 @@ export const ordersController = {
       // Try database insert if connected
       try {
         if (await checkDb()) {
-          const dbStatus = isPaid ? (selectedWorker ? 'ASSIGNED' : 'AVAILABLE') : 'PAYMENT_PENDING';
           const dbOrder = await prisma.order.create({
             data: {
+              id: generatedOrderId,
+              orderNumber: generatedOrderId,
               customerId,
               serviceId,
-              status: dbStatus,
+              status: initialStatus,
+              paymentStatus: initialPaymentStatus,
+              earningStatus: 'PENDING',
+              workerAmountPaise: workerPayoutPaise,
+              adminCommissionPaise: platformCommissionPaise,
+              platformFeePaise: 0,
+              customerPaidAmountPaise: pricePaise,
+              currency: 'INR',
               serviceSnapshot: initialSnapshot,
-              pricing: { pricePaise, platformCommissionPaise, workerPayoutPaise }
+              pricing: { pricePaise, platformCommissionPaise, workerPayoutPaise },
+              paidAt: isUpfrontPaid ? new Date() : null
             }
           });
-          if (isPaid && selectedWorker) {
-            await prisma.job.create({
-              data: {
-                orderId: dbOrder.id,
-                workerId: selectedWorker.id,
-                status: 'ASSIGNED'
-              }
-            });
+          if (isUpfrontPaid) {
+            try {
+              await prisma.payment.create({
+                data: {
+                  orderId: dbOrder.id,
+                  provider: paymentProvider,
+                  providerOrderId: `ord_pay_${Date.now()}`,
+                  amountPaise: pricePaise,
+                  currency: 'INR',
+                  status: 'PAID',
+                  paidAt: new Date(),
+                  verifiedAt: new Date()
+                }
+              });
+            } catch {}
           }
           orderData.id = dbOrder.id;
         }
@@ -278,47 +366,104 @@ export const ordersController = {
         console.log('Database persist skipped, stored in resilient cache:', (err as any)?.message);
       }
 
-      // Dispatch Section 8 notifications
-      if (isPaid && selectedWorker) {
-        localStore.notifications.unshift({
-          id: `notif_${Date.now()}`,
-          recipientId: selectedWorker.id,
-          recipientRole: 'WORKER',
-          type: 'NEW_ORDER_OFFER',
-          title: 'New Order Offer (10-Min Window)',
-          message: `You have received an order offer for "${service.name || service.title}". You have 10 minutes to accept.`,
-          orderId: orderData.id,
-          isRead: false,
-          createdAt: new Date().toISOString()
-        });
-      } else if (isPaid && !selectedWorker) {
-        localStore.notifications.unshift({
-          id: `notif_adm_${Date.now()}`,
-          recipientId: 'ADM-001',
-          recipientRole: 'ADMIN',
-          type: 'NO_SUITABLE_WORKER',
-          title: 'No Suitable Worker Available',
-          message: `Order #${orderData.id} has no available online worker. Please manually assign a worker.`,
-          orderId: orderData.id,
-          isRead: false,
-          createdAt: new Date().toISOString()
-        });
-        localStore.notifications.unshift({
-          id: `notif_c_${Date.now()}`,
-          recipientId: customerId,
-          recipientRole: 'CUSTOMER',
-          type: 'NO_WORKER_AVAILABLE',
-          title: 'Looking for Available Operator',
-          message: `All operators are currently engaged. We are searching for an available operator for your order.`,
-          orderId: orderData.id,
-          isRead: false,
-          createdAt: new Date().toISOString()
-        });
+
+      // Bind uploaded document IDs to this order
+      const clientDocsList = Array.isArray(req.body.documents) ? req.body.documents : [];
+      const rawDocIds = (documentIds && Array.isArray(documentIds)) 
+        ? documentIds 
+        : clientDocsList.map((d: any) => typeof d === 'string' ? d : d?.id).filter(Boolean);
+
+      if (rawDocIds.length > 0) {
+        orderData.documents = await Promise.all(rawDocIds.map(async (docId: string) => {
+          let doc = localStore.getDocument(docId);
+          if (!doc) {
+            try {
+              if (await checkDb()) {
+                doc = await prisma.document.findUnique({ where: { id: docId } });
+              }
+            } catch {}
+          }
+          const clientMeta = clientDocsList.find((d: any) => d && (d.id === docId || d === docId));
+          const docName = clientMeta?.docName || doc?.docName || null;
+          const fileName = doc?.fileName || clientMeta?.fileName || doc?.name || 'Uploaded Document';
+          const displayName = docName ? `${docName} (${fileName})` : fileName;
+          
+          if (doc) {
+            doc.orderId = orderData.id;
+            doc.orderNumber = orderData.orderNumber || orderData.id;
+            doc.docName = docName;
+            doc.name = displayName;
+            doc.fileName = fileName;
+            doc.url = `/api/documents/${doc.id}/download`;
+            localStore.saveDocument(doc);
+            return doc;
+          }
+
+          const fallbackDoc = {
+            id: docId,
+            orderId: orderData.id,
+            orderNumber: orderData.orderNumber || orderData.id,
+            customerId,
+            docName,
+            name: displayName,
+            fileName: fileName,
+            url: `/api/documents/${docId}/download`,
+            size: clientMeta?.size || 'Verified Document',
+            type: 'UPLOAD',
+            createdAt: new Date().toISOString()
+          };
+          localStore.saveDocument(fallbackDoc);
+          return fallbackDoc;
+        }));
+
+        try {
+          if (await checkDb()) {
+            await prisma.document.updateMany({
+              where: { id: { in: rawDocIds } },
+              data: { orderId: orderData.id }
+            });
+          }
+        } catch {}
       }
 
       localStore.saveOrder(orderData);
+
+      if (isUpfrontPaid) {
+        localStore.appendLedgerEntry({
+          orderId: orderData.id,
+          amountPaise: pricePaise,
+          type: 'ORDER_PAYMENT',
+          idempotencyKey: `PAYMENT_ORDER_${orderData.id}`,
+          referenceNote: `Order payment via ${paymentProvider}`
+        });
+
+        localStore.addAuditLog({
+          actorUserId: customerId,
+          action: 'PAYMENT_VERIFIED',
+          entityType: 'Order',
+          entityId: orderData.id,
+          amountPaise: pricePaise
+        });
+
+        // Notify online workers
+        const onlineWorkers = localStore.getWorkers().filter(w => w.isOnline && w.accountStatus === 'ACTIVE');
+        onlineWorkers.forEach(w => {
+          localStore.notifications.unshift({
+            id: `notif_${Date.now()}_${w.id}`,
+            recipientId: w.id,
+            recipientRole: 'WORKER',
+            type: 'NEW_ORDER_AVAILABLE',
+            title: 'New Order Available',
+            message: `A new order for "${orderData.serviceName}" is available for pickup.`,
+            orderId: orderData.id,
+            isRead: false,
+            createdAt: new Date().toISOString()
+          });
+        });
+      }
+
       const processed = await processCustomerOrder(orderData);
-      return res.json({ success: true, order: processed });
+      return res.json({ success: true, order: processed || orderData });
     } catch (e: any) {
       console.error('Order creation error:', e);
       return res.status(500).json({ success: false, error: e.message || String(e) });
@@ -355,7 +500,8 @@ export const ordersController = {
 
   getOrder: async (req: Request, res: Response) => {
     try {
-      const customerId = (req as any).user?.id;
+      const user = (req as any).user;
+      const customerId = user?.id;
       const orderId = req.params.id as string;
       let rawOrder: any = null;
 
@@ -379,6 +525,14 @@ export const ordersController = {
         return res.status(404).json({ success: false, error: { message: 'Order not found' } });
       }
 
+      // Security & Multi-Tenant Isolation Check
+      const isOwner = !rawOrder.customerId || rawOrder.customerId === customerId;
+      const isAdmin = user?.role === 'ADMIN';
+      const isAssigned = rawOrder.assignedWorkerId === customerId;
+      if (user && !isAdmin && !isOwner && !isAssigned) {
+        return res.status(403).json({ success: false, error: { message: 'Unauthorized access to this order' } });
+      }
+
       const order = await processCustomerOrder(rawOrder);
       return res.json({ success: true, order });
     } catch {
@@ -388,6 +542,7 @@ export const ordersController = {
 
   acceptTimeSlot: async (req: Request, res: Response) => {
     try {
+      const user = (req as any).user;
       const orderId = req.params.id as string;
       let order = localStore.getOrder(orderId);
 
@@ -400,6 +555,10 @@ export const ordersController = {
 
       if (!order) {
         return res.status(404).json({ success: false, error: 'Order not found' });
+      }
+
+      if (user && user.role !== 'ADMIN' && order.customerId && order.customerId !== user.id) {
+        return res.status(403).json({ success: false, error: 'Unauthorized' });
       }
 
       const snapshot = (order.serviceSnapshot as any) || {};
@@ -409,6 +568,10 @@ export const ordersController = {
         acceptedAt: new Date().toISOString()
       };
       order.serviceSnapshot = snapshot;
+      if (order.timeSlot) {
+        order.timeSlot.status = 'ACCEPTED';
+        order.timeSlot.acceptedAt = new Date().toISOString();
+      }
       order.updatedAt = new Date().toISOString();
 
       try {
@@ -421,6 +584,31 @@ export const ordersController = {
       } catch {}
 
       localStore.saveOrder(order);
+
+      const targetWorkerId = order.assignedWorkerId;
+      if (targetWorkerId) {
+        localStore.notifications.unshift({
+          id: `notif_${Date.now()}`,
+          recipientId: targetWorkerId,
+          recipientRole: 'WORKER',
+          type: 'TIME_SLOT_ACCEPTED',
+          title: 'Time Slot Confirmed',
+          message: `Customer accepted the scheduled working time slot (${snapshot.scheduling?.timeSlot || 'Confirmed'}).`,
+          orderId,
+          isRead: false,
+          createdAt: new Date().toISOString()
+        });
+        localStore.chatMessages.push({
+          id: `msg_${Date.now()}`,
+          orderId,
+          senderId: user?.id || order.customerId,
+          senderRole: 'CUSTOMER',
+          senderName: user?.name || 'Customer',
+          message: `[Time Slot Confirmed]: Customer accepted working window: ${snapshot.scheduling?.timeSlot || 'Scheduled'}`,
+          createdAt: new Date().toISOString()
+        });
+      }
+
       return res.json({ success: true, order: await processCustomerOrder(order) });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e.message });
@@ -429,8 +617,9 @@ export const ordersController = {
 
   rescheduleTimeSlot: async (req: Request, res: Response) => {
     try {
+      const user = (req as any).user;
       const orderId = req.params.id as string;
-      const { rescheduleNote, requestedTime } = req.body;
+      const { rescheduleNote, requestedTime, requestedDate } = req.body;
       let order = localStore.getOrder(orderId);
 
       try {
@@ -444,15 +633,36 @@ export const ordersController = {
         return res.status(404).json({ success: false, error: 'Order not found' });
       }
 
+      if (user && user.role !== 'ADMIN' && order.customerId && order.customerId !== user.id) {
+        return res.status(403).json({ success: false, error: 'Unauthorized' });
+      }
+
       const snapshot = (order.serviceSnapshot as any) || {};
+      const newSlotText = requestedTime 
+        ? `${requestedDate ? requestedDate + ', ' : ''}${requestedTime}` 
+        : (snapshot.scheduling?.timeSlot || 'Reschedule Requested');
+
       snapshot.scheduling = {
         ...(snapshot.scheduling || {}),
         status: 'RESCHEDULE_REQUESTED',
+        timeSlot: newSlotText,
         rescheduleNote: rescheduleNote || 'Customer requested mutual reschedule',
         requestedTime: requestedTime || null,
+        requestedDate: requestedDate || null,
+        proposedBy: 'CUSTOMER',
         requestedAt: new Date().toISOString()
       };
       order.serviceSnapshot = snapshot;
+      if (order.timeSlot) {
+        order.timeSlot.status = 'RESCHEDULE_REQUESTED';
+        order.timeSlot.rescheduleNote = rescheduleNote;
+        order.timeSlot.proposedBy = 'CUSTOMER';
+        order.timeSlot.requestedTime = requestedTime;
+        order.timeSlot.requestedDate = requestedDate;
+        order.timeSlot.timeSlotStr = newSlotText;
+        order.timeSlot.date = requestedDate || order.timeSlot.date || 'Today';
+        order.timeSlot.startTime = requestedTime || order.timeSlot.startTime;
+      }
       order.updatedAt = new Date().toISOString();
 
       try {
@@ -465,6 +675,31 @@ export const ordersController = {
       } catch {}
 
       localStore.saveOrder(order);
+
+      const targetWorkerId = order.assignedWorkerId;
+      if (targetWorkerId) {
+        localStore.notifications.unshift({
+          id: `notif_${Date.now()}`,
+          recipientId: targetWorkerId,
+          recipientRole: 'WORKER',
+          type: 'RESCHEDULE_REQUESTED',
+          title: 'Customer Requested Reschedule',
+          message: `Customer requested a reschedule to "${newSlotText}". Note: "${rescheduleNote || 'None'}". Please review and confirm or propose a new slot.`,
+          orderId,
+          isRead: false,
+          createdAt: new Date().toISOString()
+        });
+        localStore.chatMessages.push({
+          id: `msg_${Date.now()}`,
+          orderId,
+          senderId: user?.id || order.customerId,
+          senderRole: 'CUSTOMER',
+          senderName: user?.name || 'Customer',
+          message: `[Reschedule Request]: Preferred time: ${newSlotText}. Reason: ${rescheduleNote || 'Mutual rescheduling'}`,
+          createdAt: new Date().toISOString()
+        });
+      }
+
       return res.json({ success: true, order: await processCustomerOrder(order) });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e.message });
@@ -473,8 +708,10 @@ export const ordersController = {
 
   submitReview: async (req: Request, res: Response) => {
     try {
+      const user = (req as any).user;
       const orderId = req.params.id as string;
-      const { rating, comment } = req.body;
+      const { rating, comment, review } = req.body;
+      const reviewText = comment || review || '';
       let order = localStore.getOrder(orderId);
 
       try {
@@ -488,15 +725,41 @@ export const ordersController = {
         return res.status(404).json({ success: false, error: 'Order not found' });
       }
 
+      // 1. Tenant Check
+      if (user && user.role !== 'ADMIN' && order.customerId && order.customerId !== user.id) {
+        return res.status(403).json({ success: false, error: 'Unauthorized to review this order' });
+      }
+
+      // 2. Status Check: Must be completed or receipt submitted
+      if (order.status !== 'COMPLETED' && order.status !== 'RECEIPT_SUBMITTED') {
+        return res.status(400).json({ success: false, error: 'Only completed orders can be reviewed' });
+      }
+
+      // If in RECEIPT_SUBMITTED, customer review confirms receipt and releases worker earning
+      if (order.status === 'RECEIPT_SUBMITTED') {
+        localStore.releaseWorkerEarningOnReceiptAction(orderId, user?.id || order.customerId);
+        order = localStore.getOrder(orderId);
+      }
+
+      // 3. Duplicate Review Prevention
+      const existingSnapshot = (order.serviceSnapshot as any) || {};
+      if (order.rating || existingSnapshot.review?.rating) {
+        return res.status(400).json({ success: false, error: 'This order has already been reviewed' });
+      }
+
       const ratingNum = Number(rating);
       if (!ratingNum || ratingNum < 1 || ratingNum > 5) {
         return res.status(400).json({ success: false, error: 'Rating must be between 1 and 5 stars' });
       }
 
+      // 4. Update order state
+      order.rating = ratingNum;
+      order.review = reviewText;
+
       const snapshot = (order.serviceSnapshot as any) || {};
       snapshot.review = {
         rating: ratingNum,
-        comment: comment || '',
+        comment: reviewText,
         createdAt: new Date().toISOString()
       };
       order.serviceSnapshot = snapshot;
@@ -511,10 +774,394 @@ export const ordersController = {
         }
       } catch {}
 
+      // 5. Update assigned worker's rating stats in localStore
+      if (order.assignedWorkerId) {
+        const worker = localStore.getWorker(order.assignedWorkerId);
+        if (worker) {
+          worker.reviews = worker.reviews || [];
+          worker.reviews.unshift({
+            id: `rev_${Date.now()}`,
+            rating: ratingNum,
+            comment: reviewText,
+            createdAt: new Date().toISOString()
+          });
+          const totalStars = worker.reviews.reduce((sum: number, r: any) => sum + (Number(r.rating) || 5), 0);
+          worker.rating = Math.round((totalStars / worker.reviews.length) * 10) / 10;
+        }
+      }
+
       localStore.saveOrder(order);
       return res.json({ success: true, order: await processCustomerOrder(order) });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e.message });
+    }
+  },
+
+  payOrder: async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const orderId = req.params.id as string;
+      const { paymentMethod } = req.body;
+      let order = localStore.getOrder(orderId);
+      if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
+      const isOwner = !order.customerId || order.customerId === user.id;
+      const isAdmin = user?.role === 'ADMIN';
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({ success: false, error: 'Unauthorized' });
+      }
+      if (order.status !== 'PAYMENT_PENDING') {
+        return res.status(400).json({ success: false, error: `Order is already in status ${order.status}` });
+      }
+
+      order.status = 'AVAILABLE';
+      order.paymentStatus = 'PAID';
+      order.earningStatus = 'PENDING';
+      order.assignedWorkerId = null;
+      order.worker = null;
+      order.job = null;
+      order.offerExpiresAt = null;
+      order.paidAt = new Date().toISOString();
+      order.payment = {
+        status: 'PAID',
+        method: paymentMethod?.provider || 'UPI',
+        paidAt: new Date().toISOString()
+      };
+      if (!order.serviceSnapshot) order.serviceSnapshot = {};
+      order.serviceSnapshot.scheduling = {
+        status: 'UNSCHEDULED',
+        timeSlot: null,
+        rescheduleNote: null
+      };
+      order.timeSlot = null;
+      order.updatedAt = new Date().toISOString();
+
+      // Double-entry Ledger: ORDER_PAYMENT
+      localStore.appendLedgerEntry({
+        orderId: order.id,
+        amountPaise: order.customerPaidAmount || order.pricePaise || 0,
+        type: 'ORDER_PAYMENT',
+        idempotencyKey: `LEDGER_PAYMENT_${order.id}`,
+        referenceNote: `Customer paid Order #${order.id}`
+      });
+
+
+      // Notify online workers
+      const onlineWorkers = localStore.getWorkers().filter(w => w.isOnline && w.accountStatus === 'ACTIVE');
+      onlineWorkers.forEach(w => {
+        localStore.notifications.unshift({
+          id: `notif_${Date.now()}_${w.id}`,
+          recipientId: w.id,
+          recipientRole: 'WORKER',
+          type: 'NEW_ORDER_AVAILABLE',
+          title: 'New Order Available',
+          message: `A new paid order for "${order.serviceName}" is available for pickup.`,
+          orderId: order.id,
+          isRead: false,
+          createdAt: new Date().toISOString()
+        });
+      });
+
+      localStore.saveOrder(order);
+      return res.json({ success: true, order: await processCustomerOrder(order) });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: e.message });
+    }
+  },
+
+  downloadDeliverable: async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const orderId = req.params.id as string;
+      const deliverableId = req.params.deliverableId as string;
+
+      let order = localStore.getOrder(orderId);
+      if (!order) {
+        try {
+          if (await checkDb()) {
+            const dbOrder = await prisma.order.findUnique({
+              where: { id: orderId },
+              include: { documents: true, job: true }
+            });
+            if (dbOrder) order = dbOrder;
+          }
+        } catch {}
+      }
+
+      if (!order) {
+        return res.status(404).json({ success: false, error: 'Order not found' });
+      }
+
+      // Authorization check
+      if (user) {
+        if (user.role === 'CUSTOMER' && order.customerId && order.customerId !== user.id) {
+          return res.status(403).json({ success: false, error: 'Unauthorized: You can only download deliverables for your own orders' });
+        }
+        if (user.role === 'WORKER') {
+          const assignedId = order.assignedWorkerId || order.job?.workerId;
+          if (assignedId && assignedId !== user.id) {
+            return res.status(403).json({ success: false, error: 'Unauthorized: You are not assigned to this order' });
+          }
+        }
+      }
+
+      // Step 5 Blueprint: When customer downloads deliverable, release worker earnings from PENDING to AVAILABLE
+      const isCustomerOrAdmin = !user || user.role === 'CUSTOMER' || user.role === 'ADMIN';
+      if (isCustomerOrAdmin && order.assignedWorkerId && order.earningStatus !== 'RELEASED') {
+        try {
+          localStore.releaseWorkerEarningOnReceiptAction(orderId, user?.id || order.customerId || 'CUSTOMER');
+        } catch (releaseErr: any) {
+          console.warn('[EarningRelease] Notice:', releaseErr.message);
+        }
+      }
+
+
+      // Find deliverable in order.deliverables or serviceSnapshot.completion.deliverableFiles
+      const deliverables = order.deliverables || (order.serviceSnapshot as any)?.completion?.deliverableFiles || [];
+      let deliv = deliverables.find((d: any) => 
+        d.id === deliverableId || 
+        d.fileName === deliverableId || 
+        d.storageKey === deliverableId
+      );
+
+      if (!deliv) {
+        // Try matching by index or pick first if only 1 deliverable or requested 'latest'
+        if (deliverableId === 'latest' || deliverableId === '0') {
+          deliv = deliverables[0];
+        } else {
+          const idx = parseInt(deliverableId, 10);
+          if (!isNaN(idx) && deliverables[idx]) {
+            deliv = deliverables[idx];
+          }
+        }
+      }
+
+      const fileName = deliv?.fileName || deliv?.name || `Receipt_${orderId}.pdf`;
+      const mimeType = deliv?.mimeType || 'application/pdf';
+
+      // 1. Check in-memory buffer cache
+      if (deliv?.storageKey && fileBufferStore.has(deliv.storageKey)) {
+        const cached = fileBufferStore.get(deliv.storageKey)!;
+        res.setHeader('Content-Type', cached.mimeType || mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(cached.fileName || fileName)}"`);
+        return res.send(cached.buffer);
+      }
+
+      // 2. Try Supabase storage
+      if (deliv?.storageKey) {
+        try {
+          const buffer = await storage.download(deliv.storageKey);
+          if (buffer && buffer.length > 0) {
+            res.setHeader('Content-Type', mimeType);
+            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+            return res.send(buffer);
+          }
+        } catch (err: any) {
+          console.warn('[STORAGE] Supabase download fallback:', err.message);
+        }
+      }
+
+      // 3. Fallback: generate official PDF receipt
+      const receiptBuf = generateOfficialReceiptBuffer(order, deliv);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`)}"`);
+      return res.send(receiptBuf);
+    } catch (e: any) {
+      console.error('[DownloadDeliverable] Error:', e);
+      return res.status(500).json({ success: false, error: e.message || 'Download failed' });
+    }
+  },
+
+  uploadOrderDocument: async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const orderId = req.params.id as string;
+      let order = localStore.getOrder(orderId);
+      if (!order) return res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } });
+
+      const isOwner = !order.customerId || order.customerId === user.id;
+      const isAdmin = user.role === 'ADMIN';
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized' } });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'No document file provided' } });
+      }
+
+      const customerId = user.id;
+      const fileKey = 'docs/' + customerId + '/' + Date.now() + '_' + req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      fileBufferStore.set(fileKey, {
+        buffer: req.file.buffer,
+        mimeType: req.file.mimetype,
+        fileName: req.file.originalname,
+        createdAt: Date.now()
+      });
+
+      const docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+      const docName = req.body.docName || req.body.docType || null;
+      const fileName = req.file.originalname;
+      const displayName = docName ? `${docName} (${fileName})` : fileName;
+
+      const doc = {
+        id: docId,
+        storageKey: fileKey,
+        docName,
+        name: displayName,
+        fileName,
+        url: `/api/documents/${docId}/download`,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+        type: 'UPLOAD',
+        customerId,
+        orderId,
+        createdAt: new Date().toISOString()
+      };
+
+      order.documents = order.documents || [];
+      order.documents.push(doc);
+      localStore.saveDocument(doc);
+      localStore.saveOrder(order);
+
+      try {
+        if (await checkDb()) {
+          await prisma.document.create({ data: doc as any });
+        }
+      } catch {}
+
+      return res.status(201).json({ success: true, data: { document: doc }, document: doc });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: e.message } });
+    }
+  },
+
+  getOrderReceipt: async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const orderId = req.params.id as string;
+      let order = localStore.getOrder(orderId);
+      if (!order) return res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } });
+
+      const isOwner = !order.customerId || order.customerId === user.id;
+      const isAdmin = user.role === 'ADMIN';
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized' } });
+      }
+
+      order.receiptViewedAt = new Date().toISOString();
+      localStore.saveOrder(order);
+
+      const deliverables = order.deliverables || (order.serviceSnapshot as any)?.completion?.deliverableFiles || [];
+      const receipt = deliverables.length > 0 ? deliverables[0] : null;
+
+      return res.json({
+        success: true,
+        data: {
+          orderId: order.id,
+          receiptViewedAt: order.receiptViewedAt,
+          receipt,
+          deliverables,
+          downloadUrl: deliverables.length > 0 ? `/api/orders/${order.id}/deliverables/latest/download` : null
+        },
+        message: 'Receipt accessed'
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: e.message } });
+    }
+  },
+
+  downloadOrderReceipt: async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const orderId = req.params.id as string;
+      let order = localStore.getOrder(orderId);
+      if (!order) return res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } });
+
+      const isOwner = !order.customerId || order.customerId === user.id;
+      const isAdmin = user.role === 'ADMIN';
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized' } });
+      }
+
+      order.receiptDownloadedAt = new Date().toISOString();
+
+      if (order.assignedWorkerId && order.earningStatus !== 'RELEASED') {
+        try {
+          localStore.releaseWorkerEarningOnReceiptAction(orderId, user.id);
+        } catch (releaseErr: any) {
+          console.warn('[EarningRelease] Notice:', releaseErr.message);
+        }
+      }
+      localStore.saveOrder(order);
+
+      return res.json({
+        success: true,
+        data: {
+          orderId: order.id,
+          receiptDownloadedAt: order.receiptDownloadedAt,
+          earningStatus: order.earningStatus,
+          downloadUrl: `/api/orders/${order.id}/deliverables/latest/download`
+        },
+        message: 'Receipt download recorded and worker earning released'
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: e.message } });
+    }
+  },
+
+  createOrderComplaint: async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const orderId = req.params.id as string;
+      const { reason, description } = req.body;
+      if (!reason || !description) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Reason and description are required' } });
+      }
+
+      let order = localStore.getOrder(orderId);
+      if (!order) return res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } });
+
+      const isOwner = !order.customerId || order.customerId === user.id;
+      const isAdmin = user.role === 'ADMIN';
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized' } });
+      }
+
+      const complaint = {
+        id: `cmp_${Date.now()}`,
+        orderId: order.id,
+        customerId: user.id,
+        workerId: order.assignedWorkerId || null,
+        reason,
+        description,
+        status: 'OPEN',
+        createdAt: new Date().toISOString()
+      };
+
+      order.complaints = order.complaints || [];
+      order.complaints.push(complaint);
+      localStore.complaints.set(complaint.id, complaint as any);
+      localStore.saveOrder(order);
+
+      localStore.notifications.unshift({
+        id: `notif_${Date.now()}_cmp`,
+        recipientId: 'admin',
+        recipientRole: 'ADMIN',
+        type: 'COMPLAINT_CREATED',
+        title: 'Customer Complaint Submitted',
+        message: `A new complaint was submitted for Order #${order.id}: ${reason}`,
+        orderId: order.id,
+        isRead: false,
+        createdAt: new Date().toISOString()
+      });
+
+      return res.status(201).json({
+        success: true,
+        data: { complaint },
+        complaint,
+        message: 'Complaint submitted successfully'
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: e.message } });
     }
   }
 };
@@ -649,18 +1296,33 @@ export const documentController = {
     try {
       if (!req.file) return res.status(400).json({ success: false, message: 'No file provided' });
       const customerId = (req as any).user?.id || 'customer-local-id';
-      const fileKey = 'docs/' + customerId + '/' + Date.now() + '_' + req.file.originalname;
+      const fileKey = 'docs/' + customerId + '/' + Date.now() + '_' + req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
       
+      fileBufferStore.set(fileKey, {
+        buffer: req.file.buffer,
+        mimeType: req.file.mimetype,
+        fileName: req.file.originalname,
+        createdAt: Date.now()
+      });
+
       try {
         await storage.upload(fileKey, req.file.buffer, req.file.mimetype);
       } catch (storageErr) {
         console.log('Remote storage adapter upload skipped/failed:', (storageErr as any)?.message);
       }
       
+      const docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+      const docName = req.body.docName || req.body.docType || null;
+      const fileName = req.file.originalname;
+      const displayName = docName ? `${docName} (${fileName})` : fileName;
+
       const doc = {
-        id: 'doc_' + Date.now(),
+        id: docId,
         storageKey: fileKey,
-        fileName: req.file.originalname,
+        docName,
+        name: displayName,
+        fileName: fileName,
+        url: `/api/documents/${docId}/download`,
         mimeType: req.file.mimetype,
         size: req.file.size,
         type: 'UPLOAD',
@@ -669,25 +1331,233 @@ export const documentController = {
         createdAt: new Date().toISOString()
       };
 
+      // Always save to resilient localStore immediately
+      localStore.saveDocument(doc);
+
       try {
         if (await checkDb()) {
           const dbDoc = await prisma.document.create({ data: doc as any });
+          localStore.saveDocument(dbDoc);
           return res.json({ success: true, document: dbDoc });
         }
-      } catch {}
+      } catch (dbErr: any) {
+        console.log('[Storage] DB save skipped, kept in resilient store:', dbErr?.message);
+      }
       
       return res.json({ success: true, document: doc });
     } catch (e: any) { 
-      return res.status(500).json({ success: false, error: e.message }); 
+      console.error('[Storage] Upload error:', e);
+      return res.status(500).json({ success: false, error: e.message || 'Upload failed' }); 
     }
   },
 
   getSignedUrl: async (req: Request, res: Response) => {
     try {
+      const user = (req as any).user;
       const docId = req.params.id as string;
-      return res.json({ success: true, url: `/api/documents/${docId}/download` });
+      let doc = localStore.getDocument(docId);
+      if (!doc) {
+        try {
+          if (await checkDb()) {
+            const dbDoc = await prisma.document.findUnique({ where: { id: docId } });
+            if (dbDoc) {
+              doc = dbDoc;
+              localStore.saveDocument(dbDoc);
+            }
+          }
+        } catch {}
+      }
+
+      if (!doc) {
+        // Resilient fallback: search inside orders
+        for (const order of localStore.orders.values()) {
+          if (Array.isArray(order.documents)) {
+            const match = order.documents.find((d: any) => d && (d.id === docId || d === docId));
+            if (match) {
+              doc = typeof match === 'string' ? { id: match, orderId: order.id } : { ...match, orderId: order.id };
+              localStore.saveDocument(doc);
+              break;
+            }
+          }
+        }
+      }
+
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Document not found' });
+      }
+
+      if (user) {
+        const userRole = (user.role || '').toUpperCase();
+
+        if (userRole === 'ADMIN') {
+          // Admin has full oversight access per Section 22
+        } else if (userRole === 'CUSTOMER') {
+          const isOwner = doc.customerId === user.id || 
+            (doc.orderId && (localStore.getOrder(doc.orderId)?.customerId === user.id));
+          if (!isOwner && doc.customerId && doc.customerId !== user.id) {
+            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
+          }
+        } else if (userRole === 'WORKER') {
+          if (!doc.orderId) {
+            const parentOrder = Array.from(localStore.orders.values()).find(o => 
+              Array.isArray(o.documents) && o.documents.some((d: any) => d && (d.id === doc.id || d.id === docId))
+            );
+            if (parentOrder) {
+              doc.orderId = parentOrder.id;
+              localStore.saveDocument(doc);
+            }
+          }
+          if (!doc.orderId) {
+            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
+          }
+          let order = localStore.getOrder(doc.orderId);
+          if (!order) {
+            try {
+              if (await checkDb()) {
+                order = await prisma.order.findUnique({ where: { id: doc.orderId }, include: { job: true } });
+              }
+            } catch {}
+          }
+          if (!order) {
+            return res.status(404).json({ success: false, error: 'Associated order not found' });
+          }
+          const assignedWorkerId = order.assignedWorkerId || order.workerId || order.worker?.id || order.job?.workerId;
+          const isWorkerAssigned = assignedWorkerId === user.id || (user.workerId && assignedWorkerId === user.workerId);
+          if (!isWorkerAssigned) {
+            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
+          }
+          if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
+            return res.status(403).json({ success: false, error: 'Document access closed after order completion per Section 15 privacy policy' });
+          }
+        }
+      }
+
+      let signedUrl = doc.url || `/api/documents/${docId}/download`;
+      if (doc.storageKey) {
+        try {
+          signedUrl = await storage.createSignedUrl(doc.storageKey);
+        } catch {}
+      }
+
+      return res.json({ success: true, url: `/api/documents/${docId}/download`, signedUrl, document: doc });
     } catch { 
       return res.status(500).json({ success: false }); 
+    }
+  },
+
+  download: async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const docId = req.params.id as string;
+      let doc = localStore.getDocument(docId);
+      if (!doc) {
+        try {
+          if (await checkDb()) {
+            const dbDoc = await prisma.document.findUnique({ where: { id: docId } });
+            if (dbDoc) {
+              doc = dbDoc;
+              localStore.saveDocument(dbDoc);
+            }
+          }
+        } catch {}
+      }
+
+      if (!doc) {
+        // Resilient fallback: search inside orders
+        for (const order of localStore.orders.values()) {
+          if (Array.isArray(order.documents)) {
+            const match = order.documents.find((d: any) => d && (d.id === docId || d === docId));
+            if (match) {
+              doc = typeof match === 'string' ? { id: match, orderId: order.id } : { ...match, orderId: order.id };
+              localStore.saveDocument(doc);
+              break;
+            }
+          }
+        }
+      }
+
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Document not found' });
+      }
+
+      if (user) {
+        const userRole = (user.role || '').toUpperCase();
+
+        if (userRole === 'ADMIN') {
+          // Admin has full oversight access per Section 22
+        } else if (userRole === 'CUSTOMER') {
+          const isOwner = doc.customerId === user.id || 
+            (doc.orderId && (localStore.getOrder(doc.orderId)?.customerId === user.id));
+          if (!isOwner && doc.customerId && doc.customerId !== user.id) {
+            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
+          }
+        } else if (userRole === 'WORKER') {
+          if (!doc.orderId) {
+            const parentOrder = Array.from(localStore.orders.values()).find(o => 
+              Array.isArray(o.documents) && o.documents.some((d: any) => d && (d.id === doc.id || d.id === docId))
+            );
+            if (parentOrder) {
+              doc.orderId = parentOrder.id;
+              localStore.saveDocument(doc);
+            }
+          }
+          if (!doc.orderId) {
+            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
+          }
+          let order = localStore.getOrder(doc.orderId);
+          if (!order) {
+            try {
+              if (await checkDb()) {
+                order = await prisma.order.findUnique({ where: { id: doc.orderId }, include: { job: true } });
+              }
+            } catch {}
+          }
+          if (!order) {
+            return res.status(404).json({ success: false, error: 'Associated order not found' });
+          }
+          const assignedWorkerId = order.assignedWorkerId || order.workerId || order.worker?.id || order.job?.workerId;
+          const isWorkerAssigned = assignedWorkerId === user.id || (user.workerId && assignedWorkerId === user.workerId);
+          if (!isWorkerAssigned) {
+            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
+          }
+          if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
+            return res.status(403).json({ success: false, error: 'Document access closed after order completion per Section 15 privacy policy' });
+          }
+        }
+      }
+
+      const fileName = doc.fileName || doc.name || 'document.pdf';
+      const mimeType = doc.mimeType || 'application/octet-stream';
+
+      // 1. Check in-memory buffer cache
+      if (doc.storageKey && fileBufferStore.has(doc.storageKey)) {
+        const cached = fileBufferStore.get(doc.storageKey)!;
+        res.setHeader('Content-Type', cached.mimeType || mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(cached.fileName || fileName)}"`);
+        return res.send(cached.buffer);
+      }
+
+      // 2. Try Supabase storage
+      if (doc.storageKey) {
+        try {
+          const buffer = await storage.download(doc.storageKey);
+          if (buffer && buffer.length > 0) {
+            res.setHeader('Content-Type', mimeType);
+            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+            return res.send(buffer);
+          }
+        } catch (err: any) {
+          console.warn('[STORAGE] Document download fallback:', err.message);
+        }
+      }
+
+      // 3. Fallback: generate PDF
+      const fallbackBuf = generateOfficialReceiptBuffer({ id: doc.orderId || 'DOC-01' }, { name: fileName });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+      return res.send(fallbackBuf);
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: e.message || 'Download failed' });
     }
   }
 };

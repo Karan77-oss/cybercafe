@@ -1,0 +1,277 @@
+[
+  {
+    "id": "ord_1790783047231",
+    "orderNumber": "ord_1790783047231",
+    "customerId": "usr_1790782961641",
+    "customerName": "Karan Kumar",
+    "customerPhone": "09693553077",
+    "customerEmail": "kumarkaran762002@gmail.com",
+    "formData": {
+      "fullName": "Karan Kumar",
+      "email": "kumarkaran762002@gmail.com",
+      "phone": "09693553077",
+      "address": "NTPC Dariyapur\nBarh",
+      "fatherName": "jcopajook",
+      "dateOfBirth": "2026-09-01",
+      "gender": "Male",
+      "panType": "New PAN Card (Form 49A)",
+      "existingPan": ""
+    },
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "RECEIPT_SUBMITTED",
+    "paymentStatus": "PAID",
+    "earningStatus": "PENDING",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "fullName": "Karan Kumar",
+        "email": "kumarkaran762002@gmail.com",
+        "phone": "09693553077",
+        "address": "NTPC Dariyapur\nBarh",
+        "fatherName": "jcopajook",
+        "dateOfBirth": "2026-09-01",
+        "gender": "Male",
+        "panType": "New PAN Card (Form 49A)",
+        "existingPan": ""
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto",
+        "preferredWorkerId": ""
+      },
+      "expiresAt": "2026-10-01T15:44:07.230Z",
+      "scheduling": {
+        "timeSlot": "Today, 10:00 AM - 12:00 PM",
+        "date": "Today",
+        "startTime": "10:00 AM",
+        "endTime": "12:00 PM",
+        "status": "ACCEPTED",
+        "proposedBy": "worker-mona-03",
+        "proposedAt": "2026-09-30T15:46:51.581Z",
+        "rescheduleNote": null,
+        "acceptedAt": "2026-09-30T15:47:25.832Z"
+      },
+      "completion": {
+        "referenceNumber": "CCM-APP-047231",
+        "completionMessage": "its done babe",
+        "receiptUrl": "/api/orders/ord_1790783047231/deliverables/deliv_1790783300748_tklqq/download",
+        "deliverableFiles": [
+          {
+            "id": "deliv_1790783300748_tklqq",
+            "name": "Screenshot 2025 06 29 134612",
+            "fileName": "Screenshot 2025-06-29 134612.png",
+            "mimeType": "image/png",
+            "size": "211 KB",
+            "sizeBytes": 216146,
+            "storageKey": "deliverables/ord_1790783047231/1790783299679_Screenshot_2025-06-29_134612.png",
+            "url": "/api/orders/ord_1790783047231/deliverables/deliv_1790783300748_tklqq/download",
+            "isMandatory": true,
+            "uploadedAt": "2026-09-30T15:48:20.748Z"
+          },
+          {
+            "id": "deliv_1790783310478_pnvg2",
+            "name": "Screenshot 2025 06 29 140426",
+            "fileName": "Screenshot 2025-06-29 140426.png",
+            "mimeType": "image/png",
+            "size": "210 KB",
+            "sizeBytes": 215412,
+            "storageKey": "deliverables/ord_1790783047231/1790783310462_Screenshot_2025-06-29_140426.png",
+            "url": "/api/orders/ord_1790783047231/deliverables/deliv_1790783310478_pnvg2/download",
+            "isMandatory": false,
+            "uploadedAt": "2026-09-30T15:48:30.478Z"
+          }
+        ]
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": "worker-mona-03",
+    "worker": {
+      "id": "worker-mona-03",
+      "name": "Mona E-Services & CSC Center",
+      "phone": "9678123456",
+      "email": "mona.estore@gmail.com"
+    },
+    "job": null,
+    "timeSlot": {
+      "date": "Today",
+      "startTime": "10:00 AM",
+      "endTime": "12:00 PM",
+      "timeSlotStr": "Today, 10:00 AM - 12:00 PM",
+      "status": "ACCEPTED",
+      "proposedBy": "worker-mona-03",
+      "proposedAt": "2026-09-30T15:46:51.581Z",
+      "rescheduleNote": null,
+      "acceptedAt": "2026-09-30T15:47:25.832Z"
+    },
+    "offerExpiresAt": null,
+    "paidAt": "2026-09-30T15:44:07.231Z",
+    "payment": {
+      "status": "PAID",
+      "provider": "UPI",
+      "amountPaise": 19900,
+      "paidAt": "2026-09-30T15:44:07.231Z"
+    },
+    "documents": [
+      {
+        "id": "doc_1790783026939_i80tj",
+        "storageKey": "docs/usr_1790782961641/1790783026613_Screenshot_2025-06-29_144402.png",
+        "docName": "Aadhaar Card",
+        "name": "Aadhaar Card (Screenshot 2025-06-29 144402.png)",
+        "fileName": "Screenshot 2025-06-29 144402.png",
+        "url": "/api/documents/doc_1790783026939_i80tj/download",
+        "mimeType": "image/png",
+        "size": 214680,
+        "type": "UPLOAD",
+        "customerId": "usr_1790782961641",
+        "orderId": "ord_1790783047231",
+        "createdAt": "2026-09-30T15:43:46.939Z",
+        "orderNumber": "ord_1790783047231"
+      },
+      {
+        "id": "doc_1790783032383_46mjj",
+        "storageKey": "docs/usr_1790782961641/1790783032342_Screenshot_2025-06-29_144402.png",
+        "docName": "Passport Size Photo",
+        "name": "Passport Size Photo (Screenshot 2025-06-29 144402.png)",
+        "fileName": "Screenshot 2025-06-29 144402.png",
+        "url": "/api/documents/doc_1790783032383_46mjj/download",
+        "mimeType": "image/png",
+        "size": 214680,
+        "type": "UPLOAD",
+        "customerId": "usr_1790782961641",
+        "orderId": "ord_1790783047231",
+        "createdAt": "2026-09-30T15:43:52.383Z",
+        "orderNumber": "ord_1790783047231"
+      },
+      {
+        "id": "doc_1790783037727_4jhoq",
+        "storageKey": "docs/usr_1790782961641/1790783037697_Screenshot_2025-06-29_144153.png",
+        "docName": "Signature Specimen",
+        "name": "Signature Specimen (Screenshot 2025-06-29 144153.png)",
+        "fileName": "Screenshot 2025-06-29 144153.png",
+        "url": "/api/documents/doc_1790783037727_4jhoq/download",
+        "mimeType": "image/png",
+        "size": 215914,
+        "type": "UPLOAD",
+        "customerId": "usr_1790782961641",
+        "orderId": "ord_1790783047231",
+        "createdAt": "2026-09-30T15:43:57.727Z",
+        "orderNumber": "ord_1790783047231"
+      }
+    ],
+    "deliverables": [
+      {
+        "id": "deliv_1790783300748_tklqq",
+        "name": "Screenshot 2025 06 29 134612",
+        "fileName": "Screenshot 2025-06-29 134612.png",
+        "mimeType": "image/png",
+        "size": "211 KB",
+        "sizeBytes": 216146,
+        "storageKey": "deliverables/ord_1790783047231/1790783299679_Screenshot_2025-06-29_134612.png",
+        "url": "/api/orders/ord_1790783047231/deliverables/deliv_1790783300748_tklqq/download",
+        "isMandatory": true,
+        "uploadedAt": "2026-09-30T15:48:20.748Z"
+      },
+      {
+        "id": "deliv_1790783310478_pnvg2",
+        "name": "Screenshot 2025 06 29 140426",
+        "fileName": "Screenshot 2025-06-29 140426.png",
+        "mimeType": "image/png",
+        "size": "210 KB",
+        "sizeBytes": 215412,
+        "storageKey": "deliverables/ord_1790783047231/1790783310462_Screenshot_2025-06-29_140426.png",
+        "url": "/api/orders/ord_1790783047231/deliverables/deliv_1790783310478_pnvg2/download",
+        "isMandatory": false,
+        "uploadedAt": "2026-09-30T15:48:30.478Z"
+      }
+    ],
+    "createdAt": "2026-09-30T15:44:07.231Z",
+    "updatedAt": "2026-09-30T15:47:25.832Z",
+    "workerAcceptedAt": "2026-09-30T15:46:44.581Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-09-30T20:46:44.581Z",
+    "workStartedAt": "2026-09-30T15:46:57.560Z",
+    "receiptSubmittedAt": "2026-09-30T15:48:44.803Z",
+    "workCompletedAt": "2026-09-30T15:48:44.803Z",
+    "completionNote": "its done babe"
+  }
+]

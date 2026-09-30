@@ -4,29 +4,63 @@ import bcrypt from 'bcrypt';
 import { OFFICIAL_SERVICES, OFFICIAL_WORKERS, localStore } from './catalogData';
 
 export const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error']
+  // Only emit logs via programmatic event handlers below; suppress automatic stderr output
+  log: [
+    { emit: 'event', level: 'error' },
+    { emit: 'event', level: 'warn' }
+  ]
+});
+
+// Only log DB errors when the connection is NOT already known-offline (avoids flood during cooldown)
+(prisma as any).$on('error', (e: any) => {
+  if (isDbConnected !== false) {
+    console.error('[Prisma]', e.message || e);
+  }
+});
+(prisma as any).$on('warn', (e: any) => {
+  if (isDbConnected !== false) {
+    console.warn('[Prisma]', e.message || e);
+  }
 });
 
 let isDbConnected: boolean | null = null;
 let lastCheckTime = 0;
+let checkInFlight: Promise<boolean> | null = null;
 
 export const checkDb = async (force = false): Promise<boolean> => {
   const now = Date.now();
-  if (!force && isDbConnected !== null && (now - lastCheckTime < 15000)) {
+  const cooldownMs = isDbConnected === false ? 60000 : 15000;
+  if (!force && isDbConnected !== null && (now - lastCheckTime < cooldownMs)) {
     return isDbConnected;
   }
-  const timeoutMs = process.env.NODE_ENV === 'test' ? 1000 : 7000;
-  try {
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB connection timeout')), timeoutMs));
-    await Promise.race([prisma.$queryRaw`SELECT 1`, timeoutPromise]);
-    isDbConnected = true;
-    lastCheckTime = now;
-    return true;
-  } catch {
-    isDbConnected = false;
-    lastCheckTime = now;
-    return false;
+  if (checkInFlight) {
+    return checkInFlight;
   }
+
+  const timeoutMs = process.env.NODE_ENV === 'test' ? 800 : 1500;
+  checkInFlight = (async () => {
+    try {
+      let timer: any;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('DB connection timeout')), timeoutMs);
+      });
+      await Promise.race([
+        prisma.$queryRaw`SELECT 1`.finally(() => clearTimeout(timer)),
+        timeoutPromise
+      ]);
+      isDbConnected = true;
+      lastCheckTime = Date.now();
+      return true;
+    } catch {
+      isDbConnected = false;
+      lastCheckTime = Date.now();
+      return false;
+    } finally {
+      checkInFlight = null;
+    }
+  })();
+
+  return checkInFlight;
 };
 
 /**

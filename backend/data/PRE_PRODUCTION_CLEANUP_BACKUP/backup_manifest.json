@@ -1,0 +1,18 @@
+{
+  "backupName": "PRE_PRODUCTION_CLEANUP_BACKUP",
+  "timestamp": "2026-09-30T14:22:23.646Z",
+  "files": {
+    "persisted_orders.json": {
+      "recordCount": 42,
+      "sizeBytes": 250631
+    },
+    "persisted_documents.json": {
+      "recordCount": 48,
+      "sizeBytes": 22779
+    },
+    "financial_ledger.json": {
+      "recordCount": 128,
+      "sizeBytes": 57389
+    }
+  }
+}

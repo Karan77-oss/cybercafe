@@ -21,6 +21,7 @@ async function runRealTests() {
     console.log("Running Job Concurrency Test...");
     const order = await prisma.order.create({
         data: {
+            orderNumber: 'ORD-INT-' + Date.now(),
             customerId: customer.id,
             serviceId: service.id,
             serviceSnapshot: { pricePaise: 10000 },

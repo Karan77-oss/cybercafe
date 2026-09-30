@@ -1,29 +1,25 @@
 {
-  "name": "cy",
+  "name": "cyber-cafe-marketplace",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "1.0.0",
+  "workspaces": [
+    "frontend",
+    "admin",
+    "worker",
+    "backend",
+    "shared"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "oxlint",
-    "preview": "vite preview",
-    "start": "cd backend && npm start"
-  },
-  "dependencies": {
-    "chart.js": "^4.5.1",
-    "lucide-react": "^1.31.0",
-    "react": "^19.2.8",
-    "react-chartjs-2": "^5.3.1",
-    "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.2"
-  },
-  "devDependencies": {
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.4",
-    "form-data": "^4.0.6",
-    "oxlint": "^1.75.0",
-    "vite": "^8.2.0"
+    "dev:frontend": "npm run dev --workspace=@cybercafe/frontend",
+    "dev:admin": "npm run dev --workspace=@cybercafe/admin",
+    "dev:worker": "npm run dev --workspace=@cybercafe/worker",
+    "dev:backend": "npm run dev --workspace=backend",
+    "build:frontend": "npm run build --workspace=@cybercafe/frontend",
+    "build:admin": "npm run build --workspace=@cybercafe/admin",
+    "build:worker": "npm run build --workspace=@cybercafe/worker",
+    "build:backend": "npm run build --workspace=backend",
+    "build:all": "npm run build:backend && npm run build:frontend && npm run build:admin && npm run build:worker",
+    "test:backend": "npm run test --workspace=backend",
+    "start": "npm run start --workspace=backend"
   }
 }

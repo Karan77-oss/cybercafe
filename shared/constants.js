@@ -1,0 +1,57 @@
+/**
+ * Shared constants across Cyber Cafe Marketplace applications
+ */
+
+export const ROLES = {
+  ADMIN: 'ADMIN',
+  WORKER: 'WORKER',
+  CUSTOMER: 'CUSTOMER',
+  GUEST: 'GUEST'
+};
+
+export const ORDER_STATUS = {
+  PAYMENT_PENDING: 'PAYMENT_PENDING',
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  PROCESSING: 'PROCESSING',
+  DOCUMENT_VERIFICATION: 'DOCUMENT_VERIFICATION',
+  SUBMITTED: 'SUBMITTED',
+  CORRECTION_REQUIRED: 'CORRECTION_REQUIRED',
+  CORRECTION_REQUESTED: 'CORRECTION_REQUESTED',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+  DISPUTED: 'DISPUTED',
+  REFUNDED: 'REFUNDED'
+};
+
+export const PAYMENT_STATUS = {
+  PENDING: 'PENDING',
+  SUCCESS: 'SUCCESS',
+  FAILED: 'FAILED',
+  REFUNDED: 'REFUNDED'
+};
+
+export const LEDGER_TRANSACTION_TYPES = {
+  CUSTOMER_PAYMENT: 'CUSTOMER_PAYMENT',
+  WORKER_EARNING_PENDING: 'WORKER_EARNING_PENDING',
+  WORKER_EARNING_RELEASE: 'WORKER_EARNING_RELEASE',
+  WORKER_EARNING_HOLD: 'WORKER_EARNING_HOLD',
+  WORKER_EARNING_HOLD_RELEASE: 'WORKER_EARNING_HOLD_RELEASE',
+  ADMIN_COMMISSION: 'ADMIN_COMMISSION',
+  PLATFORM_FEE: 'PLATFORM_FEE',
+  WITHDRAWAL_RESERVATION: 'WITHDRAWAL_RESERVATION',
+  WITHDRAWAL_COMPLETED: 'WITHDRAWAL_COMPLETED',
+  WITHDRAWAL_REVERSED: 'WITHDRAWAL_REVERSED',
+  CUSTOMER_REFUND: 'CUSTOMER_REFUND',
+  REFUND_ADJUSTMENT: 'REFUND_ADJUSTMENT'
+};
+
+export const SERVICE_CATEGORIES = [
+  { id: 'identity', name: 'Identity & Registration' },
+  { id: 'travel', name: 'Travel & Mobility' },
+  { id: 'civic', name: 'Civic & Electoral' },
+  { id: 'certificates', name: 'Revenue & Certificates' },
+  { id: 'education', name: 'Education & Recruitment' },
+  { id: 'business', name: 'Business & Compliance' },
+  { id: 'utility', name: 'Utility & Printing Services' }
+];

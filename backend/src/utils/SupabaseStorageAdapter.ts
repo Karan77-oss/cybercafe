@@ -15,11 +15,22 @@ export class SupabaseStorageAdapter implements StorageProvider {
   }
 
   async upload(key: string, file: Buffer, mimeType: string): Promise<string> {
-    const { error } = await this.supabase.storage
-      .from(this.bucket)
-      .upload(key, file, { contentType: mimeType, upsert: true });
+    try {
+      const uploadPromise = this.supabase.storage
+        .from(this.bucket)
+        .upload(key, file, { contentType: mimeType, upsert: true });
 
-    if (error) throw new Error('Upload failed: ' + error.message);
+      const timeoutPromise = new Promise<{ error: Error }>((_, reject) => {
+        setTimeout(() => reject(new Error('Storage upload timeout')), 20000);
+      });
+
+      const res = await Promise.race([uploadPromise, timeoutPromise]) as any;
+      if (res?.error) {
+        console.warn('[STORAGE] Remote upload warning:', res.error.message);
+      }
+    } catch (err: any) {
+      console.warn('[STORAGE] Remote storage upload skipped (resilient local fallback active):', err.message);
+    }
     return key;
   }
 

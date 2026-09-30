@@ -82,8 +82,8 @@ describe('Business Logic Tests (A-Q)', () => {
 
   describe('State Machines', () => {
     it('K. Invalid order status transition -> rejected', () => {
-      const current = 'AVAILABLE';
-      const request = 'COMPLETED';
+      const current: string = 'AVAILABLE';
+      const request: string = 'COMPLETED';
       const valid = current === 'IN_PROGRESS' && request === 'COMPLETED'; // Simplified rule
       expect(valid).toBe(false);
     });
@@ -91,8 +91,8 @@ describe('Business Logic Tests (A-Q)', () => {
 
   describe('Payments & Payouts', () => {
     it('L. Payment amount mismatch -> rejected', () => {
-      const expected = 19900;
-      const received = 10000;
+      const expected: number = 19900;
+      const received: number = 10000;
       expect(received === expected).toBe(false);
     });
 
