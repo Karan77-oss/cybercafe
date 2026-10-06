@@ -5,6 +5,7 @@ import {
   Calendar, Star, Download, Copy, Shield, CheckCircle2 
 } from 'lucide-react';
 import { ordersApi } from '../../api/orders';
+import { buildUrl } from '../../api/client';
 
 export default function OrderTracking() {
   const params = useParams();
@@ -169,7 +170,7 @@ export default function OrderTracking() {
   const handleDownloadDeliverable = async (deliv) => {
     try {
       const token = localStorage.getItem('cybercafe:token');
-      const targetUrl = deliv.url || `/api/orders/${order.id}/deliverables/${deliv.id || 0}/download`;
+      const targetUrl = buildUrl(deliv.url || `/orders/${order.id}/deliverables/${deliv.id || 0}/download`);
       
       const res = await fetch(targetUrl, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -193,7 +194,7 @@ export default function OrderTracking() {
     } catch (err) {
       console.error('Download error:', err);
       const token = localStorage.getItem('cybercafe:token');
-      const targetUrl = deliv.url || `/api/orders/${order.id}/deliverables/0/download`;
+      const targetUrl = buildUrl(deliv.url || `/orders/${order.id}/deliverables/0/download`);
       window.open(`${targetUrl}?token=${encodeURIComponent(token || '')}`, '_blank');
     }
   };
@@ -446,7 +447,7 @@ export default function OrderTracking() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <a
-                            href={deliv.url ? (deliv.url.startsWith('http') ? deliv.url : `${deliv.url}?token=${localStorage.getItem('cybercafe:token') || ''}`) : '#'}
+                            href={deliv.url ? (deliv.url.startsWith('http') ? deliv.url : `${buildUrl(deliv.url)}?token=${localStorage.getItem('cybercafe:token') || ''}`) : '#'}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="btn btn-outline"
@@ -476,7 +477,7 @@ export default function OrderTracking() {
                       <button
                         className="btn btn-primary"
                         style={{ padding: '6px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                        onClick={() => handleDownloadDeliverable({ name: 'Official_Receipt.pdf', url: `/api/orders/${order.id}/deliverables/latest/download` })}
+                        onClick={() => handleDownloadDeliverable({ name: 'Official_Receipt.pdf', url: buildUrl(`/orders/${order.id}/deliverables/latest/download`) })}
                       >
                         <Download size={14} /> Download Receipt
                       </button>
@@ -584,23 +585,23 @@ export default function OrderTracking() {
                </div>
 
                {/* 3. Work In Progress */}
-               <div className={`timeline-item ${order.status === 'IN_PROGRESS' || order.status === 'COMPLETED' ? 'completed' : (order.status === 'ASSIGNED' ? 'active' : '')}`}>
-                 <div className="timeline-icon">{order.status === 'COMPLETED' ? <Check size={14}/> : <Clock size={14}/>}</div>
+               <div className={`timeline-item ${['IN_PROGRESS', 'RECEIPT_SUBMITTED', 'SUBMITTED', 'COMPLETED'].includes(order.status) ? 'completed' : (order.status === 'ASSIGNED' || order.status === 'ACCEPTED' ? 'active' : '')}`}>
+                 <div className="timeline-icon">{['IN_PROGRESS', 'RECEIPT_SUBMITTED', 'SUBMITTED', 'COMPLETED'].includes(order.status) ? <Check size={14}/> : <Clock size={14}/>}</div>
                  <div>
                    <div style={{ fontWeight: 600 }}>Work In Progress</div>
                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                     {order.status === 'COMPLETED' ? 'Completed' : (order.status === 'IN_PROGRESS' ? 'Worker actively processing' : 'Pending start')}
+                     {['RECEIPT_SUBMITTED', 'SUBMITTED', 'COMPLETED'].includes(order.status) ? 'Work completed by operator' : (order.status === 'IN_PROGRESS' ? 'Worker actively processing' : 'Pending start')}
                    </div>
                  </div>
                </div>
                
                {/* 4. Completed & Delivered */}
-               <div className={`timeline-item ${order.status === 'COMPLETED' ? 'completed' : ''}`}>
-                 <div className="timeline-icon">{order.status === 'COMPLETED' ? <Check size={14}/> : <FileText size={14}/>}</div>
+               <div className={`timeline-item ${['RECEIPT_SUBMITTED', 'SUBMITTED', 'COMPLETED'].includes(order.status) ? 'completed' : (order.status === 'IN_PROGRESS' ? 'active' : '')}`}>
+                 <div className="timeline-icon">{['RECEIPT_SUBMITTED', 'SUBMITTED', 'COMPLETED'].includes(order.status) ? <Check size={14}/> : <FileText size={14}/>}</div>
                  <div>
                    <div style={{ fontWeight: 600 }}>Work Completed & Documents Available</div>
                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                     {order.status === 'COMPLETED' ? 'Receipt and outputs ready' : 'Pending final submission'}
+                     {['RECEIPT_SUBMITTED', 'SUBMITTED', 'COMPLETED'].includes(order.status) ? 'Receipt and outputs ready' : 'Pending final submission'}
                    </div>
                  </div>
                </div>
@@ -655,7 +656,7 @@ export default function OrderTracking() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {order.documents.map((doc, idx) => {
                   const token = localStorage.getItem('cybercafe:token');
-                  const docUrl = doc.url || `/api/documents/${doc.id}/download`;
+                  const docUrl = buildUrl(doc.url || `/documents/${doc.id}/download`);
                   const authenticatedViewUrl = `${docUrl}${token ? (docUrl.includes('?') ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`) : ''}`;
                   const docDisplayName = doc.name || doc.fileName || `Document #${idx + 1}`;
                   return (

@@ -56,11 +56,20 @@ router.get('/workers/available', optionalAuth, workersController.getAvailableWor
 const ORDER_ROLES = ['CUSTOMER', 'ADMIN'];
 router.post('/orders', requireAuth, requireRole(ORDER_ROLES), ordersController.createOrder);
 router.get('/orders', requireAuth, requireRole(ORDER_ROLES), ordersController.getOrders);
+router.get('/orders/my-orders', requireAuth, requireRole(ORDER_ROLES), ordersController.getOrders);
 router.get('/orders/:id', requireAuth, requireRole(ORDER_ROLES), ordersController.getOrder);
 router.post('/orders/:id/timeslot/accept', requireAuth, requireRole(ORDER_ROLES), ordersController.acceptTimeSlot);
 router.post('/orders/:id/timeslot/reschedule', requireAuth, requireRole(ORDER_ROLES), ordersController.rescheduleTimeSlot);
 router.post('/orders/:id/pay', requireAuth, requireRole(ORDER_ROLES), ordersController.payOrder);
+router.post('/orders/create-payment', optionalAuth, ordersController.createRazorpayPayment);
+router.post('/orders/verify-payment', optionalAuth, ordersController.verifyRazorpayPayment);
+router.post('/orders/:id/create-payment', optionalAuth, ordersController.createRazorpayPayment);
+router.post('/orders/:id/verify-payment', optionalAuth, ordersController.verifyRazorpayPayment);
 router.post('/orders/:id/review', requireAuth, requireRole(ORDER_ROLES), ordersController.submitReview);
+
+// Customer Vault Routes
+router.get('/customer/vault/documents', requireAuth, requireRole(ORDER_ROLES), documentController.getVaultDocuments);
+router.post('/customer/vault/upload', requireAuth, requireRole(ORDER_ROLES), upload.single('file'), documentController.uploadVaultDocument);
 
 router.post('/payments/webhook', webhookController.razorpayWebhook);
 
@@ -78,6 +87,7 @@ router.get('/customer/notifications', requireAuth, requireRole(ORDER_ROLES), not
 router.post('/documents/upload', optionalAuth, upload.single('file'), documentController.upload);
 router.get('/documents/:id', optionalAuth, documentController.getSignedUrl);
 router.get('/documents/:id/download', optionalAuth, documentController.download);
+router.get(/^\/documents\/stream\/(.+)$/, optionalAuth, documentController.streamFile);
 router.get('/orders/:id/deliverables/:deliverableId/download', optionalAuth, ordersController.downloadDeliverable);
 
 // ==========================================
@@ -122,13 +132,19 @@ router.get('/worker/chat/:orderId', requireAuth, requireRole(WORKER_ROLES), work
 router.post('/worker/chat/:orderId', requireAuth, requireRole(WORKER_ROLES), workerController.sendChatMessage);
 router.get('/worker/support/tickets', requireAuth, requireRole(WORKER_ROLES), workerController.getSupportTickets);
 router.post('/worker/support/tickets', requireAuth, requireRole(WORKER_ROLES), workerController.createSupportTicket);
+router.post('/worker/support/tickets/:id/reply', requireAuth, requireRole(WORKER_ROLES), workerController.replySupportTicket);
 router.get('/worker/profile', requireAuth, requireRole(WORKER_ROLES), workerController.getProfile);
 router.put('/worker/profile', requireAuth, requireRole(WORKER_ROLES), workerController.updateProfile);
 router.post('/worker/services/propose', requireAuth, requireRole(WORKER_ROLES), workerController.proposeService);
 router.get('/worker/services/proposals', requireAuth, requireRole(WORKER_ROLES), workerController.getProposals);
 
-// Legacy job/payout endpoints
-router.post('/jobs/:id/accept', requireAuth, requireRole(['WORKER']), jobController.acceptJob);
+// Legacy & Direct Job / Payout endpoints
+router.get('/jobs/available', requireAuth, requireRole(WORKER_ROLES), workerController.getAvailableOrders);
+router.get('/jobs', requireAuth, requireRole(WORKER_ROLES), workerController.getMyJobs);
+router.get('/jobs/:id', requireAuth, requireRole(WORKER_ROLES), workerController.getJobDetails);
+router.post('/jobs/:id/start', requireAuth, requireRole(WORKER_ROLES), workerController.startWork);
+router.post('/jobs/:id/submit', requireAuth, requireRole(WORKER_ROLES), workerController.submitJob);
+router.post('/jobs/:id/accept', requireAuth, requireRole(WORKER_ROLES), jobController.acceptJob);
 router.post('/payouts/:jobId/release', requireAuth, requireRole(['ADMIN']), payoutController.releasePayout);
 
 // ==========================================
@@ -142,7 +158,8 @@ router.get('/admin/dashboard', requireAuth, requireRole(['ADMIN']), adminControl
 router.get('/admin/workers', requireAuth, requireRole(['ADMIN']), adminController.getWorkers);
 router.get('/admin/workers/top-earning', requireAuth, requireRole(['ADMIN']), adminController.getTopEarningWorkers);
 router.get('/admin/workers/:id', requireAuth, requireRole(['ADMIN']), adminController.getWorkerDetails);
-router.post('/admin/workers', requireAuth, requireRole(['ADMIN']), adminController.createWorker);
+router.post('/admin/workers', requireAuth, requireRole(['ADMIN']), upload.any(), adminController.createWorker);
+router.post('/admin/workers/:id/reset-password', requireAuth, requireRole(['ADMIN']), adminController.resetWorkerPassword);
 router.post('/admin/workers/:id/verify', requireAuth, requireRole(['ADMIN']), adminController.verifyWorker);
 router.put('/admin/workers/:id/status', requireAuth, requireRole(['ADMIN']), adminController.setWorkerStatus);
 router.delete('/admin/workers/:id', requireAuth, requireRole(['ADMIN']), adminController.deleteWorker);
@@ -189,6 +206,7 @@ router.get('/admin/reports', requireAuth, requireRole(['ADMIN']), adminControlle
 router.get('/admin/financials/ledger', requireAuth, requireRole(['ADMIN']), adminController.getFinancialLedger);
 router.get('/admin/payments', requireAuth, requireRole(['ADMIN']), adminController.getPayments);
 router.get('/admin/withdrawals', requireAuth, requireRole(['ADMIN']), adminController.getWithdrawals);
+router.get('/admin/payouts', requireAuth, requireRole(['ADMIN']), adminController.getWithdrawals);
 router.post('/admin/withdrawals/:id/approve', requireAuth, requireRole(['ADMIN']), adminController.approveWithdrawal);
 router.post('/admin/withdrawals/:id/reject', requireAuth, requireRole(['ADMIN']), adminController.rejectWithdrawal);
 router.post('/admin/withdrawals/:id/complete', requireAuth, requireRole(['ADMIN']), adminController.completeWithdrawal);

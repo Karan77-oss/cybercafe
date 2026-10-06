@@ -119,7 +119,7 @@ export default function Payments() {
       rows = topWorkers.map((w, idx) => [
         idx + 1,
         w.workerId,
-        `"${w.name}"`,
+        `"${w.name || w.workerName || 'Worker'}"`,
         w.completedOrders,
         ((w.totalEarningsPaise || 0) / 100).toFixed(2)
       ]);
@@ -398,11 +398,11 @@ export default function Payments() {
                   <td>
                     <div className="user-cell">
                       <img 
-                        src={`https://ui-avatars.com/api/?name=${encodeURIComponent(w.name)}&background=6366f1&color=fff`} 
+                        src={`https://ui-avatars.com/api/?name=${encodeURIComponent(w.name || w.workerName || 'Worker')}&background=6366f1&color=fff`} 
                         alt="" 
                       />
                       <div>
-                        <div style={{ fontWeight: 600 }}>{w.name}</div>
+                        <div style={{ fontWeight: 600 }}>{w.name || w.workerName || 'Worker'}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--brand-blue)' }}>{w.workerId}</div>
                       </div>
                     </div>

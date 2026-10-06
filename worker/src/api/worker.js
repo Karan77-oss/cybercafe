@@ -43,6 +43,7 @@ export const workerApi = {
   // Support Desk
   getSupportTickets: () => apiClient('/worker/support/tickets'),
   createSupportTicket: (data) => apiClient('/worker/support/tickets', { method: 'POST', body: data }),
+  replySupportTicket: (id, message) => apiClient(`/worker/support/tickets/${id}/reply`, { method: 'POST', body: { message } }),
 
   // Profile & Services
   getProfile: () => apiClient('/worker/profile'),

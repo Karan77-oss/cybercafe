@@ -1,23 +1,31 @@
 import { apiClient } from './client';
 
+const cleanParams = (params = {}) => {
+  const filtered = Object.entries(params).filter(([_, v]) => 
+    v !== undefined && v !== null && v !== '' && v !== 'ALL' && v !== 'All Status' && v !== 'All Roles' && v !== 'All Categories'
+  );
+  return new URLSearchParams(Object.fromEntries(filtered)).toString();
+};
+
 export const adminApi = {
   // 1. Dashboard
   getDashboardStats: () => apiClient('/admin/dashboard'),
 
   // 2. Workers
   getWorkers: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    const query = cleanParams(params);
     return apiClient(`/admin/workers${query ? `?${query}` : ''}`);
   },
   getWorkerDetails: (id) => apiClient(`/admin/workers/${id}`),
   createWorker: (data) => apiClient('/admin/workers', { method: 'POST', body: data }),
+  resetWorkerPassword: (id, newPassword) => apiClient(`/admin/workers/${id}/reset-password`, { method: 'POST', body: { newPassword } }),
   verifyWorker: (id, approved, note) => apiClient(`/admin/workers/${id}/verify`, { method: 'POST', body: { approved, note } }),
   setWorkerStatus: (id, status, reason) => apiClient(`/admin/workers/${id}/status`, { method: 'PUT', body: { status, reason } }),
   deleteWorker: (id, reason) => apiClient(`/admin/workers/${id}`, { method: 'DELETE', body: { reason } }),
 
   // 3. Customers
   getCustomers: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    const query = cleanParams(params);
     return apiClient(`/admin/customers${query ? `?${query}` : ''}`);
   },
   getCustomerDetails: (id) => apiClient(`/admin/customers/${id}`),
@@ -25,7 +33,7 @@ export const adminApi = {
 
   // 4. Orders
   getOrders: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    const query = cleanParams(params);
     return apiClient(`/admin/orders${query ? `?${query}` : ''}`);
   },
   getOrderDetails: (id) => apiClient(`/admin/orders/${id}`),
@@ -43,20 +51,21 @@ export const adminApi = {
   deleteService: (id) => apiClient(`/admin/services/${id}`, { method: 'DELETE' }),
   toggleServiceStatus: (id) => apiClient(`/admin/services/${id}/toggle`, { method: 'POST' }),
   getProposals: () => apiClient('/admin/proposals'),
-  approveProposal: (id) => apiClient(`/admin/proposals/${id}/approve`, { method: 'POST' }),
+  approveProposal: (id, data = {}) => apiClient(`/admin/proposals/${id}/approve`, { method: 'POST', body: data }),
   rejectProposal: (id, reason) => apiClient(`/admin/proposals/${id}/reject`, { method: 'POST', body: { reason } }),
 
   // 6. Payments & Financials
   getFinancialSummary: () => apiClient('/admin/financials/summary'),
   getPayments: () => apiClient('/admin/payments'),
   getWithdrawals: () => apiClient('/admin/withdrawals'),
+  getPayouts: () => apiClient('/admin/payouts'),
   approveWithdrawal: (id) => apiClient(`/admin/withdrawals/${id}/approve`, { method: 'POST' }),
   rejectWithdrawal: (id, reason) => apiClient(`/admin/withdrawals/${id}/reject`, { method: 'POST', body: { reason } }),
   getTopEarningWorkers: (period = 'daily') => apiClient(`/admin/workers/top-earning?period=${period}`),
 
   // 7. Complaints & Disputes
   getComplaints: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    const query = cleanParams(params);
     return apiClient(`/admin/complaints${query ? `?${query}` : ''}`);
   },
   getComplaintDetails: (id) => apiClient(`/admin/complaints/${id}`),
@@ -66,7 +75,7 @@ export const adminApi = {
 
   // 8. Help & Support
   getSupportTickets: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    const query = cleanParams(params);
     return apiClient(`/admin/support/tickets${query ? `?${query}` : ''}`);
   },
   replySupportTicket: (id, message) => apiClient(`/admin/support/tickets/${id}/reply`, { method: 'POST', body: { message } }),
@@ -80,7 +89,7 @@ export const adminApi = {
 
   // 10. Reports & Analytics
   getReports: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    const query = cleanParams(params);
     return apiClient(`/admin/reports${query ? `?${query}` : ''}`);
   },
 
@@ -90,7 +99,7 @@ export const adminApi = {
   updateProfile: (data) => apiClient('/admin/profile', { method: 'PUT', body: data }),
   changePassword: (oldPassword, newPassword) => apiClient('/auth/change-password', { method: 'POST', body: { oldPassword, newPassword } }),
   getAuditLogs: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
+    const query = cleanParams(params);
     return apiClient(`/admin/audit-logs${query ? `?${query}` : ''}`);
   }
 };

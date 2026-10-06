@@ -68,6 +68,7 @@ router.get('/customer/notifications', auth_1.requireAuth, (0, auth_1.requireRole
 router.post('/documents/upload', optionalAuth, upload.single('file'), extendedControllers_1.documentController.upload);
 router.get('/documents/:id', optionalAuth, extendedControllers_1.documentController.getSignedUrl);
 router.get('/documents/:id/download', optionalAuth, extendedControllers_1.documentController.download);
+router.get(/^\/documents\/stream\/(.+)$/, optionalAuth, extendedControllers_1.documentController.streamFile);
 router.get('/orders/:id/deliverables/:deliverableId/download', optionalAuth, extendedControllers_1.ordersController.downloadDeliverable);
 // ==========================================
 // 4. Worker Routes (Section 28 - 42)
@@ -109,12 +110,18 @@ router.get('/worker/chat/:orderId', auth_1.requireAuth, (0, auth_1.requireRole)(
 router.post('/worker/chat/:orderId', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.sendChatMessage);
 router.get('/worker/support/tickets', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.getSupportTickets);
 router.post('/worker/support/tickets', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.createSupportTicket);
+router.post('/worker/support/tickets/:id/reply', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.replySupportTicket);
 router.get('/worker/profile', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.getProfile);
 router.put('/worker/profile', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.updateProfile);
 router.post('/worker/services/propose', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.proposeService);
 router.get('/worker/services/proposals', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.getProposals);
-// Legacy job/payout endpoints
-router.post('/jobs/:id/accept', auth_1.requireAuth, (0, auth_1.requireRole)(['WORKER']), controllers_1.jobController.acceptJob);
+// Legacy & Direct Job / Payout endpoints
+router.get('/jobs/available', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.getAvailableOrders);
+router.get('/jobs', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.getMyJobs);
+router.get('/jobs/:id', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.getJobDetails);
+router.post('/jobs/:id/start', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.startWork);
+router.post('/jobs/:id/submit', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.submitJob);
+router.post('/jobs/:id/accept', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), controllers_1.jobController.acceptJob);
 router.post('/payouts/:jobId/release', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), controllers_1.payoutController.releasePayout);
 // ==========================================
 // 5. Admin Routes (Section 43 - 62)
@@ -126,7 +133,8 @@ router.get('/admin/dashboard', auth_1.requireAuth, (0, auth_1.requireRole)(['ADM
 router.get('/admin/workers', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.getWorkers);
 router.get('/admin/workers/top-earning', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.getTopEarningWorkers);
 router.get('/admin/workers/:id', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.getWorkerDetails);
-router.post('/admin/workers', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.createWorker);
+router.post('/admin/workers', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), upload.any(), portalControllers_1.adminController.createWorker);
+router.post('/admin/workers/:id/reset-password', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.resetWorkerPassword);
 router.post('/admin/workers/:id/verify', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.verifyWorker);
 router.put('/admin/workers/:id/status', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.setWorkerStatus);
 router.delete('/admin/workers/:id', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.deleteWorker);
@@ -169,6 +177,7 @@ router.get('/admin/reports', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN
 router.get('/admin/financials/ledger', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.getFinancialLedger);
 router.get('/admin/payments', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.getPayments);
 router.get('/admin/withdrawals', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.getWithdrawals);
+router.get('/admin/payouts', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.getWithdrawals);
 router.post('/admin/withdrawals/:id/approve', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.approveWithdrawal);
 router.post('/admin/withdrawals/:id/reject', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.rejectWithdrawal);
 router.post('/admin/withdrawals/:id/complete', auth_1.requireAuth, (0, auth_1.requireRole)(['ADMIN']), portalControllers_1.adminController.completeWithdrawal);

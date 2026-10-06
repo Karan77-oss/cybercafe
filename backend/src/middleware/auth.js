@@ -10,8 +10,13 @@ const requireAuth = (req, res, next) => {
     const token = (authHeader && authHeader.startsWith('Bearer '))
         ? authHeader.split(' ')[1]
         : req.query.token;
-    if (!token)
-        return res.status(401).json({ error: 'Unauthorized' });
+    if (!token) {
+        return res.status(401).json({
+            success: false,
+            error: 'Unauthorized / Token expired',
+            code: 'AUTH_FAILED'
+        });
+    }
     try {
         const secret = process.env.AUTH_SECRET || process.env.JWT_SECRET || 'super-secret-jwt-key';
         const decoded = jsonwebtoken_1.default.verify(token, secret);
@@ -19,19 +24,31 @@ const requireAuth = (req, res, next) => {
         next();
     }
     catch (e) {
-        res.status(401).json({ error: 'Invalid token' });
+        return res.status(401).json({
+            success: false,
+            error: 'Unauthorized / Token expired',
+            code: 'AUTH_FAILED'
+        });
     }
 };
 exports.requireAuth = requireAuth;
 const requireRole = (roles) => (req, res, next) => {
     const user = req.user;
     if (!user) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        return res.status(401).json({
+            success: false,
+            error: 'Unauthorized / Token expired',
+            code: 'AUTH_FAILED'
+        });
     }
     const userRole = String(user.role || '').toUpperCase();
     const allowedRoles = roles.map(r => r.toUpperCase());
     if (!allowedRoles.includes(userRole)) {
-        return res.status(403).json({ error: 'Forbidden' });
+        return res.status(403).json({
+            success: false,
+            error: 'Forbidden: Insufficient permissions',
+            code: 'FORBIDDEN'
+        });
     }
     next();
 };

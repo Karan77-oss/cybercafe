@@ -1353,6 +1353,14 @@ exports.documentController = {
         try {
             const user = req.user;
             const docId = req.params.id;
+            // Direct check in buffer store (e.g. for worker uploaded documents and photos)
+            if (fileStore_1.fileBufferStore.has(docId)) {
+                const cached = fileStore_1.fileBufferStore.get(docId);
+                const isImage = (cached.mimeType || '').startsWith('image/');
+                res.setHeader('Content-Type', cached.mimeType || 'application/octet-stream');
+                res.setHeader('Content-Disposition', `${isImage ? 'inline' : 'attachment'}; filename="${encodeURIComponent(cached.fileName || cached.originalName || 'file')}"`);
+                return res.send(cached.buffer);
+            }
             let doc = catalogData_1.localStore.getDocument(docId);
             if (!doc) {
                 try {
@@ -1458,6 +1466,34 @@ exports.documentController = {
         }
         catch (e) {
             return res.status(500).json({ success: false, error: e.message || 'Download failed' });
+        }
+    },
+    streamFile: async (req, res) => {
+        try {
+            const rawKey = req.params[0] || req.params.key || req.params.id;
+            const key = decodeURIComponent(rawKey);
+            if (fileStore_1.fileBufferStore.has(key)) {
+                const cached = fileStore_1.fileBufferStore.get(key);
+                const isImage = (cached.mimeType || '').startsWith('image/');
+                res.setHeader('Content-Type', cached.mimeType || 'application/octet-stream');
+                res.setHeader('Content-Disposition', `${isImage ? 'inline' : 'attachment'}; filename="${encodeURIComponent(cached.originalName || cached.fileName || 'file')}"`);
+                return res.send(cached.buffer);
+            }
+            try {
+                const buffer = await exports.storage.download(key);
+                if (buffer && buffer.length > 0) {
+                    const isImage = key.endsWith('.jpg') || key.endsWith('.jpeg') || key.endsWith('.png') || key.endsWith('.webp');
+                    const mimeType = isImage ? 'image/jpeg' : 'application/octet-stream';
+                    res.setHeader('Content-Type', mimeType);
+                    res.setHeader('Content-Disposition', `${isImage ? 'inline' : 'attachment'}; filename="${encodeURIComponent(key.split('/').pop() || 'file')}"`);
+                    return res.send(buffer);
+                }
+            }
+            catch { }
+            return res.status(404).json({ success: false, error: 'File not found' });
+        }
+        catch (e) {
+            return res.status(500).json({ success: false, error: e.message });
         }
     }
 };

@@ -7,19 +7,32 @@
     "admin",
     "worker",
     "backend",
-    "shared"
+    "shared",
+    "mobile-app"
   ],
   "scripts": {
     "dev:frontend": "npm run dev --workspace=@cybercafe/frontend",
     "dev:admin": "npm run dev --workspace=@cybercafe/admin",
     "dev:worker": "npm run dev --workspace=@cybercafe/worker",
+    "dev:mobile": "npm run dev --workspace=cyber-cafe-mobile-app",
     "dev:backend": "npm run dev --workspace=backend",
     "build:frontend": "npm run build --workspace=@cybercafe/frontend",
     "build:admin": "npm run build --workspace=@cybercafe/admin",
     "build:worker": "npm run build --workspace=@cybercafe/worker",
+    "build:mobile": "npm run build --workspace=cyber-cafe-mobile-app",
     "build:backend": "npm run build --workspace=backend",
-    "build:all": "npm run build:backend && npm run build:frontend && npm run build:admin && npm run build:worker",
+    "build:all": "npm run build:backend && npm run build:frontend && npm run build:admin && npm run build:worker && npm run build:mobile",
     "test:backend": "npm run test --workspace=backend",
     "start": "npm run start --workspace=backend"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/camera": "^7.0.5",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
+    "autoprefixer": "^10.6.1",
+    "axios": "^1.20.0",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3.4.19"
   }
 }

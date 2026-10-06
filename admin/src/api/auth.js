@@ -4,7 +4,7 @@ export const authApi = {
   login: async (email, password) => {
     const data = await apiClient('/auth/login', {
       method: 'POST',
-      body: { email, emailOrId: email, password },
+      body: { email, emailOrId: email, password, portal: 'ADMIN', expectedRole: 'ADMIN' },
     });
     // Secure token hand-off
     if (data.token) {

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { ordersApi } from '../../api/orders';
 import { documentsApi } from '../../api/documents';
+import { buildUrl } from '../../api/client';
 
 export default function CustomerDocuments() {
   const [activeTab, setActiveTab] = useState('receipts'); // 'receipts' | 'uploaded' | 'all'
@@ -116,7 +117,7 @@ export default function CustomerDocuments() {
   const handleDownloadDeliverable = async (orderId, deliv) => {
     try {
       const token = localStorage.getItem('cybercafe:token');
-      const targetUrl = deliv.url || `/api/orders/${orderId}/deliverables/${deliv.id || 0}/download`;
+      const targetUrl = buildUrl(deliv.url || `/orders/${orderId}/deliverables/${deliv.id || 0}/download`);
       const res = await fetch(targetUrl, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
@@ -138,7 +139,8 @@ export default function CustomerDocuments() {
     } catch (err) {
       console.error('Download error:', err);
       const token = localStorage.getItem('cybercafe:token');
-      window.open(`${deliv.url || `/api/orders/${orderId}/deliverables/0/download`}?token=${encodeURIComponent(token || '')}`, '_blank');
+      const targetUrl = buildUrl(deliv.url || `/orders/${orderId}/deliverables/0/download`);
+      window.open(`${targetUrl}?token=${encodeURIComponent(token || '')}`, '_blank');
     }
   };
 
@@ -372,7 +374,7 @@ export default function CustomerDocuments() {
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <a
-                                    href={deliv.url ? (deliv.url.startsWith('http') ? deliv.url : `${deliv.url}?token=${localStorage.getItem('cybercafe:token') || ''}`) : '#'}
+                                    href={deliv.url ? (deliv.url.startsWith('http') ? deliv.url : `${buildUrl(deliv.url)}?token=${localStorage.getItem('cybercafe:token') || ''}`) : '#'}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="btn btn-outline"

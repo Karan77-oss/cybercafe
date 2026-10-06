@@ -1,10 +1,17 @@
 import { apiClient } from './client';
 
 export const authApi = {
-  login: async (email, password) => {
+  login: async (identifier, password) => {
     const data = await apiClient('/auth/login', {
       method: 'POST',
-      body: { email, emailOrId: email, password },
+      body: { 
+        email: identifier, 
+        emailOrId: identifier, 
+        username: identifier, 
+        phone: identifier, 
+        password,
+        portal: 'CUSTOMER' 
+      },
     });
     // Secure token hand-off
     if (data.token) {

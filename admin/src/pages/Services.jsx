@@ -32,6 +32,22 @@ export default function Services() {
   const [serviceForm, setServiceForm] = useState({
     name: '',
     category: 'Government forms',
+    workerAmountPaise: 14000,
+    platformFeePaise: 5900,
+    pricePaise: 19900,
+    estimatedTime: '24-48 Hours',
+    description: '',
+    requiredDocuments: 'Aadhaar Card, Passport Photo'
+  });
+
+  // Edit & Review Proposal Modal
+  const [showEditProposalModal, setShowEditProposalModal] = useState(false);
+  const [editingProposal, setEditingProposal] = useState(null);
+  const [proposalForm, setProposalForm] = useState({
+    name: '',
+    category: 'Government forms',
+    workerAmountPaise: 14000,
+    platformFeePaise: 5900,
     pricePaise: 19900,
     estimatedTime: '24-48 Hours',
     description: '',
@@ -71,6 +87,8 @@ export default function Services() {
     setServiceForm({
       name: '',
       category: 'Government forms',
+      workerAmountPaise: 14000,
+      platformFeePaise: 5900,
       pricePaise: 19900,
       estimatedTime: '24-48 Hours',
       description: '',
@@ -82,10 +100,14 @@ export default function Services() {
   const openEditModal = (service) => {
     setIsEditing(true);
     setEditServiceId(service.id);
+    const workerAmt = service.workerAmountPaise ?? Math.round((service.pricePaise || 19900) * 0.7);
+    const platFee = service.platformFeePaise ?? ((service.pricePaise || 19900) - workerAmt);
     setServiceForm({
       name: service.name,
       category: service.category,
-      pricePaise: service.pricePaise || 19900,
+      workerAmountPaise: workerAmt,
+      platformFeePaise: platFee,
+      pricePaise: service.pricePaise || (workerAmt + platFee),
       estimatedTime: service.estimatedTime || '24-48 Hours',
       description: service.description || '',
       requiredDocuments: service.requiredDocuments ? (Array.isArray(service.requiredDocuments) ? service.requiredDocuments.join(', ') : service.requiredDocuments) : ''
@@ -96,10 +118,18 @@ export default function Services() {
   const handleSaveService = async (e) => {
     e.preventDefault();
     try {
+      const requiredDocsArray = serviceForm.requiredDocuments
+        ? (Array.isArray(serviceForm.requiredDocuments)
+            ? serviceForm.requiredDocuments
+            : serviceForm.requiredDocuments.split(',').map(s => s.trim()).filter(Boolean))
+        : [];
+
       const payload = {
         ...serviceForm,
+        workerAmountPaise: Number(serviceForm.workerAmountPaise),
+        platformFeePaise: Number(serviceForm.platformFeePaise),
         pricePaise: Number(serviceForm.pricePaise),
-        requiredDocuments: serviceForm.requiredDocuments ? serviceForm.requiredDocuments.split(',').map(s => s.trim()) : []
+        requiredDocuments: requiredDocsArray
       };
 
       if (isEditing) {
@@ -138,6 +168,55 @@ export default function Services() {
     try {
       await adminApi.approveProposal(id);
       loadAll();
+    } catch (err) {
+      alert(err.message || 'Failed to approve proposal');
+    }
+  };
+
+  const openEditProposalModal = (prop) => {
+    setEditingProposal(prop);
+    const propPrice = prop.pricePaise || 19900;
+    const workerAmt = prop.workerPayoutPaise || prop.workerAmountPaise || Math.round(propPrice * 0.7);
+    const platFee = prop.platformFeePaise || (propPrice - workerAmt);
+    setProposalForm({
+      name: prop.title || prop.name || '',
+      category: prop.category || 'Government forms',
+      workerAmountPaise: workerAmt,
+      platformFeePaise: platFee,
+      pricePaise: propPrice,
+      estimatedTime: prop.deliveryDays || prop.turnaroundTime || '24-48 Hours',
+      description: prop.description || '',
+      requiredDocuments: prop.requiredDocuments ? (Array.isArray(prop.requiredDocuments) ? prop.requiredDocuments.join(', ') : prop.requiredDocuments) : 'Aadhaar Card, Passport Photo'
+    });
+    setShowEditProposalModal(true);
+  };
+
+  const handleApproveModifiedProposal = async (e) => {
+    e.preventDefault();
+    if (!editingProposal) return;
+    try {
+      const requiredDocsArray = proposalForm.requiredDocuments
+        ? (Array.isArray(proposalForm.requiredDocuments)
+            ? proposalForm.requiredDocuments
+            : proposalForm.requiredDocuments.split(',').map(s => s.trim()).filter(Boolean))
+        : [];
+
+      const payload = {
+        name: proposalForm.name,
+        category: proposalForm.category,
+        description: proposalForm.description,
+        workerAmountPaise: Number(proposalForm.workerAmountPaise),
+        platformFeePaise: Number(proposalForm.platformFeePaise),
+        pricePaise: Number(proposalForm.pricePaise),
+        estimatedTime: proposalForm.estimatedTime,
+        requiredDocuments: requiredDocsArray
+      };
+
+      await adminApi.approveProposal(editingProposal.id, payload);
+      setShowEditProposalModal(false);
+      setEditingProposal(null);
+      loadAll();
+      alert('Proposal approved and successfully published to official Service Catalog!');
     } catch (err) {
       alert(err.message || 'Failed to approve proposal');
     }
@@ -379,11 +458,20 @@ export default function Services() {
                     </td>
                     <td>
                       {prop.status === 'PENDING' ? (
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button 
+                            className="btn btn-outline" 
+                            style={{ padding: '4px 10px', fontSize: '0.8rem', color: 'var(--brand-blue)', borderColor: '#bfdbfe' }}
+                            onClick={() => openEditProposalModal(prop)}
+                            title="Edit & Review proposal before approving"
+                          >
+                            <Edit size={14} /> Edit & Review
+                          </button>
                           <button 
                             className="btn btn-primary" 
                             style={{ background: '#16a34a', fontSize: '0.8rem', padding: '4px 10px' }}
                             onClick={() => handleApproveProposal(prop.id)}
+                            title="Quick Approve"
                           >
                             <CheckCircle size={14} /> Approve
                           </button>
@@ -391,6 +479,7 @@ export default function Services() {
                             className="btn btn-outline" 
                             style={{ color: '#dc2626', borderColor: '#fca5a5', fontSize: '0.8rem', padding: '4px 10px' }}
                             onClick={() => { setRejectProposalId(prop.id); setShowRejectModal(true); }}
+                            title="Reject Proposal"
                           >
                             <XCircle size={14} /> Reject
                           </button>
@@ -419,7 +508,7 @@ export default function Services() {
           justifyContent: 'center',
           padding: '20px'
         }}>
-          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '520px', width: '100%' }}>
+          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '540px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0 }}>{isEditing ? 'Edit Service' : 'Add New Service'}</h3>
               <button onClick={() => setShowServiceModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20}/></button>
@@ -436,14 +525,68 @@ export default function Services() {
                   <input required type="text" className="search-box" style={{ width: '100%' }} value={serviceForm.category} onChange={e => setServiceForm({...serviceForm, category: e.target.value})} placeholder="Government forms" />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Price in Paise (100 Paise = ₹1) *</label>
-                  <input required type="number" className="search-box" style={{ width: '100%' }} value={serviceForm.pricePaise} onChange={e => setServiceForm({...serviceForm, pricePaise: e.target.value})} placeholder="19900" />
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Estimated SLA Time *</label>
+                  <input required type="text" className="search-box" style={{ width: '100%' }} value={serviceForm.estimatedTime} onChange={e => setServiceForm({...serviceForm, estimatedTime: e.target.value})} placeholder="e.g. 24-48 Hours" />
                 </div>
               </div>
 
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Estimated Turnaround Time *</label>
-                <input required type="text" className="search-box" style={{ width: '100%' }} value={serviceForm.estimatedTime} onChange={e => setServiceForm({...serviceForm, estimatedTime: e.target.value})} placeholder="e.g. 24-48 Hours" />
+              {/* 3 Explicit Pricing Fields */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Worker Payout (₹) *</label>
+                  <input 
+                    required 
+                    type="number" 
+                    step="0.01" 
+                    min="0"
+                    className="search-box" 
+                    style={{ width: '100%' }} 
+                    value={(serviceForm.workerAmountPaise / 100).toFixed(2)} 
+                    onChange={e => {
+                      const workerPaise = Math.round(Number(e.target.value || 0) * 100);
+                      const total = workerPaise + Number(serviceForm.platformFeePaise || 0);
+                      setServiceForm({...serviceForm, workerAmountPaise: workerPaise, pricePaise: total});
+                    }} 
+                    placeholder="140.00" 
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Platform Fee (₹) *</label>
+                  <input 
+                    required 
+                    type="number" 
+                    step="0.01" 
+                    min="0"
+                    className="search-box" 
+                    style={{ width: '100%' }} 
+                    value={(serviceForm.platformFeePaise / 100).toFixed(2)} 
+                    onChange={e => {
+                      const feePaise = Math.round(Number(e.target.value || 0) * 100);
+                      const total = Number(serviceForm.workerAmountPaise || 0) + feePaise;
+                      setServiceForm({...serviceForm, platformFeePaise: feePaise, pricePaise: total});
+                    }} 
+                    placeholder="59.00" 
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Total Price (₹) *</label>
+                  <input 
+                    required 
+                    type="number" 
+                    step="0.01" 
+                    min="0"
+                    className="search-box" 
+                    style={{ width: '100%', fontWeight: 700, color: 'var(--brand-blue)', background: '#f8fafc' }} 
+                    value={(serviceForm.pricePaise / 100).toFixed(2)} 
+                    onChange={e => {
+                      const totalPaise = Math.round(Number(e.target.value || 0) * 100);
+                      const workerPaise = Number(serviceForm.workerAmountPaise || 0);
+                      const feePaise = Math.max(0, totalPaise - workerPaise);
+                      setServiceForm({...serviceForm, pricePaise: totalPaise, platformFeePaise: feePaise});
+                    }} 
+                    placeholder="199.00" 
+                  />
+                </div>
               </div>
 
               <div style={{ marginBottom: '12px' }}>
@@ -459,6 +602,121 @@ export default function Services() {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button type="button" className="btn btn-outline" onClick={() => setShowServiceModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">{isEditing ? 'Save Changes' : 'Create Service'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT & REVIEW PROPOSAL MODAL */}
+      {showEditProposalModal && editingProposal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          zIndex: 1250,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '560px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Edit & Review Worker Proposal</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Proposed by: <strong>{editingProposal.worker?.name || 'Worker'}</strong> ({editingProposal.worker?.workerId || editingProposal.workerId})
+                </p>
+              </div>
+              <button onClick={() => { setShowEditProposalModal(false); setEditingProposal(null); }} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20}/></button>
+            </div>
+            <form onSubmit={handleApproveModifiedProposal}>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Service Name *</label>
+                <input required type="text" className="search-box" style={{ width: '100%' }} value={proposalForm.name} onChange={e => setProposalForm({...proposalForm, name: e.target.value})} placeholder="Official service title" />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Category *</label>
+                  <input required type="text" className="search-box" style={{ width: '100%' }} value={proposalForm.category} onChange={e => setProposalForm({...proposalForm, category: e.target.value})} placeholder="Government forms" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Turnaround SLA Time *</label>
+                  <input required type="text" className="search-box" style={{ width: '100%' }} value={proposalForm.estimatedTime} onChange={e => setProposalForm({...proposalForm, estimatedTime: e.target.value})} placeholder="24-48 Hours" />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Worker Payout (₹) *</label>
+                  <input 
+                    required 
+                    type="number" 
+                    step="0.01" 
+                    min="0"
+                    className="search-box" 
+                    style={{ width: '100%' }} 
+                    value={(proposalForm.workerAmountPaise / 100).toFixed(2)} 
+                    onChange={e => {
+                      const workerPaise = Math.round(Number(e.target.value || 0) * 100);
+                      const total = workerPaise + Number(proposalForm.platformFeePaise || 0);
+                      setProposalForm({...proposalForm, workerAmountPaise: workerPaise, pricePaise: total});
+                    }} 
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Platform Fee (₹) *</label>
+                  <input 
+                    required 
+                    type="number" 
+                    step="0.01" 
+                    min="0"
+                    className="search-box" 
+                    style={{ width: '100%' }} 
+                    value={(proposalForm.platformFeePaise / 100).toFixed(2)} 
+                    onChange={e => {
+                      const feePaise = Math.round(Number(e.target.value || 0) * 100);
+                      const total = Number(proposalForm.workerAmountPaise || 0) + feePaise;
+                      setProposalForm({...proposalForm, platformFeePaise: feePaise, pricePaise: total});
+                    }} 
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Total Price (₹) *</label>
+                  <input 
+                    required 
+                    type="number" 
+                    step="0.01" 
+                    min="0"
+                    className="search-box" 
+                    style={{ width: '100%', fontWeight: 700, color: 'var(--brand-blue)', background: '#f8fafc' }} 
+                    value={(proposalForm.pricePaise / 100).toFixed(2)} 
+                    onChange={e => {
+                      const totalPaise = Math.round(Number(e.target.value || 0) * 100);
+                      const workerPaise = Number(proposalForm.workerAmountPaise || 0);
+                      const feePaise = Math.max(0, totalPaise - workerPaise);
+                      setProposalForm({...proposalForm, pricePaise: totalPaise, platformFeePaise: feePaise});
+                    }} 
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Description</label>
+                <textarea style={{ width: '100%', height: '70px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} value={proposalForm.description} onChange={e => setProposalForm({...proposalForm, description: e.target.value})} placeholder="Detailed instructions for applicants..." />
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Required Customer Documents (comma separated)</label>
+                <input type="text" className="search-box" style={{ width: '100%' }} value={proposalForm.requiredDocuments} onChange={e => setProposalForm({...proposalForm, requiredDocuments: e.target.value})} placeholder="e.g. Aadhaar Card, Passport Photo, Land Record Copy" />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button type="button" className="btn btn-outline" onClick={() => { setShowEditProposalModal(false); setEditingProposal(null); }}>Cancel</button>
+                <button type="submit" className="btn btn-primary" style={{ background: '#16a34a', borderColor: '#16a34a' }}>
+                  <CheckCircle size={14} /> Approve & Publish to Catalog
+                </button>
               </div>
             </form>
           </div>

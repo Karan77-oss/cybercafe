@@ -20,6 +20,7 @@ import {
   Paperclip
 } from 'lucide-react';
 import { workerApi } from '../../api/worker';
+import { buildUrl } from '../../api/client';
 
 export default function JobWorkspace() {
   const { jobId } = useParams();
@@ -147,7 +148,7 @@ export default function JobWorkspace() {
   const handleDownloadDoc = async (doc) => {
     try {
       const token = localStorage.getItem('cybercafe:token');
-      const targetUrl = doc.url || `/api/documents/${doc.id}/download`;
+      const targetUrl = buildUrl(doc.url || `/documents/${doc.id}/download`);
       const res = await fetch(targetUrl, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
@@ -169,7 +170,8 @@ export default function JobWorkspace() {
     } catch (err) {
       console.error('Download error:', err);
       const token = localStorage.getItem('cybercafe:token');
-      window.open(`/api/documents/${doc.id}/download?token=${encodeURIComponent(token || '')}`, '_blank');
+      const targetUrl = buildUrl(doc.url || `/documents/${doc.id}/download`);
+      window.open(`${targetUrl}?token=${encodeURIComponent(token || '')}`, '_blank');
     }
   };
 
@@ -793,7 +795,7 @@ export default function JobWorkspace() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <a
-                        href={deliv.url ? (deliv.url.startsWith('http') ? deliv.url : `${deliv.url}?token=${localStorage.getItem('cybercafe:token') || ''}`) : '#'}
+                        href={deliv.url ? (deliv.url.startsWith('http') ? deliv.url : `${buildUrl(deliv.url)}?token=${localStorage.getItem('cybercafe:token') || ''}`) : '#'}
                         target="_blank"
                         rel="noreferrer"
                         className="btn btn-outline"

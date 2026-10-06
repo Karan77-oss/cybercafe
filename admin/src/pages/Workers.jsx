@@ -21,7 +21,8 @@ import {
   AlertTriangle,
   Pause,
   Play,
-  Trash2 
+  Trash2,
+  Key 
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
@@ -64,6 +65,10 @@ export default function Workers() {
   const [hireSubmitting, setHireSubmitting] = useState(false);
   const [hireSuccess, setHireSuccess] = useState('');
   const [hireError, setHireError] = useState('');
+  const [idProofFile, setIdProofFile] = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [tempPasswordInfo, setTempPasswordInfo] = useState(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
 
   // Status / Verification action modals
   const [actionReason, setActionReason] = useState('');
@@ -103,6 +108,7 @@ export default function Workers() {
 
   const openWorkerDetail = (id) => {
     setSelectedWorkerId(id);
+    setTempPasswordInfo(null);
     setDetailLoading(true);
     adminApi.getWorkerDetails(id)
       .then(res => {
@@ -113,6 +119,24 @@ export default function Workers() {
         console.error(err);
         setDetailLoading(false);
       });
+  };
+
+  const handleResetPassword = async () => {
+    if (!workerDetail?.worker?.id) return;
+    const workerName = workerDetail.worker?.name || 'Worker';
+    if (!window.confirm(`Generate a new temporary password for worker "${workerName}"?`)) return;
+    setResettingPassword(true);
+    try {
+      const res = await adminApi.resetWorkerPassword(workerDetail.worker.id);
+      setTempPasswordInfo({
+        temporaryPassword: res.temporaryPassword || res.tempPassword || 'Temp@123456',
+        message: res.message || 'Temporary password generated successfully'
+      });
+    } catch (err) {
+      alert(err.message || 'Failed to reset password');
+    } finally {
+      setResettingPassword(false);
+    }
   };
 
   const handleCreateWorker = async (e) => {
@@ -140,22 +164,37 @@ export default function Workers() {
 
     setHireSubmitting(true);
     try {
-      await adminApi.createWorker({
-        ...hireForm,
-        workerId,
-        username: workerId,
-        bankDetails: {
-          accountNumber: hireForm.accountNumber,
-          ifsc: hireForm.ifsc,
-          accountHolderName: hireForm.accountHolderName || hireForm.workerName,
-          upiId: hireForm.upiId
-        }
-      });
+      const formData = new FormData();
+      formData.append('workerName', hireForm.workerName);
+      formData.append('workerId', workerId);
+      formData.append('username', workerId);
+      formData.append('password', hireForm.password);
+      formData.append('confirmPassword', hireForm.confirmPassword);
+      formData.append('mobile', hireForm.mobile);
+      formData.append('email', hireForm.email);
+      formData.append('businessName', hireForm.businessName);
+      formData.append('address', hireForm.address);
+      formData.append('city', hireForm.city);
+      formData.append('skills', hireForm.skills);
+      formData.append('accountNumber', hireForm.accountNumber);
+      formData.append('ifsc', hireForm.ifsc);
+      formData.append('accountHolderName', hireForm.accountHolderName || hireForm.workerName);
+      formData.append('upiId', hireForm.upiId);
+      if (idProofFile) {
+        formData.append('idProofFile', idProofFile);
+      }
+      if (photoFile) {
+        formData.append('photoFile', photoFile);
+      }
+
+      await adminApi.createWorker(formData);
       setHireSuccess(`Worker account created successfully! User ID: "${workerId}". The worker can now log in using this User ID and assigned password.`);
       loadWorkers();
       setTimeout(() => {
         setShowHireModal(false);
         setHireSuccess('');
+        setIdProofFile(null);
+        setPhotoFile(null);
         setHireForm({
           workerName: '',
           workerId: '',
@@ -167,8 +206,8 @@ export default function Workers() {
           address: '',
           city: '',
           skills: 'PAN Card, Voter ID, Aadhaar Print',
-          idProof: 'Aadhaar_Document.pdf',
-          photo: 'Photo.jpg',
+          idProof: '',
+          photo: '',
           accountNumber: '',
           ifsc: '',
           accountHolderName: '',
@@ -371,8 +410,9 @@ export default function Workers() {
                     <td>
                       <div className="user-cell">
                         <img 
-                          src={w.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(w.name || 'Worker')}&background=6366f1&color=fff`} 
+                          src={w.photo || w.profileImage || w.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(w.name || 'Worker')}&background=6366f1&color=fff`} 
                           alt="" 
+                          style={{ objectFit: 'cover' }}
                         />
                         <div>
                           <div style={{ fontWeight: 600 }}>{w.name}</div>
@@ -524,15 +564,18 @@ export default function Workers() {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                   <img 
-                    src={workerDetail.worker?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(workerDetail.worker?.name || 'Worker')}&background=6366f1&color=fff`} 
+                    src={workerDetail.worker?.photo || workerDetail.worker?.profileImage || workerDetail.worker?.profilePic || `https://ui-avatars.com/api/?name=${encodeURIComponent(workerDetail.worker?.name || 'Worker')}&background=6366f1&color=fff`} 
                     alt="" 
-                    style={{ width: '64px', height: '64px', borderRadius: '50%' }}
+                    style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover' }}
                   />
                   <div>
                     <h2 style={{ margin: 0, fontSize: '1.4rem' }}>{workerDetail.worker?.name}</h2>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--brand-blue)' }}>
-                        {workerDetail.worker?.workerId || workerDetail.worker?.id}
+                        Worker ID: {workerDetail.worker?.workerId || workerDetail.worker?.id}
+                      </span>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        ({workerDetail.worker?.email})
                       </span>
                       <StatusBadge status={workerDetail.worker?.status || 'ACTIVE'} />
                       {workerDetail.worker?.workerProfile?.idVerified ? (
@@ -544,10 +587,48 @@ export default function Workers() {
                   </div>
                 </div>
 
+                {tempPasswordInfo && (
+                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '12px 16px', marginBottom: '20px', fontSize: '0.85rem', color: '#1e40af' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong>Temporary Password Generated:</strong>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.05rem', marginLeft: '8px', background: '#dbeafe', padding: '3px 10px', borderRadius: '4px', color: '#1d4ed8' }}>
+                          {tempPasswordInfo.temporaryPassword}
+                        </span>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(tempPasswordInfo.temporaryPassword);
+                          alert('Temporary password copied to clipboard!');
+                        }}
+                        className="btn btn-outline"
+                        style={{ fontSize: '0.75rem', padding: '2px 8px', background: '#fff' }}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#2563eb', marginTop: '6px' }}>
+                      Share this temporary password with the worker. They can log in immediately with their Worker ID and this password.
+                    </div>
+                  </div>
+                )}
+
                 {/* Status and Verification Action Bar */}
                 <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '24px', border: '1px solid #e2e8f0' }}>
                   <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '10px' }}>Administrative Controls</div>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button 
+                      className="btn btn-outline" 
+                      style={{ color: '#2563eb', borderColor: '#93c5fd', fontSize: '0.85rem', padding: '6px 12px' }}
+                      onClick={handleResetPassword}
+                      disabled={resettingPassword}
+                      title="Reset Temporary Password"
+                    >
+                      <Key size={14} style={{ marginRight: '4px', verticalAlign: '-1px' }} />
+                      {resettingPassword ? 'Resetting...' : 'Reset Temporary Password'}
+                    </button>
+
                     {!workerDetail.worker?.workerProfile?.idVerified ? (
                       <button 
                         className="btn btn-primary" 
@@ -654,7 +735,21 @@ export default function Workers() {
                   <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '6px' }}>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '4px' }}>DOCUMENT SUBMITTED</div>
                     <div><strong>ID Type:</strong> Aadhaar / PAN Card</div>
-                    <div><strong>File:</strong> <span style={{ color: 'var(--brand-blue)' }}>{workerDetail.worker?.workerProfile?.idProof || 'Identity_Proof.pdf'}</span></div>
+                    <div>
+                      <strong>File:</strong>{' '}
+                      {workerDetail.worker?.workerProfile?.idProof ? (
+                        <a 
+                          href={workerDetail.worker.workerProfile.idProof} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          style={{ color: 'var(--brand-blue)', textDecoration: 'underline', wordBreak: 'break-all' }}
+                        >
+                          View / Download ID Document
+                        </a>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>No document uploaded</span>
+                      )}
+                    </div>
                     <div><strong>Verified:</strong> {workerDetail.worker?.workerProfile?.idVerified ? 'YES' : 'PENDING'}</div>
                   </div>
                 </div>
@@ -854,11 +949,27 @@ export default function Workers() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>9. ID Proof Document File *</label>
-                  <input required type="text" className="search-box" style={{ width: '100%' }} value={hireForm.idProof} onChange={e => setHireForm({...hireForm, idProof: e.target.value})} placeholder="e.g. Aadhaar_Ramesh.pdf" />
+                  <input 
+                    required 
+                    type="file" 
+                    accept=".pdf,image/*" 
+                    className="search-box" 
+                    style={{ width: '100%', padding: '6px' }} 
+                    onChange={e => setIdProofFile(e.target.files[0] || null)} 
+                  />
+                  {idProofFile && <div style={{ fontSize: '0.75rem', color: '#16a34a', marginTop: '2px' }}>Selected: {idProofFile.name}</div>}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>10. Passport Photo File *</label>
-                  <input required type="text" className="search-box" style={{ width: '100%' }} value={hireForm.photo} onChange={e => setHireForm({...hireForm, photo: e.target.value})} placeholder="e.g. Ramesh_Photo.jpg" />
+                  <input 
+                    required 
+                    type="file" 
+                    accept="image/*" 
+                    className="search-box" 
+                    style={{ width: '100%', padding: '6px' }} 
+                    onChange={e => setPhotoFile(e.target.files[0] || null)} 
+                  />
+                  {photoFile && <div style={{ fontSize: '0.75rem', color: '#16a34a', marginTop: '2px' }}>Selected: {photoFile.name}</div>}
                 </div>
               </div>
 

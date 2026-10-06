@@ -178,9 +178,23 @@ export default function ServiceForm() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const normalizeRequiredDocuments = (docs) => {
+    if (!docs) return [];
+    if (Array.isArray(docs)) return docs.map(d => typeof d === 'string' ? d.trim() : String(d)).filter(Boolean);
+    if (typeof docs === 'string') {
+      try {
+        const parsed = JSON.parse(docs);
+        if (Array.isArray(parsed)) return parsed.map(d => String(d).trim()).filter(Boolean);
+      } catch {}
+      return docs.split(',').map(d => d.trim()).filter(Boolean);
+    }
+    return [];
+  };
+
   const validateDocuments = () => {
     const newErrors = {};
-    const required = service.requiredDocuments || [];
+    const required = normalizeRequiredDocuments(service?.requiredDocuments);
+    if (required.length === 0) return true;
     const missing = [];
     required.forEach(doc => {
       if (!appState.documents[doc]) {
@@ -313,35 +327,86 @@ export default function ServiceForm() {
   };
 
   const renderDetails = () => (
-    <div className="form-card">
-      <h3 style={{ marginBottom: '8px' }}>Applicant Details</h3>
-      <p className="text-muted" style={{ marginBottom: '24px' }}>Please provide the applicant information accurately as per your official documents.</p>
+    <div className="form-card" style={{ padding: '28px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
+      <div style={{ marginBottom: '20px' }}>
+        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>Applicant Details</h3>
+        <p className="text-muted" style={{ margin: 0, fontSize: '0.88rem' }}>
+          Please provide the applicant information accurately as per your official government documents.
+        </p>
+      </div>
+
       <div className="grid-2">
         {activeSchema.map(f => (
            <div key={f.id} style={{ gridColumn: f.type === 'textarea' || f.type === 'address' ? '1 / -1' : 'auto' }}>
-             <label className="form-label">{f.label} {f.required && <span style={{ color: 'var(--red)' }}>*</span>}</label>
+             <label className="form-label">
+               {f.label} {f.required && <span className="req">*</span>}
+             </label>
              {f.type === 'select' ? (
-                <select className="form-input" value={appState.details[f.id] || ''} onChange={e => updateDetails(f.id, e.target.value)}>
+                <select 
+                  className={`form-input ${errors[f.id] ? 'error' : ''}`}
+                  value={appState.details[f.id] || ''} 
+                  onChange={e => updateDetails(f.id, e.target.value)}
+                >
                    <option value="">Select {f.label}</option>
                    {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
              ) : f.type === 'textarea' || f.type === 'address' ? (
-                <textarea className="form-input" rows="3" value={appState.details[f.id] || ''} onChange={e => updateDetails(f.id, e.target.value)} placeholder={`Enter ${f.label}`} />
+                <textarea 
+                  className={`form-input ${errors[f.id] ? 'error' : ''}`}
+                  rows="3" 
+                  value={appState.details[f.id] || ''} 
+                  onChange={e => updateDetails(f.id, e.target.value)} 
+                  placeholder={`Enter ${f.label}`} 
+                />
              ) : (
-                <input type={f.type || 'text'} className="form-input" value={appState.details[f.id] || ''} onChange={e => updateDetails(f.id, e.target.value)} placeholder={`Enter ${f.label}`} />
+                <input 
+                  type={f.type || 'text'} 
+                  className={`form-input ${errors[f.id] ? 'error' : ''}`}
+                  value={appState.details[f.id] || ''} 
+                  onChange={e => updateDetails(f.id, e.target.value)} 
+                  placeholder={`Enter ${f.label}`} 
+                />
              )}
-             {errors[f.id] && <span style={{ color: 'var(--red)', fontSize: '0.85rem', marginTop: '4px', display: 'block' }}>{errors[f.id]}</span>}
+             {errors[f.id] && (
+               <span style={{ color: '#ef4444', fontSize: '0.82rem', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 500 }}>
+                 <AlertCircle size={14} /> {errors[f.id]}
+               </span>
+             )}
            </div>
         ))}
       </div>
-      <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '24px' }} onClick={nextStep}>Save & Continue</button>
+      <button 
+        className="btn btn-primary" 
+        style={{ width: '100%', justifyContent: 'center', marginTop: '28px', padding: '12px', fontSize: '0.95rem', fontWeight: 600, borderRadius: '8px' }} 
+        onClick={nextStep}
+      >
+        Save & Continue
+      </button>
     </div>
   );
 
   const renderDocuments = () => {
-    const requiredDocs = service.requiredDocuments || [];
+    const requiredDocs = normalizeRequiredDocuments(service?.requiredDocuments);
     const uploadedCount = requiredDocs.filter(d => appState.documents[d]).length;
-    const allUploaded = requiredDocs.length > 0 && uploadedCount === requiredDocs.length;
+    const allUploaded = requiredDocs.length === 0 || uploadedCount === requiredDocs.length;
+
+    if (requiredDocs.length === 0) {
+      return (
+        <div className="form-card">
+          <div style={{ textAlign: 'center', padding: '30px' }}>
+            <CheckCircle2 size={48} color="var(--green, #2ecc71)" style={{ margin: '0 auto 16px' }} />
+            <h3>No Documents Required</h3>
+            <p className="text-muted" style={{ maxWidth: '420px', margin: '0 auto 24px' }}>
+              This service does not require any document uploads from you. You can proceed directly to the next step.
+            </p>
+            <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+              <button className="btn btn-outline" onClick={prevStep}>Back</button>
+              <button className="btn btn-primary" onClick={nextStep}>Continue to Additional Info</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="form-card">

@@ -19,6 +19,7 @@ import {
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
 import { adminApi } from '../api/admin';
+import { buildUrl } from '../api/client';
 
 export default function Orders() {
   const [orders, setOrders] = useState([]);
@@ -53,7 +54,11 @@ export default function Orders() {
 
   const loadOrders = () => {
     setLoading(true);
-    adminApi.getOrders({ status: statusTab === 'ALL' ? undefined : statusTab, q: searchTerm || undefined })
+    adminApi.getOrders({
+      status: (statusTab === 'ALL' || statusTab === 'All Orders') ? undefined : statusTab,
+      search: searchTerm || undefined,
+      q: searchTerm || undefined
+    })
       .then(res => {
         setOrders(res.orders || []);
         setLoading(false);
@@ -523,7 +528,7 @@ export default function Orders() {
                       <div style={{ fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>Customer Uploads:</div>
                       {orderDetail.documents && orderDetail.documents.length > 0 ? (
                         orderDetail.documents.map((d, i) => {
-                          const docUrl = d.url || `/api/documents/${d.id}/download`;
+                          const docUrl = buildUrl(d.url || `/documents/${d.id}/download`);
                           const token = localStorage.getItem('cybercafe:token');
                           const authUrl = `${docUrl}${token ? (docUrl.includes('?') ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`) : ''}`;
                           return (

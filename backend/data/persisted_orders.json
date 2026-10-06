@@ -273,5 +273,1492 @@
     "receiptSubmittedAt": "2026-09-30T15:48:44.803Z",
     "workCompletedAt": "2026-09-30T15:48:44.803Z",
     "completionNote": "its done babe"
+  },
+  {
+    "id": "ord_1790885085936",
+    "orderNumber": "ord_1790885085936",
+    "customerId": "Karan Kumar",
+    "customerName": "Karan Kumar",
+    "customerPhone": "9876543200",
+    "customerEmail": "rajkaran969355@gmail.com",
+    "formData": {
+      "fullName": "Karan Kumar",
+      "email": "rajkaran969355@gmail.com",
+      "phone": "9876543200",
+      "address": "kdspkfs",
+      "fatherName": "hvisdjzxkp",
+      "dateOfBirth": "2026-10-14",
+      "gender": "Male",
+      "panType": "New PAN Card (Form 49A)"
+    },
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "COMPLETED",
+    "paymentStatus": "PAID",
+    "earningStatus": "RELEASED",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "fullName": "Karan Kumar",
+        "email": "rajkaran969355@gmail.com",
+        "phone": "9876543200",
+        "address": "kdspkfs",
+        "fatherName": "hvisdjzxkp",
+        "dateOfBirth": "2026-10-14",
+        "gender": "Male",
+        "panType": "New PAN Card (Form 49A)"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto",
+        "preferredWorkerId": ""
+      },
+      "expiresAt": "2026-10-02T20:04:45.936Z",
+      "scheduling": {
+        "status": "UNSCHEDULED",
+        "timeSlot": null,
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": "CCM-APP-085936",
+        "completionMessage": "Application successfully processed and submitted.",
+        "receiptUrl": "/api/orders/ord_1790885085936/deliverables/deliv_1790885211376_szuv5/download",
+        "deliverableFiles": [
+          {
+            "id": "deliv_1790885211376_szuv5",
+            "name": "Screenshot 2025 06 29 140234",
+            "fileName": "Screenshot 2025-06-29 140234.png",
+            "mimeType": "image/png",
+            "size": "213 KB",
+            "sizeBytes": 218364,
+            "storageKey": "deliverables/ord_1790885085936/1790885211270_Screenshot_2025-06-29_140234.png",
+            "url": "/api/orders/ord_1790885085936/deliverables/deliv_1790885211376_szuv5/download",
+            "isMandatory": true,
+            "uploadedAt": "2026-10-01T20:06:51.377Z"
+          }
+        ]
+      },
+      "review": {
+        "rating": 4,
+        "comment": "its good",
+        "createdAt": "2026-10-01T20:08:00.949Z"
+      }
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": "worker-amit-01",
+    "worker": {
+      "id": "worker-amit-01",
+      "name": "Amit Cyber Cafe & Digital Seva",
+      "phone": "9876543210",
+      "email": "amit.cyber@gmail.com"
+    },
+    "job": null,
+    "timeSlot": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-10-01T20:04:45.936Z",
+    "payment": {
+      "status": "PAID",
+      "provider": "UPI",
+      "amountPaise": 19900,
+      "paidAt": "2026-10-01T20:04:45.936Z"
+    },
+    "documents": [
+      {
+        "id": "doc_1790885063005_t0qbl",
+        "storageKey": "docs/Karan Kumar/1790885062902_Screenshot_2026-09-19_232849.png",
+        "docName": "Aadhaar Card",
+        "name": "Aadhaar Card (Screenshot 2026-09-19 232849.png)",
+        "fileName": "Screenshot 2026-09-19 232849.png",
+        "url": "/api/documents/doc_1790885063005_t0qbl/download",
+        "mimeType": "image/png",
+        "size": 44040,
+        "type": "UPLOAD",
+        "customerId": "Karan Kumar",
+        "orderId": "ord_1790885085936",
+        "createdAt": "2026-10-01T20:04:23.005Z",
+        "orderNumber": "ord_1790885085936"
+      },
+      {
+        "id": "doc_1790885070327_9zmqg",
+        "storageKey": "docs/Karan Kumar/1790885070315_Screenshot_2025-06-29_134612.png",
+        "docName": "Passport Size Photo",
+        "name": "Passport Size Photo (Screenshot 2025-06-29 134612.png)",
+        "fileName": "Screenshot 2025-06-29 134612.png",
+        "url": "/api/documents/doc_1790885070327_9zmqg/download",
+        "mimeType": "image/png",
+        "size": 216146,
+        "type": "UPLOAD",
+        "customerId": "Karan Kumar",
+        "orderId": "ord_1790885085936",
+        "createdAt": "2026-10-01T20:04:30.327Z",
+        "orderNumber": "ord_1790885085936"
+      },
+      {
+        "id": "doc_1790885074524_wxb7a",
+        "storageKey": "docs/Karan Kumar/1790885074512_Screenshot_2025-06-29_151820.png",
+        "docName": "Signature Specimen",
+        "name": "Signature Specimen (Screenshot 2025-06-29 151820.png)",
+        "fileName": "Screenshot 2025-06-29 151820.png",
+        "url": "/api/documents/doc_1790885074524_wxb7a/download",
+        "mimeType": "image/png",
+        "size": 214405,
+        "type": "UPLOAD",
+        "customerId": "Karan Kumar",
+        "orderId": "ord_1790885085936",
+        "createdAt": "2026-10-01T20:04:34.524Z",
+        "orderNumber": "ord_1790885085936"
+      }
+    ],
+    "deliverables": [
+      {
+        "id": "deliv_1790885211376_szuv5",
+        "name": "Screenshot 2025 06 29 140234",
+        "fileName": "Screenshot 2025-06-29 140234.png",
+        "mimeType": "image/png",
+        "size": "213 KB",
+        "sizeBytes": 218364,
+        "storageKey": "deliverables/ord_1790885085936/1790885211270_Screenshot_2025-06-29_140234.png",
+        "url": "/api/orders/ord_1790885085936/deliverables/deliv_1790885211376_szuv5/download",
+        "isMandatory": true,
+        "uploadedAt": "2026-10-01T20:06:51.377Z"
+      }
+    ],
+    "createdAt": "2026-10-01T20:04:45.936Z",
+    "updatedAt": "2026-10-01T20:08:00.949Z",
+    "workerAcceptedAt": "2026-10-01T20:06:12.004Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-10-02T01:06:12.004Z",
+    "workStartedAt": "2026-10-01T20:06:36.115Z",
+    "receiptSubmittedAt": "2026-10-01T20:06:56.688Z",
+    "workCompletedAt": "2026-10-01T20:06:56.688Z",
+    "completionNote": "",
+    "completedAt": "2026-10-01T20:07:36.315Z",
+    "receiptDownloadedAt": "2026-10-01T20:07:36.315Z",
+    "rating": 4,
+    "review": "its good"
+  },
+  {
+    "id": "ord_1791118413488",
+    "orderNumber": "ord_1791118413488",
+    "customerId": "usr_1791118201390",
+    "customerName": "Karan Kumar",
+    "customerPhone": "9693553077",
+    "customerEmail": "kumarkaran762002@gmail.com",
+    "formData": {},
+    "serviceId": "passport-assistance",
+    "serviceName": "Passport Application & Appointment Assistance",
+    "category": "Passport-related application assistance",
+    "status": "COMPLETED",
+    "paymentStatus": "PAID",
+    "earningStatus": "RELEASED",
+    "workerAmount": 55920,
+    "adminCommission": 13980,
+    "platformFee": 0,
+    "customerPaidAmount": 69900,
+    "serviceSnapshot": {
+      "name": "Passport Application & Appointment Assistance",
+      "category": "Passport-related application assistance",
+      "pricePaise": 69900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name (Given Name + Surname as on Marksheet)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Full Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "motherName",
+          "label": "Mother's Full Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "birthPlace",
+          "label": "Place of Birth (Village / Town / State)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "passportScheme",
+          "label": "Application Scheme",
+          "type": "select",
+          "options": [
+            "Normal Scheme (Standard)",
+            "Tatkaal Scheme (Urgent)"
+          ],
+          "required": true
+        },
+        {
+          "id": "educationLevel",
+          "label": "Educational Qualification (ECNR Check)",
+          "type": "select",
+          "options": [
+            "Graduate & Above",
+            "10th Pass (Matriculate)",
+            "Below 10th Pass"
+          ],
+          "required": true
+        },
+        {
+          "id": "address",
+          "label": "Present Residential Address with PIN code",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {},
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-05T12:53:33.488Z",
+      "scheduling": {
+        "timeSlot": "Today, 10:00 AM - 12:00 PM",
+        "date": "Today",
+        "startTime": "10:00 AM",
+        "endTime": "12:00 PM",
+        "status": "PROPOSED",
+        "proposedBy": "worker-amit-01",
+        "proposedAt": "2026-10-04T13:01:44.903Z",
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": "CCM-APP-413488",
+        "completionMessage": "done",
+        "receiptUrl": "/api/orders/ord_1791118413488/deliverables/deliv_1791118950496_pb0uv/download",
+        "deliverableFiles": [
+          {
+            "id": "deliv_1791118950496_pb0uv",
+            "name": "Screenshot 2025 06 29 144402",
+            "fileName": "Screenshot 2025-06-29 144402.png",
+            "mimeType": "image/png",
+            "size": "210 KB",
+            "sizeBytes": 214680,
+            "storageKey": "deliverables/ord_1791118413488/1791118950413_Screenshot_2025-06-29_144402.png",
+            "url": "/api/orders/ord_1791118413488/deliverables/deliv_1791118950496_pb0uv/download",
+            "isMandatory": true,
+            "uploadedAt": "2026-10-04T13:02:30.496Z"
+          }
+        ]
+      },
+      "review": null
+    },
+    "pricePaise": 69900,
+    "workerEarningsPaise": 55920,
+    "pricing": {
+      "pricePaise": 69900,
+      "platformCommissionPaise": 13980,
+      "workerPayoutPaise": 55920
+    },
+    "assignedWorkerId": "worker-amit-01",
+    "worker": {
+      "id": "worker-amit-01",
+      "name": "Amit Cyber Cafe & Digital Seva",
+      "phone": "9876543210",
+      "email": "amit.cyber@gmail.com"
+    },
+    "job": null,
+    "timeSlot": {
+      "date": "Today",
+      "startTime": "10:00 AM",
+      "endTime": "12:00 PM",
+      "timeSlotStr": "Today, 10:00 AM - 12:00 PM",
+      "status": "PROPOSED",
+      "proposedBy": "worker-amit-01",
+      "proposedAt": "2026-10-04T13:01:44.903Z",
+      "rescheduleNote": null
+    },
+    "offerExpiresAt": null,
+    "paidAt": "2026-10-04T12:53:36.371Z",
+    "payment": {
+      "status": "PAID",
+      "method": "UPI",
+      "paidAt": "2026-10-04T12:53:36.371Z"
+    },
+    "documents": [
+      {
+        "id": "doc_1791118411854_7scg7",
+        "storageKey": "docs/usr_1791118201390/1791118411318_Screenshot_2026-09-19_233809.png",
+        "docName": "Aadhaar Card",
+        "name": "Aadhaar Card (Screenshot 2026-09-19 233809.png)",
+        "fileName": "Screenshot 2026-09-19 233809.png",
+        "url": "/api/documents/doc_1791118411854_7scg7/download",
+        "mimeType": "image/png",
+        "size": 90294,
+        "type": "UPLOAD",
+        "customerId": "usr_1791118201390",
+        "orderId": "ord_1791118413488",
+        "createdAt": "2026-10-04T12:53:31.854Z",
+        "orderNumber": "ord_1791118413488"
+      },
+      {
+        "id": "doc_1791118413406_tfiie",
+        "storageKey": "docs/usr_1791118201390/1791118413396_Screenshot_2025-06-28_224609.png",
+        "docName": "PAN Card",
+        "name": "PAN Card (Screenshot 2025-06-28 224609.png)",
+        "fileName": "Screenshot 2025-06-28 224609.png",
+        "url": "/api/documents/doc_1791118413406_tfiie/download",
+        "mimeType": "image/png",
+        "size": 216566,
+        "type": "UPLOAD",
+        "customerId": "usr_1791118201390",
+        "orderId": "ord_1791118413488",
+        "createdAt": "2026-10-04T12:53:33.406Z",
+        "orderNumber": "ord_1791118413488"
+      },
+      {
+        "id": "doc_1791118413434_ela7x",
+        "storageKey": "docs/usr_1791118201390/1791118413425_Screenshot_2025-06-29_143408.png",
+        "docName": "10th Marksheet / Birth Certificate",
+        "name": "10th Marksheet / Birth Certificate (Screenshot 2025-06-29 143408.png)",
+        "fileName": "Screenshot 2025-06-29 143408.png",
+        "url": "/api/documents/doc_1791118413434_ela7x/download",
+        "mimeType": "image/png",
+        "size": 214527,
+        "type": "UPLOAD",
+        "customerId": "usr_1791118201390",
+        "orderId": "ord_1791118413488",
+        "createdAt": "2026-10-04T12:53:33.434Z",
+        "orderNumber": "ord_1791118413488"
+      },
+      {
+        "id": "doc_1791118413465_ue7hb",
+        "storageKey": "docs/usr_1791118201390/1791118413455_Screenshot_2025-06-29_144402.png",
+        "docName": "Passport Photo",
+        "name": "Passport Photo (Screenshot 2025-06-29 144402.png)",
+        "fileName": "Screenshot 2025-06-29 144402.png",
+        "url": "/api/documents/doc_1791118413465_ue7hb/download",
+        "mimeType": "image/png",
+        "size": 214680,
+        "type": "UPLOAD",
+        "customerId": "usr_1791118201390",
+        "orderId": "ord_1791118413488",
+        "createdAt": "2026-10-04T12:53:33.465Z",
+        "orderNumber": "ord_1791118413488"
+      }
+    ],
+    "deliverables": [
+      {
+        "id": "deliv_1791118950496_pb0uv",
+        "name": "Screenshot 2025 06 29 144402",
+        "fileName": "Screenshot 2025-06-29 144402.png",
+        "mimeType": "image/png",
+        "size": "210 KB",
+        "sizeBytes": 214680,
+        "storageKey": "deliverables/ord_1791118413488/1791118950413_Screenshot_2025-06-29_144402.png",
+        "url": "/api/orders/ord_1791118413488/deliverables/deliv_1791118950496_pb0uv/download",
+        "isMandatory": true,
+        "uploadedAt": "2026-10-04T13:02:30.496Z"
+      }
+    ],
+    "createdAt": "2026-10-04T12:53:33.488Z",
+    "updatedAt": "2026-10-04T13:02:55.864Z",
+    "workerAcceptedAt": "2026-10-04T13:01:30.687Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-10-04T18:01:30.687Z",
+    "workStartedAt": "2026-10-04T13:01:38.075Z",
+    "receiptSubmittedAt": "2026-10-04T13:02:39.301Z",
+    "workCompletedAt": "2026-10-04T13:02:39.301Z",
+    "completionNote": "done",
+    "completedAt": "2026-10-04T13:02:55.864Z",
+    "receiptDownloadedAt": "2026-10-04T13:02:55.864Z"
+  },
+  {
+    "id": "ord_1791126210388",
+    "orderNumber": "ord_1791126210388",
+    "customerId": "usr_1791126210376",
+    "customerName": "Rahul Sharma",
+    "customerPhone": "9876543210",
+    "customerEmail": "rahul1791126210314@example.com",
+    "formData": {
+      "fullName": "Rahul Sharma",
+      "phone": "9876543210"
+    },
+    "bookingDate": "Tomorrow",
+    "bookingTimeSlot": "12:00 PM - 02:00 PM",
+    "timeSlot": {
+      "date": "Tomorrow",
+      "timeSlotStr": "Tomorrow, 12:00 PM - 02:00 PM",
+      "startTime": "12:00 PM",
+      "endTime": "02:00 PM",
+      "status": "CONFIRMED",
+      "proposedBy": "CUSTOMER"
+    },
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "PAYMENT_PENDING",
+    "paymentStatus": "PENDING",
+    "earningStatus": "PENDING",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "fullName": "Rahul Sharma",
+        "phone": "9876543210"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-05T15:03:30.388Z",
+      "scheduling": {
+        "status": "CONFIRMED",
+        "timeSlot": "Tomorrow, 12:00 PM - 02:00 PM",
+        "date": "Tomorrow",
+        "startTime": "12:00 PM",
+        "endTime": "02:00 PM",
+        "proposedBy": "CUSTOMER",
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": null,
+    "payment": null,
+    "documents": [],
+    "deliverables": [],
+    "createdAt": "2026-10-04T15:03:30.388Z",
+    "updatedAt": "2026-10-04T15:03:30.388Z"
+  },
+  {
+    "id": "ord_1791126235124",
+    "orderNumber": "ord_1791126235124",
+    "customerId": "usr_1791126235101",
+    "customerName": "Simran Kaur",
+    "customerPhone": "9811122233",
+    "customerEmail": "simran1791126234979@example.com",
+    "formData": {
+      "fullName": "Simran Kaur",
+      "phone": "9811122233"
+    },
+    "bookingDate": "Tomorrow",
+    "bookingTimeSlot": "04:00 PM - 06:00 PM",
+    "timeSlot": {
+      "date": "Tomorrow",
+      "timeSlotStr": "Tomorrow, 04:00 PM - 06:00 PM",
+      "startTime": "04:00 PM",
+      "endTime": "06:00 PM",
+      "status": "CONFIRMED",
+      "proposedBy": "CUSTOMER"
+    },
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "PAYMENT_PENDING",
+    "paymentStatus": "PENDING",
+    "earningStatus": "PENDING",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "fullName": "Simran Kaur",
+        "phone": "9811122233"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-05T15:03:55.124Z",
+      "scheduling": {
+        "status": "CONFIRMED",
+        "timeSlot": "Tomorrow, 04:00 PM - 06:00 PM",
+        "date": "Tomorrow",
+        "startTime": "04:00 PM",
+        "endTime": "06:00 PM",
+        "proposedBy": "CUSTOMER",
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": null,
+    "payment": null,
+    "documents": [],
+    "deliverables": [],
+    "createdAt": "2026-10-04T15:03:55.124Z",
+    "updatedAt": "2026-10-04T15:03:55.124Z"
+  },
+  {
+    "id": "ord_1791126728498",
+    "orderNumber": "ord_1791126728498",
+    "customerId": "usr_1791126665783",
+    "customerName": "Karan Kumar",
+    "customerPhone": "9693553077",
+    "customerEmail": "kumarkaran762002@gmail.com",
+    "formData": {
+      "fullName": "bxvipv",
+      "fatherName": "mo kosddc",
+      "dateOfBirth": "2026-10-26",
+      "gender": "Male",
+      "phone": "5526223",
+      "email": "misjojkoxsm@gmail.com",
+      "panType": "New PAN Card (Form 49A)",
+      "existingPan": "msmciwiejf",
+      "address": "jnsccjnweiffijf"
+    },
+    "bookingDate": "Today",
+    "bookingTimeSlot": "10:30 AM - 12:00 PM",
+    "timeSlot": null,
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "RECEIPT_SUBMITTED",
+    "paymentStatus": "PAID",
+    "earningStatus": "PENDING",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "fullName": "bxvipv",
+        "fatherName": "mo kosddc",
+        "dateOfBirth": "2026-10-26",
+        "gender": "Male",
+        "phone": "5526223",
+        "email": "misjojkoxsm@gmail.com",
+        "panType": "New PAN Card (Form 49A)",
+        "existingPan": "msmciwiejf",
+        "address": "jnsccjnweiffijf"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-05T15:12:08.498Z",
+      "scheduling": {
+        "status": "UNSCHEDULED",
+        "timeSlot": null,
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": "CCM-APP-728498",
+        "completionMessage": "Application successfully processed and submitted.",
+        "receiptUrl": "/api/orders/ord_1791126728498/deliverables/deliv_1791285387401_z7pza/download",
+        "deliverableFiles": [
+          {
+            "id": "deliv_1791285387401_z7pza",
+            "name": "Screenshot 2026 09 30 165424",
+            "fileName": "Screenshot 2026-09-30 165424.png",
+            "mimeType": "image/png",
+            "size": "33 KB",
+            "sizeBytes": 33400,
+            "storageKey": "deliverables/ord_1791126728498/1791285387279_Screenshot_2026-09-30_165424.png",
+            "url": "/api/orders/ord_1791126728498/deliverables/deliv_1791285387401_z7pza/download",
+            "isMandatory": true,
+            "uploadedAt": "2026-10-06T11:16:27.402Z"
+          }
+        ]
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": "worker-amit-01",
+    "worker": {
+      "id": "worker-amit-01",
+      "name": "Amit Cyber Cafe & Digital Seva",
+      "phone": "9876543210",
+      "email": "amit.cyber@gmail.com"
+    },
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-10-04T15:13:58.377Z",
+    "payment": {
+      "status": "PAID",
+      "provider": "RAZORPAY",
+      "providerOrderId": "order_TjsNigapN4hld0",
+      "providerPaymentId": "pay_TjsPMQGDZOKecJ",
+      "paidAt": "2026-10-04T15:13:58.377Z"
+    },
+    "documents": [
+      {
+        "id": "doc_1791126726854_2c9oy",
+        "storageKey": "docs/usr_1791126665783/1791126726740_Screenshot_2025-06-29_144153.png",
+        "docName": "Aadhaar Card",
+        "name": "Aadhaar Card (Screenshot 2025-06-29 144153.png)",
+        "fileName": "Screenshot 2025-06-29 144153.png",
+        "url": "/api/documents/doc_1791126726854_2c9oy/download",
+        "mimeType": "image/png",
+        "size": 215914,
+        "type": "UPLOAD",
+        "customerId": "usr_1791126665783",
+        "orderId": "ord_1791126728498",
+        "createdAt": "2026-10-04T15:12:06.854Z",
+        "orderNumber": "ord_1791126728498"
+      },
+      {
+        "id": "doc_1791126728419_9ac66",
+        "storageKey": "docs/usr_1791126665783/1791126728406_Screenshot_2025-06-29_144402.png",
+        "docName": "Passport Size Photo",
+        "name": "Passport Size Photo (Screenshot 2025-06-29 144402.png)",
+        "fileName": "Screenshot 2025-06-29 144402.png",
+        "url": "/api/documents/doc_1791126728419_9ac66/download",
+        "mimeType": "image/png",
+        "size": 214680,
+        "type": "UPLOAD",
+        "customerId": "usr_1791126665783",
+        "orderId": "ord_1791126728498",
+        "createdAt": "2026-10-04T15:12:08.419Z",
+        "orderNumber": "ord_1791126728498"
+      },
+      {
+        "id": "doc_1791126728472_vavtb",
+        "storageKey": "docs/usr_1791126665783/1791126728449_Screenshot_2025-06-29_151820.png",
+        "docName": "Signature Specimen",
+        "name": "Signature Specimen (Screenshot 2025-06-29 151820.png)",
+        "fileName": "Screenshot 2025-06-29 151820.png",
+        "url": "/api/documents/doc_1791126728472_vavtb/download",
+        "mimeType": "image/png",
+        "size": 214405,
+        "type": "UPLOAD",
+        "customerId": "usr_1791126665783",
+        "orderId": "ord_1791126728498",
+        "createdAt": "2026-10-04T15:12:08.472Z",
+        "orderNumber": "ord_1791126728498"
+      }
+    ],
+    "deliverables": [
+      {
+        "id": "deliv_1791285387401_z7pza",
+        "name": "Screenshot 2026 09 30 165424",
+        "fileName": "Screenshot 2026-09-30 165424.png",
+        "mimeType": "image/png",
+        "size": "33 KB",
+        "sizeBytes": 33400,
+        "storageKey": "deliverables/ord_1791126728498/1791285387279_Screenshot_2026-09-30_165424.png",
+        "url": "/api/orders/ord_1791126728498/deliverables/deliv_1791285387401_z7pza/download",
+        "isMandatory": true,
+        "uploadedAt": "2026-10-06T11:16:27.402Z"
+      }
+    ],
+    "createdAt": "2026-10-04T15:12:08.498Z",
+    "updatedAt": "2026-10-04T15:13:58.377Z",
+    "workerAcceptedAt": "2026-10-06T11:15:02.273Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-10-06T16:15:02.273Z",
+    "workStartedAt": "2026-10-06T11:15:20.588Z",
+    "receiptSubmittedAt": "2026-10-06T11:16:42.211Z",
+    "workCompletedAt": "2026-10-06T11:16:42.211Z",
+    "completionNote": ""
+  },
+  {
+    "id": "ord_1791286110638",
+    "orderNumber": "ord_1791286110638",
+    "customerId": "usr_1791285534929",
+    "customerName": "Karan Kumar",
+    "customerPhone": "9693553077",
+    "customerEmail": "kumarkaran762002@gmail.com",
+    "formData": {
+      "fullName": "Karan Kumar",
+      "email": "kumarkaran762002@gmail.com",
+      "phone": "9693553077",
+      "address": "hdcsyfghsnqiodu8",
+      "fatherName": "aushfabfn",
+      "dateOfBirth": "2026-10-07",
+      "gender": "Male",
+      "panType": "New PAN Card (Form 49A)"
+    },
+    "bookingDate": "Today",
+    "bookingTimeSlot": "",
+    "timeSlot": {
+      "date": "Today",
+      "startTime": "3:00 AM",
+      "endTime": "4:00 PM",
+      "timeSlotStr": "Today, 3:00 AM - 4:00 PM",
+      "status": "ACCEPTED",
+      "proposedBy": "worker-amit-01",
+      "proposedAt": "2026-10-06T11:30:41.232Z",
+      "rescheduleNote": null,
+      "acceptedAt": "2026-10-06T11:30:45.049Z"
+    },
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "COMPLETED",
+    "paymentStatus": "PAID",
+    "earningStatus": "RELEASED",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "fullName": "Karan Kumar",
+        "email": "kumarkaran762002@gmail.com",
+        "phone": "9693553077",
+        "address": "hdcsyfghsnqiodu8",
+        "fatherName": "aushfabfn",
+        "dateOfBirth": "2026-10-07",
+        "gender": "Male",
+        "panType": "New PAN Card (Form 49A)"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto",
+        "preferredWorkerId": ""
+      },
+      "expiresAt": "2026-10-07T11:28:30.637Z",
+      "scheduling": {
+        "timeSlot": "Today, 3:00 AM - 4:00 PM",
+        "date": "Today",
+        "startTime": "3:00 AM",
+        "endTime": "4:00 PM",
+        "status": "ACCEPTED",
+        "proposedBy": "worker-amit-01",
+        "proposedAt": "2026-10-06T11:30:41.233Z",
+        "rescheduleNote": null,
+        "acceptedAt": "2026-10-06T11:30:45.049Z"
+      },
+      "completion": {
+        "referenceNumber": "CCM-APP-110638",
+        "completionMessage": "Application successfully processed and submitted.",
+        "receiptUrl": "/api/orders/ord_1791286110638/deliverables/deliv_1791286328929_gv5h0/download",
+        "deliverableFiles": [
+          {
+            "id": "deliv_1791286328929_gv5h0",
+            "name": "Screenshot 2025 06 29 144153",
+            "fileName": "Screenshot 2025-06-29 144153.png",
+            "mimeType": "image/png",
+            "size": "211 KB",
+            "sizeBytes": 215914,
+            "storageKey": "deliverables/ord_1791286110638/1791286328798_Screenshot_2025-06-29_144153.png",
+            "url": "/api/orders/ord_1791286110638/deliverables/deliv_1791286328929_gv5h0/download",
+            "isMandatory": true,
+            "uploadedAt": "2026-10-06T11:32:08.929Z"
+          }
+        ]
+      },
+      "review": {
+        "rating": 4,
+        "comment": "sdfghj",
+        "createdAt": "2026-10-06T11:32:31.390Z"
+      }
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": "worker-amit-01",
+    "worker": {
+      "id": "worker-amit-01",
+      "name": "Amit Cyber Cafe & Digital Seva",
+      "phone": "9876543210",
+      "email": "amit.cyber@gmail.com"
+    },
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-10-06T11:28:30.638Z",
+    "payment": {
+      "status": "PAID",
+      "provider": "UPI",
+      "amountPaise": 19900,
+      "paidAt": "2026-10-06T11:28:30.638Z"
+    },
+    "documents": [
+      {
+        "id": "doc_1791285995604_dxi39",
+        "storageKey": "docs/usr_1791285534929/1791285995345_Screenshot_2025-06-29_142612.png",
+        "docName": "Aadhaar Card",
+        "name": "Aadhaar Card (Screenshot 2025-06-29 142612.png)",
+        "fileName": "Screenshot 2025-06-29 142612.png",
+        "url": "/api/documents/doc_1791285995604_dxi39/download",
+        "mimeType": "image/png",
+        "size": 216724,
+        "type": "UPLOAD",
+        "customerId": "usr_1791285534929",
+        "orderId": "ord_1791286110638",
+        "createdAt": "2026-10-06T11:26:35.604Z",
+        "orderNumber": "ord_1791286110638"
+      },
+      {
+        "id": "doc_1791286000238_dbsle",
+        "storageKey": "docs/usr_1791285534929/1791286000221_Screenshot_2025-06-29_140234.png",
+        "docName": "Passport Size Photo",
+        "name": "Passport Size Photo (Screenshot 2025-06-29 140234.png)",
+        "fileName": "Screenshot 2025-06-29 140234.png",
+        "url": "/api/documents/doc_1791286000238_dbsle/download",
+        "mimeType": "image/png",
+        "size": 218364,
+        "type": "UPLOAD",
+        "customerId": "usr_1791285534929",
+        "orderId": "ord_1791286110638",
+        "createdAt": "2026-10-06T11:26:40.238Z",
+        "orderNumber": "ord_1791286110638"
+      },
+      {
+        "id": "doc_1791286005066_jp909",
+        "storageKey": "docs/usr_1791285534929/1791286005027_Screenshot_2025-06-29_140426.png",
+        "docName": "Signature Specimen",
+        "name": "Signature Specimen (Screenshot 2025-06-29 140426.png)",
+        "fileName": "Screenshot 2025-06-29 140426.png",
+        "url": "/api/documents/doc_1791286005066_jp909/download",
+        "mimeType": "image/png",
+        "size": 215412,
+        "type": "UPLOAD",
+        "customerId": "usr_1791285534929",
+        "orderId": "ord_1791286110638",
+        "createdAt": "2026-10-06T11:26:45.066Z",
+        "orderNumber": "ord_1791286110638"
+      }
+    ],
+    "deliverables": [
+      {
+        "id": "deliv_1791286328929_gv5h0",
+        "name": "Screenshot 2025 06 29 144153",
+        "fileName": "Screenshot 2025-06-29 144153.png",
+        "mimeType": "image/png",
+        "size": "211 KB",
+        "sizeBytes": 215914,
+        "storageKey": "deliverables/ord_1791286110638/1791286328798_Screenshot_2025-06-29_144153.png",
+        "url": "/api/orders/ord_1791286110638/deliverables/deliv_1791286328929_gv5h0/download",
+        "isMandatory": true,
+        "uploadedAt": "2026-10-06T11:32:08.929Z"
+      }
+    ],
+    "createdAt": "2026-10-06T11:28:30.638Z",
+    "updatedAt": "2026-10-06T11:32:31.390Z",
+    "workerAcceptedAt": "2026-10-06T11:28:58.800Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-10-06T16:28:58.800Z",
+    "workStartedAt": "2026-10-06T11:30:53.947Z",
+    "receiptSubmittedAt": "2026-10-06T11:32:12.675Z",
+    "workCompletedAt": "2026-10-06T11:32:12.675Z",
+    "completionNote": "",
+    "completedAt": "2026-10-06T11:32:19.916Z",
+    "receiptDownloadedAt": "2026-10-06T11:32:19.916Z",
+    "rating": 4,
+    "review": "sdfghj"
+  },
+  {
+    "id": "ord_1791286599044",
+    "orderNumber": "ord_1791286599044",
+    "customerId": "usr_1791118201390",
+    "customerName": "xcvbn",
+    "customerPhone": "sdfghjk",
+    "customerEmail": "dfghj",
+    "formData": {
+      "fullName": "xcvbn",
+      "relativeName": "dfgh",
+      "dateOfBirth": "2026-10-07",
+      "gender": "Male",
+      "phone": "sdfghjk",
+      "email": "dfghj",
+      "voterServiceType": "Shifting of Residence (Form 8)",
+      "epicNumber": "sdfghj",
+      "address": "sdfgh"
+    },
+    "bookingDate": "Today",
+    "bookingTimeSlot": "10:30 AM - 12:00 PM",
+    "timeSlot": {
+      "date": "Today",
+      "timeSlotStr": "Today, 10:30 AM - 12:00 PM",
+      "startTime": "10:30 AM",
+      "endTime": "12:00 PM",
+      "status": "CONFIRMED",
+      "proposedBy": "CUSTOMER"
+    },
+    "serviceId": "voter-id",
+    "serviceName": "Voter ID Card Registration & Correction",
+    "category": "Government forms",
+    "status": "PAYMENT_PENDING",
+    "paymentStatus": "PENDING",
+    "earningStatus": "PENDING",
+    "workerAmount": 11920,
+    "adminCommission": 2980,
+    "platformFee": 0,
+    "customerPaidAmount": 14900,
+    "serviceSnapshot": {
+      "name": "Voter ID Card Registration & Correction",
+      "category": "Government forms",
+      "pricePaise": 14900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "relativeName",
+          "label": "Father's / Mother's / Husband's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "voterServiceType",
+          "label": "Voter Service",
+          "type": "select",
+          "options": [
+            "New Voter Registration (Form 6)",
+            "Shifting of Residence (Form 8)",
+            "Correction of Entries in Existing Card",
+            "e-EPIC Digital Download"
+          ],
+          "required": true
+        },
+        {
+          "id": "epicNumber",
+          "label": "Existing EPIC / Voter ID Number (if correction)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Current Residential Address (Assembly Constituency)",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "fullName": "xcvbn",
+        "relativeName": "dfgh",
+        "dateOfBirth": "2026-10-07",
+        "gender": "Male",
+        "phone": "sdfghjk",
+        "email": "dfghj",
+        "voterServiceType": "Shifting of Residence (Form 8)",
+        "epicNumber": "sdfghj",
+        "address": "sdfgh"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-07T11:36:39.044Z",
+      "scheduling": {
+        "status": "CONFIRMED",
+        "timeSlot": "Today, 10:30 AM - 12:00 PM",
+        "date": "Today",
+        "startTime": "10:30 AM",
+        "endTime": "12:00 PM",
+        "proposedBy": "CUSTOMER",
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 14900,
+    "workerEarningsPaise": 11920,
+    "pricing": {
+      "pricePaise": 14900,
+      "platformCommissionPaise": 2980,
+      "workerPayoutPaise": 11920
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": null,
+    "payment": {
+      "provider": "RAZORPAY",
+      "providerOrderId": "order_TkbmKo4o3tG8If",
+      "status": "PENDING",
+      "amountPaise": 14900
+    },
+    "documents": [
+      {
+        "id": "doc_1791286597451_i3a6u",
+        "storageKey": "docs/usr_1791118201390/1791286597360_Screenshot_2025-06-29_134612.png",
+        "docName": "Aadhaar Card",
+        "name": "Aadhaar Card (Screenshot 2025-06-29 134612.png)",
+        "fileName": "Screenshot 2025-06-29 134612.png",
+        "url": "/api/documents/doc_1791286597451_i3a6u/download",
+        "mimeType": "image/png",
+        "size": 216146,
+        "type": "UPLOAD",
+        "customerId": "usr_1791118201390",
+        "orderId": "ord_1791286599044",
+        "createdAt": "2026-10-06T11:36:37.451Z",
+        "orderNumber": "ord_1791286599044"
+      },
+      {
+        "id": "doc_1791286598997_f4mrn",
+        "storageKey": "docs/usr_1791118201390/1791286598977_Screenshot_2025-06-29_140234.png",
+        "docName": "Passport Photo",
+        "name": "Passport Photo (Screenshot 2025-06-29 140234.png)",
+        "fileName": "Screenshot 2025-06-29 140234.png",
+        "url": "/api/documents/doc_1791286598997_f4mrn/download",
+        "mimeType": "image/png",
+        "size": 218364,
+        "type": "UPLOAD",
+        "customerId": "usr_1791118201390",
+        "orderId": "ord_1791286599044",
+        "createdAt": "2026-10-06T11:36:38.997Z",
+        "orderNumber": "ord_1791286599044"
+      },
+      {
+        "id": "doc_1791286599025_fkr4k",
+        "storageKey": "docs/usr_1791118201390/1791286599014_Screenshot_2025-06-29_140234.png",
+        "docName": "Age Proof / Birth Certificate",
+        "name": "Age Proof / Birth Certificate (Screenshot 2025-06-29 140234.png)",
+        "fileName": "Screenshot 2025-06-29 140234.png",
+        "url": "/api/documents/doc_1791286599025_fkr4k/download",
+        "mimeType": "image/png",
+        "size": 218364,
+        "type": "UPLOAD",
+        "customerId": "usr_1791118201390",
+        "orderId": "ord_1791286599044",
+        "createdAt": "2026-10-06T11:36:39.025Z",
+        "orderNumber": "ord_1791286599044"
+      }
+    ],
+    "deliverables": [],
+    "createdAt": "2026-10-06T11:36:39.044Z",
+    "updatedAt": "2026-10-06T11:36:39.045Z"
   }
 ]

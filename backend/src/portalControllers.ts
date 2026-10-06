@@ -782,6 +782,21 @@ export const workerController = {
     }
   },
 
+  replySupportTicket: async (req: Request, res: Response) => {
+    try {
+      const workerId = (req as any).user.id;
+      const ticketId = req.params.id as string;
+      const { message } = req.body;
+      if (!message || !message.trim()) {
+        return res.status(400).json({ success: false, error: 'Reply message is required' });
+      }
+      const ticket = localStore.addWorkerTicketReply(ticketId, workerId, message.trim());
+      return res.json({ success: true, ticket, message: 'Reply sent successfully' });
+    } catch (e: any) {
+      return res.status(400).json({ success: false, error: e.message });
+    }
+  },
+
   getProfile: async (req: Request, res: Response) => {
     try {
       const workerId = (req as any).user.id;
@@ -828,8 +843,44 @@ export const adminController = {
   // 1. Dashboard
   getDashboardStats: async (req: Request, res: Response) => {
     try {
+      if (await checkDb()) {
+        try {
+          const [totalCustomers, totalWorkers, activeOrders, pendingWithdrawals, paidPayments, complaintsCount] = await Promise.all([
+            prisma.user.count({ where: { role: 'CUSTOMER' } }),
+            prisma.user.count({ where: { role: 'WORKER' } }),
+            prisma.order.count({
+              where: {
+                status: { in: ['ACCEPTED', 'IN_PROGRESS', 'RECEIPT_SUBMITTED', 'WAITING_FOR_CUSTOMER' as any] }
+              }
+            }),
+            prisma.withdrawal.count({ where: { status: { in: ['PENDING', 'REQUESTED'] } } }),
+            prisma.payment.aggregate({
+              _sum: { amountPaise: true },
+              where: { status: 'PAID' }
+            }),
+            prisma.complaint.count({
+              where: { status: { in: ['OPEN', 'UNDER_REVIEW'] } }
+            })
+          ]);
+          const revenuePaise = paidPayments._sum.amountPaise || 0;
+          const stats = {
+            totalCustomers,
+            totalWorkers,
+            activeOrders,
+            pendingWithdrawals,
+            totalRevenue: revenuePaise / 100,
+            totalRevenuePaise: revenuePaise,
+            revenuePaise,
+            totalOrders: await prisma.order.count(),
+            complaintsDisputes: complaintsCount,
+            activeComplaints: complaintsCount,
+            pendingProposals: await prisma.serviceProposal.count({ where: { status: 'PENDING_APPROVAL' } })
+          };
+          return res.json({ success: true, stats, ...stats });
+        } catch {}
+      }
       const stats = localStore.getAdminDashboardStats();
-      return res.json({ success: true, stats });
+      return res.json({ success: true, stats, ...stats });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e.message });
     }
@@ -838,8 +889,31 @@ export const adminController = {
   // 2. Worker Management
   getWorkers: async (req: Request, res: Response) => {
     try {
-      const status = req.query.status as string;
-      const search = req.query.search as string;
+      let status = (req.query.status as string) || '';
+      if (status === 'ALL' || status === 'All Status' || status === 'undefined') {
+        status = '';
+      }
+      const search = (req.query.search as string) || '';
+      if (await checkDb()) {
+        try {
+          const where: any = { role: 'WORKER' };
+          if (status) where.status = status;
+          if (search.trim()) {
+            const term = search.trim();
+            where.OR = [
+              { name: { contains: term, mode: 'insensitive' } },
+              { email: { contains: term, mode: 'insensitive' } },
+              { phone: { contains: term, mode: 'insensitive' } },
+              { id: { contains: term, mode: 'insensitive' } },
+              { businessName: { contains: term, mode: 'insensitive' } }
+            ];
+          }
+          const dbWorkers = await prisma.user.findMany({ where, orderBy: { createdAt: 'desc' } });
+          if (dbWorkers && dbWorkers.length > 0) {
+            return res.json({ success: true, workers: dbWorkers });
+          }
+        } catch {}
+      }
       const workers = localStore.getAllWorkersAdmin({ status, search });
       return res.json({ success: true, workers });
     } catch (e: any) {
@@ -926,6 +1000,33 @@ export const adminController = {
         return res.status(409).json({ success: false, error: `Email "${emailLower}" is already in use by another account` });
       }
 
+      // Handle real file uploads if provided via Multer
+      let idProofUrl = (idProof as string) || '';
+      let photoUrl = (photo as string) || '';
+
+      if (req.files && Array.isArray(req.files)) {
+        for (const file of req.files as Express.Multer.File[]) {
+          const fileKey = `workers/${workerId}/${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+          try {
+            await storage.upload(fileKey, file.buffer, file.mimetype);
+          } catch {}
+          fileBufferStore.set(fileKey, {
+            buffer: file.buffer,
+            mimeType: file.mimetype,
+            fileName: file.originalname,
+            originalName: file.originalname,
+            size: file.size,
+            createdAt: Date.now()
+          });
+          const streamUrl = `/api/documents/stream/${encodeURIComponent(fileKey)}`;
+          if (file.fieldname === 'idProofFile' || file.fieldname === 'idProof') {
+            idProofUrl = streamUrl;
+          } else if (file.fieldname === 'photoFile' || file.fieldname === 'photo') {
+            photoUrl = streamUrl;
+          }
+        }
+      }
+
       // 3. Database uniqueness and creation if DB is online
       const hashedPassword = await bcrypt.hash(pass, 10);
       try {
@@ -950,7 +1051,11 @@ export const adminController = {
               name,
               password: hashedPassword,
               role: 'WORKER',
-              phone
+              phone,
+              profileImage: photoUrl || undefined,
+              businessName,
+              address,
+              city
             }
           });
 
@@ -981,8 +1086,8 @@ export const adminController = {
         address,
         city,
         skills,
-        idProof,
-        photo,
+        idProof: idProofUrl,
+        photo: photoUrl,
         accountNumber,
         ifsc,
         accountHolderName,
@@ -994,6 +1099,32 @@ export const adminController = {
         success: true,
         worker,
         message: `Worker account created successfully! User ID: ${workerId}`
+      });
+    } catch (e: any) {
+      return res.status(400).json({ success: false, error: e.message });
+    }
+  },
+
+  resetWorkerPassword: async (req: Request, res: Response) => {
+    try {
+      const workerId = req.params.id as string;
+      const { newPassword } = req.body || {};
+      const tempPassword = newPassword || `Temp@${Math.floor(100000 + Math.random() * 900000)}`;
+      const result = await localStore.resetWorkerPasswordAdmin(workerId, tempPassword);
+      try {
+        if (await checkDb()) {
+          const hashedPassword = await bcrypt.hash(tempPassword, 10);
+          await prisma.user.updateMany({
+            where: { OR: [{ id: workerId }, { email: workerId }] },
+            data: { password: hashedPassword }
+          });
+        }
+      } catch {}
+      return res.json({
+        success: true,
+        message: `Temporary password reset successfully to: ${tempPassword}`,
+        tempPassword,
+        worker: (result as any)?.worker || localStore.getWorker(workerId)
       });
     } catch (e: any) {
       return res.status(400).json({ success: false, error: e.message });
@@ -1057,8 +1188,30 @@ export const adminController = {
   // 3. Customer Management
   getCustomers: async (req: Request, res: Response) => {
     try {
-      const status = req.query.status as string;
-      const search = req.query.search as string;
+      let status = (req.query.status as string) || '';
+      if (status === 'ALL' || status === 'All Status' || status === 'undefined') {
+        status = '';
+      }
+      const search = (req.query.search as string) || '';
+      if (await checkDb()) {
+        try {
+          const where: any = { role: 'CUSTOMER' };
+          if (status) where.status = status;
+          if (search.trim()) {
+            const term = search.trim();
+            where.OR = [
+              { name: { contains: term, mode: 'insensitive' } },
+              { email: { contains: term, mode: 'insensitive' } },
+              { phone: { contains: term, mode: 'insensitive' } },
+              { id: { contains: term, mode: 'insensitive' } }
+            ];
+          }
+          const dbCustomers = await prisma.user.findMany({ where, orderBy: { createdAt: 'desc' } });
+          if (dbCustomers && dbCustomers.length > 0) {
+            return res.json({ success: true, customers: dbCustomers });
+          }
+        } catch {}
+      }
       const customers = localStore.getAllCustomersAdmin({ status, search });
       return res.json({ success: true, customers });
     } catch (e: any) {
@@ -1090,8 +1243,34 @@ export const adminController = {
   // 4. Order Management & Administrative Overrides
   getOrders: async (req: Request, res: Response) => {
     try {
-      const status = req.query.status as string;
-      const search = req.query.search as string;
+      let status = (req.query.status as string) || '';
+      if (status === 'ALL' || status === 'All Status' || status === 'undefined') {
+        status = '';
+      }
+      const search = (req.query.search as string) || '';
+      if (await checkDb()) {
+        try {
+          const where: any = {};
+          if (status) where.status = status;
+          if (search.trim()) {
+            const term = search.trim();
+            where.OR = [
+              { orderNumber: { contains: term, mode: 'insensitive' } },
+              { id: { contains: term, mode: 'insensitive' } },
+              { customer: { name: { contains: term, mode: 'insensitive' } } },
+              { assignedWorker: { name: { contains: term, mode: 'insensitive' } } }
+            ];
+          }
+          const dbOrders = await prisma.order.findMany({
+            where,
+            include: { customer: true, assignedWorker: true, service: true },
+            orderBy: { createdAt: 'desc' }
+          });
+          if (dbOrders && dbOrders.length > 0) {
+            return res.json({ success: true, orders: dbOrders });
+          }
+        } catch {}
+      }
       const orders = localStore.getAllOrdersAdmin({ status, search });
       return res.json({ success: true, orders });
     } catch (e: any) {
@@ -1269,7 +1448,48 @@ export const adminController = {
   approveProposal: async (req: Request, res: Response) => {
     try {
       const adminId = (req as any).user?.id || 'ADM-001';
-      const result = localStore.approveProposalAdmin(req.params.id as string, adminId);
+      const result = localStore.approveProposalAdmin(req.params.id as string, adminId, req.body);
+      try {
+        if (await checkDb()) {
+          const s = result.newService;
+          await prisma.service.upsert({
+            where: { id: s.id },
+            create: {
+              id: s.id,
+              name: s.name,
+              description: s.description || '',
+              category: s.category || 'General',
+              pricePaise: s.pricePaise || 0,
+              workerAmountPaise: s.workerAmountPaise || 0,
+              platformFeePaise: s.platformFeePaise || 0,
+              adminCommissionPaise: s.adminCommissionPaise || s.platformFeePaise || 0,
+              estimatedTime: s.estimatedTime || '1-2 days',
+              requiredDocuments: Array.isArray(s.requiredDocuments) ? s.requiredDocuments : [],
+              status: 'ACTIVE',
+              approvalStatus: 'APPROVED'
+            },
+            update: {
+              name: s.name,
+              description: s.description || '',
+              category: s.category || 'General',
+              pricePaise: s.pricePaise || 0,
+              workerAmountPaise: s.workerAmountPaise || 0,
+              platformFeePaise: s.platformFeePaise || 0,
+              adminCommissionPaise: s.adminCommissionPaise || s.platformFeePaise || 0,
+              estimatedTime: s.estimatedTime || '1-2 days',
+              requiredDocuments: Array.isArray(s.requiredDocuments) ? s.requiredDocuments : [],
+              status: 'ACTIVE',
+              approvalStatus: 'APPROVED'
+            }
+          });
+          await prisma.serviceProposal.updateMany({
+            where: { id: req.params.id as string },
+            data: { status: 'APPROVED' }
+          });
+        }
+      } catch (err: any) {
+        console.warn('[AdminController] DB proposal sync:', err.message);
+      }
       return res.json({ success: true, ...result, message: 'Service proposal approved and published to customer catalog' });
     } catch (e: any) {
       return res.status(400).json({ success: false, error: e.message });
@@ -1332,7 +1552,7 @@ export const adminController = {
   getWithdrawals: async (req: Request, res: Response) => {
     try {
       const withdrawals = localStore.getAllWithdrawalsAdmin();
-      return res.json({ success: true, withdrawals });
+      return res.json({ success: true, withdrawals, payouts: withdrawals });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e.message });
     }
@@ -1525,10 +1745,20 @@ export const adminController = {
   // 7. Complaints & Disputes
   getComplaints: async (req: Request, res: Response) => {
     try {
-      const type = req.query.type as string;
-      const status = req.query.status as string;
-      const search = req.query.search as string;
-      const complaints = localStore.getAllComplaintsAdmin({ type, status, search });
+      let type = (req.query.type as string) || (req.query.role as string) || '';
+      if (type === 'ALL' || type === 'All Roles' || type === 'undefined') {
+        type = '';
+      }
+      let status = (req.query.status as string) || '';
+      if (status === 'ALL' || status === 'All Status' || status === 'undefined') {
+        status = '';
+      }
+      let category = (req.query.category as string) || '';
+      if (category === 'ALL' || category === 'All Categories' || category === 'undefined') {
+        category = '';
+      }
+      const search = (req.query.search as string) || '';
+      const complaints = localStore.getAllComplaintsAdmin({ type, status, category, search });
       return res.json({ success: true, complaints });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e.message });
@@ -1572,9 +1802,9 @@ export const adminController = {
   resolveComplaint: async (req: Request, res: Response) => {
     try {
       const complaintId = req.params.id as string;
-      const { decision, resolutionNote } = req.body;
-      if (!resolutionNote) return res.status(400).json({ success: false, error: 'Resolution explanation is required' });
-      const complaint = localStore.resolveComplaintAdmin(complaintId, decision || 'RESOLVED', resolutionNote);
+      const { decision, resolutionNote } = req.body || {};
+      const note = resolutionNote || 'Resolved by Administrator';
+      const complaint = localStore.resolveComplaintAdmin(complaintId, decision || 'RESOLVED', note);
       return res.json({ success: true, complaint, message: 'Complaint marked as resolved' });
     } catch (e: any) {
       return res.status(400).json({ success: false, error: e.message });
@@ -1584,9 +1814,11 @@ export const adminController = {
   // 8. Help & Support Desk
   getSupportTickets: async (req: Request, res: Response) => {
     try {
-      const role = req.query.role as string;
-      const status = req.query.status as string;
-      const search = req.query.search as string;
+      let role = (req.query.role as string) || '';
+      if (role === 'ALL' || role === 'All Roles' || role === 'undefined') role = '';
+      let status = (req.query.status as string) || '';
+      if (status === 'ALL' || status === 'All Status' || status === 'undefined') status = '';
+      const search = (req.query.search as string) || '';
       const tickets = localStore.getAllSupportTicketsAdmin({ role, status, search });
       return res.json({ success: true, tickets });
     } catch (e: any) {

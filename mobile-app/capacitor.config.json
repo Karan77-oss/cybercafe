@@ -1,0 +1,9 @@
+{
+  "appId": "com.cybercafe.customerapp",
+  "appName": "Cyber Cafe App",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}

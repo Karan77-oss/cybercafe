@@ -42,7 +42,11 @@ export default function Customers() {
 
   const loadCustomers = () => {
     setLoading(true);
-    adminApi.getCustomers({ status: statusFilter === 'ALL' ? undefined : statusFilter, q: searchTerm || undefined })
+    adminApi.getCustomers({ 
+      status: statusFilter === 'ALL' ? undefined : statusFilter, 
+      q: searchTerm || undefined,
+      search: searchTerm || undefined 
+    })
       .then(res => {
         setCustomers(res.customers || []);
         setLoading(false);
@@ -225,10 +229,10 @@ export default function Customers() {
                   <td>
                     <button 
                       className="btn btn-outline" 
-                      style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                      style={{ padding: '4px 10px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                       onClick={() => openCustomerDetail(c.id)}
                     >
-                      Inspect
+                      Inspect Customer
                     </button>
                   </td>
                 </tr>
@@ -340,7 +344,7 @@ export default function Customers() {
                   </div>
                 </div>
 
-                {/* Profile Information */}
+                {/* Profile Information & Lifetime Spend */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px', fontSize: '0.85rem' }}>
                   <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '6px' }}>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '4px' }}>CONTACT</div>
@@ -351,6 +355,18 @@ export default function Customers() {
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '4px' }}>ACCOUNT INFO</div>
                     <div><strong>Joined:</strong> {customerDetail.customer?.createdAt ? new Date(customerDetail.customer.createdAt).toLocaleDateString() : 'N/A'}</div>
                     <div><strong>Role:</strong> Platform Customer</div>
+                  </div>
+                  <div style={{ padding: '12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px' }}>
+                    <div style={{ color: '#15803d', fontSize: '0.75rem', marginBottom: '4px', fontWeight: 600 }}>TOTAL SPENT</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#16a34a' }}>
+                      ₹{(((customerDetail.customer?.totalSpentPaise || 0)) / 100).toFixed(2)}
+                    </div>
+                  </div>
+                  <div style={{ padding: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px' }}>
+                    <div style={{ color: '#1d4ed8', fontSize: '0.75rem', marginBottom: '4px', fontWeight: 600 }}>ORDER ACTIVITY</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#2563eb' }}>
+                      {customerDetail.orders?.length || customerDetail.customer?.ordersCount || 0} Orders
+                    </div>
                   </div>
                 </div>
 

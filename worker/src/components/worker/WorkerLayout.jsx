@@ -227,9 +227,17 @@ export default function WorkerLayout() {
                   <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{user?.name || 'Worker'}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Verified Worker</div>
                 </div>
-                <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--brand-blue)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <User size={20} />
-                </div>
+                {user?.photo || user?.profileImage || user?.profilePic ? (
+                  <img 
+                    src={user.photo || user.profileImage || user.profilePic} 
+                    alt="" 
+                    style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover' }} 
+                  />
+                ) : (
+                  <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--brand-blue)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <User size={20} />
+                  </div>
+                )}
               </div>
               
               {dropdownOpen && (

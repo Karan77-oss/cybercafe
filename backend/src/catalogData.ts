@@ -8,6 +8,9 @@ export interface ServiceItem {
   description: string;
   category: string;
   pricePaise: number;
+  workerAmountPaise?: number;
+  platformFeePaise?: number;
+  adminCommissionPaise?: number;
   estimatedTime: string;
   requiredDocuments: string[];
   formSchema?: any[];
@@ -26,6 +29,7 @@ export interface WorkerItem {
   email: string;
   phone: string;
   businessName?: string;
+  outletName?: string;
   address?: string;
   city?: string;
   skills?: string[];
@@ -39,6 +43,8 @@ export interface WorkerItem {
   };
   activeJobs: number;
   completedJobs: number;
+  completedOrders?: number;
+  totalPaidEarningsPaise?: number;
   rating: number;
   isOnline: boolean;
   accountStatus: 'ACTIVE' | 'PENDING' | 'OFFLINE' | 'SUSPENDED' | 'BLOCKED' | 'PAUSED' | 'DELETED';
@@ -152,10 +158,10 @@ export interface ComplaintItem {
   orderId?: string;
   subject: string;
   description: string;
-  status: 'Open' | 'In Progress' | 'Resolved';
+  status: 'Open' | 'In Progress' | 'Resolved' | 'RESOLVED' | string;
   resolution?: string;
   internalNotes?: Array<{ note: string; createdAt: string; adminName: string }>;
-  replies?: Array<{ sender: 'ADMIN' | 'CUSTOMER' | 'WORKER'; message: string; createdAt: string }>;
+  replies?: Array<{ sender?: 'ADMIN' | 'CUSTOMER' | 'WORKER' | string; author?: string; message: string; createdAt: string }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -196,8 +202,10 @@ export interface ServiceProposalItem {
   description: string;
   category: string;
   suggestedPricePaise: number;
+  requestedWorkerAmountPaise?: number;
   estimatedTime: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requiredDocuments?: string[];
+  status: 'PENDING' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | string;
   adminComment?: string;
   createdAt: string;
 }
@@ -740,6 +748,20 @@ class ResilientStore {
       });
     }
 
+    const adminDemoHash = bcrypt.hashSync('password123', 10);
+    this.users.set('ADM-001', {
+      id: 'ADM-001',
+      adminId: 'ADM-001',
+      email: 'admin@cybercafe.com',
+      name: 'Central Administrator',
+      phone: '9876543200',
+      role: 'ADMIN',
+      password: adminDemoHash,
+      passwordHash: adminDemoHash,
+      accountStatus: 'ACTIVE',
+      createdAt: new Date().toISOString()
+    });
+
     // Seed default verified workers as users
     this.workers.forEach(w => {
       this.users.set(w.id, {
@@ -887,10 +909,22 @@ class ResilientStore {
     return undefined;
   }
 
+  findUserByPhone(phone: string): any | undefined {
+    if (!phone) return undefined;
+    const clean = phone.replace(/\D/g, '');
+    for (const u of this.users.values()) {
+      if (u.phone && (u.phone === phone || (clean && u.phone.replace(/\D/g, '') === clean))) {
+        return u;
+      }
+    }
+    return undefined;
+  }
+
   findUserById(id: string): any | undefined {
     if (!id) return undefined;
     if (this.users.has(id)) return this.users.get(id);
     const idLower = id.toLowerCase();
+    const cleanId = id.replace(/\D/g, '');
     for (const u of this.users.values()) {
       if (
         (u.id && u.id.toLowerCase() === idLower) ||
@@ -898,7 +932,8 @@ class ResilientStore {
         (u.workerId && u.workerId.toLowerCase() === idLower) ||
         (u.username && u.username.toLowerCase() === idLower) ||
         (u.email && u.email.toLowerCase() === idLower) ||
-        (u.name && u.name.toLowerCase() === idLower)
+        (u.name && u.name.toLowerCase() === idLower) ||
+        (u.phone && (u.phone === id || (cleanId.length >= 10 && u.phone.replace(/\D/g, '') === cleanId)))
       ) {
         return u;
       }
@@ -2246,7 +2281,8 @@ class ResilientStore {
     const onlineWorkers = this.workers.filter(w => w.isOnline).length;
     
     const allOrders = Array.from(this.orders.values());
-    const activeOrders = allOrders.filter(o => ['ACCEPTED', 'IN_PROGRESS', 'CORRECTION_REQUIRED'].includes(o.status)).length;
+    // Active orders include ACCEPTED, IN_PROGRESS, RECEIPT_SUBMITTED, CORRECTION_REQUIRED
+    const activeOrders = allOrders.filter(o => ['ACCEPTED', 'IN_PROGRESS', 'RECEIPT_SUBMITTED', 'CORRECTION_REQUIRED'].includes(o.status)).length;
     const availableOrders = allOrders.filter(o => ['AVAILABLE', 'OFFERED'].includes(o.status)).length;
     const completedOrdersList = allOrders.filter(o => o.status === 'COMPLETED');
     const completedOrders = completedOrdersList.length;
@@ -2260,20 +2296,27 @@ class ResilientStore {
     });
 
     const pendingWithdrawals = Array.from(this.withdrawals.values()).filter(w => w.status === 'PENDING').length;
-    const complaintsDisputes = Array.from(this.complaints.values()).filter(c => c.status !== 'Resolved').length;
+    const complaintsDisputes = Array.from(this.complaints.values()).filter(c => (c.status as string) !== 'RESOLVED' && (c.status as string) !== 'Resolved').length;
 
     let totalRevenuePaise = 0;
     let totalCommissionPaise = 0;
-    completedOrdersList.forEach(o => {
-      totalRevenuePaise += (o.pricePaise || 0);
-      totalCommissionPaise += (o.commissionPaise || Math.round((o.pricePaise || 0) * 0.2));
-    });
+    const paymentsMap = (this as any).payments;
+    const paidPayments: any[] = paymentsMap ? Array.from(paymentsMap.values()).filter((p: any) => p.status === 'PAID') : [];
+    if (paidPayments.length > 0) {
+      totalRevenuePaise = paidPayments.reduce((sum: number, p: any) => sum + (Number(p.amountPaise) || 0), 0);
+      totalCommissionPaise = Math.round(totalRevenuePaise * 0.2);
+    } else {
+      completedOrdersList.forEach(o => {
+        totalRevenuePaise += (o.pricePaise || 0);
+        totalCommissionPaise += (o.commissionPaise || o.adminCommissionPaise || Math.round((o.pricePaise || 0) * 0.2));
+      });
+    }
 
     const todayStr = new Date().toISOString().split('T')[0];
     const todayOrders = allOrders.filter(o => o.createdAt && o.createdAt.startsWith(todayStr));
     const todayEarningsPaise = completedOrdersList
       .filter(o => o.completedAt && o.completedAt.startsWith(todayStr))
-      .reduce((sum, o) => sum + (o.workerEarningsPaise || Math.round((o.pricePaise || 0) * 0.8)), 0);
+      .reduce((sum, o) => sum + (o.workerAmountPaise || o.workerEarningsPaise || Math.round((o.pricePaise || 0) * 0.8)), 0);
 
     return {
       totalCustomers,
@@ -2305,6 +2348,7 @@ class ResilientStore {
         accountStatus: accStatus as any,
         isOnline: w.isOnline,
         idVerified: w.idVerified ?? (accStatus === 'ACTIVE'),
+        outletName: w.outletName || w.businessName || 'Cyber Cafe Outlet',
         workerProfile: w.workerProfile || {
           idVerified: accStatus === 'ACTIVE',
           businessName: w.businessName,
@@ -2316,17 +2360,20 @@ class ResilientStore {
       };
     });
 
-    if (filter?.status && filter.status !== 'ALL') {
-      list = list.filter(w => w.accountStatus === filter.status);
+    const status = filter?.status;
+    if (status && status !== 'ALL' && status !== 'All Status' && status !== 'undefined') {
+      list = list.filter(w => w.accountStatus === status || w.status === status);
     }
 
     if (filter?.search) {
-      const q = filter.search.toLowerCase();
+      const q = filter.search.toLowerCase().trim();
       list = list.filter(w => 
-        w.id.toLowerCase().includes(q) ||
-        w.name.toLowerCase().includes(q) ||
-        (w.phone && w.phone.includes(q)) ||
+        (w.name && w.name.toLowerCase().includes(q)) ||
         (w.email && w.email.toLowerCase().includes(q)) ||
+        (w.phone && w.phone.includes(q)) ||
+        w.id.toLowerCase().includes(q) ||
+        (w.outletName && w.outletName.toLowerCase().includes(q)) ||
+        (w.businessName && w.businessName.toLowerCase().includes(q)) ||
         (w.city && w.city.toLowerCase().includes(q))
       );
     }
@@ -2604,6 +2651,13 @@ class ResilientStore {
     };
 
     const orders = Array.from(this.orders.values()).filter(o => o.assignedWorkerId === workerId);
+    const completedOrdersList = orders.filter(o => o.status === 'COMPLETED');
+    const totalEarningsPaise = completedOrdersList.reduce((sum, o) => sum + (o.workerAmountPaise || o.workerEarningsPaise || Math.round((o.pricePaise || 0) * 0.8)), 0);
+    worker.completedJobs = completedOrdersList.length;
+    worker.completedOrders = completedOrdersList.length;
+    worker.totalEarningsPaise = totalEarningsPaise;
+    worker.totalPaidEarningsPaise = totalEarningsPaise;
+
     const complaints = Array.from(this.complaints.values()).filter(c => 
       (c.complainantId === workerId && c.type === 'WORKER') || 
       (orders.some(o => o.id === c.orderId))
@@ -2616,7 +2670,16 @@ class ResilientStore {
       orders,
       complaints,
       activityLogs,
-      proposals
+      proposals,
+      earnings: {
+        totalEarnedPaise: totalEarningsPaise,
+        availableBalancePaise: worker.walletBalancePaise || 0,
+        heldBalancePaise: worker.onHoldEarningsPaise || 0
+      },
+      performance: {
+        completedOrders: completedOrdersList.length,
+        rating: worker.rating || 5.0
+      }
     };
   }
 
@@ -2629,13 +2692,15 @@ class ResilientStore {
           .filter(o => o.status === 'COMPLETED')
           .reduce((sum, o) => sum + (o.pricePaise || 0), 0);
 
+        const currentStatus = u.accountStatus || (u as any).status || 'ACTIVE';
         return {
           id: u.id,
           name: u.name,
           email: u.email,
           phone: u.phone,
           address: u.address,
-          accountStatus: u.accountStatus || 'ACTIVE',
+          status: currentStatus,
+          accountStatus: currentStatus,
           ordersCount: custOrders.length,
           totalSpentPaise,
           createdAt: u.createdAt
@@ -2643,26 +2708,28 @@ class ResilientStore {
       });
 
     let list = customers;
-    if (filter?.status && filter.status !== 'ALL') {
-      list = list.filter(c => c.accountStatus === filter.status);
+    const status = filter?.status;
+    if (status && status !== 'ALL' && status !== 'All Status' && status !== 'undefined') {
+      list = list.filter(c => c.accountStatus === status || c.status === status);
     }
     if (filter?.search) {
-      const q = filter.search.toLowerCase();
+      const q = filter.search.toLowerCase().trim();
       list = list.filter(c =>
-        c.id.toLowerCase().includes(q) ||
-        c.name.toLowerCase().includes(q) ||
+        (c.name && c.name.toLowerCase().includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q)) ||
         (c.phone && c.phone.includes(q)) ||
-        (c.email && c.email.toLowerCase().includes(q))
+        c.id.toLowerCase().includes(q)
       );
     }
     return list;
   }
 
-  setCustomerStatusAdmin(customerId: string, status: 'ACTIVE' | 'BLOCKED' | 'DEACTIVATED', reason?: string) {
+  setCustomerStatusAdmin(customerId: string, status: 'ACTIVE' | 'BLOCKED' | 'DEACTIVATED' | 'SUSPENDED', reason?: string) {
     const user = this.users.get(customerId);
     if (!user) throw new Error('Customer not found');
 
-    user.accountStatus = status;
+    user.accountStatus = status as any;
+    (user as any).status = status;
 
     this.addAuditLog({
       actorUserId: 'ADM-001',
@@ -2707,6 +2774,7 @@ class ResilientStore {
       const customer = this.users.get(o.customerId);
       return {
         ...o,
+        orderNumber: o.orderNumber || o.id,
         pricePaise: o.pricePaise || (o.pricing as any)?.pricePaise || 0,
         workerEarningsPaise: o.workerEarningsPaise || (o.pricing as any)?.workerPayoutPaise || 0,
         workerName: worker?.name || o.workerName || (o.assignedWorkerId ? 'Worker' : null),
@@ -2715,17 +2783,19 @@ class ResilientStore {
       };
     });
 
-    if (filter?.status && filter.status !== 'ALL') {
-      list = list.filter(o => o.status === filter.status);
+    const status = filter?.status;
+    if (status && status !== 'ALL' && status !== 'All Status' && status !== 'undefined') {
+      list = list.filter(o => o.status === status);
     }
 
     if (filter?.search) {
-      const q = filter.search.toLowerCase();
+      const q = filter.search.toLowerCase().trim();
       list = list.filter(o =>
+        (o.orderNumber && o.orderNumber.toLowerCase().includes(q)) ||
         o.id.toLowerCase().includes(q) ||
-        (o.serviceName && o.serviceName.toLowerCase().includes(q)) ||
         (o.customerName && o.customerName.toLowerCase().includes(q)) ||
-        (o.workerName && o.workerName.toLowerCase().includes(q))
+        (o.workerName && o.workerName.toLowerCase().includes(q)) ||
+        (o.serviceName && o.serviceName.toLowerCase().includes(q))
       );
     }
 
@@ -3139,20 +3209,31 @@ class ResilientStore {
     }
 
     const id = data.id || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const pricePaise = Number(data.pricePaise);
+    const workerAmountPaise = data.workerAmountPaise !== undefined 
+      ? Number(data.workerAmountPaise) 
+      : (data.workerAmount !== undefined ? Number(data.workerAmount) * 100 : Math.round(pricePaise * 0.8));
+    const platformFeePaise = data.platformFeePaise !== undefined 
+      ? Number(data.platformFeePaise) 
+      : (data.platformFee !== undefined ? Number(data.platformFee) * 100 : Math.max(0, pricePaise - workerAmountPaise));
+
     const newService: ServiceItem = {
       id,
       name: data.name,
       description: data.description || '',
       category: data.category,
-      pricePaise: Number(data.pricePaise),
+      pricePaise,
       estimatedTime: data.estimatedTime || '24-48 Hours',
-      requiredDocuments: data.requiredDocuments || ['Aadhaar Card'],
+      requiredDocuments: Array.isArray(data.requiredDocuments) ? data.requiredDocuments : (data.requiredDocuments ? String(data.requiredDocuments).split(',').map(s => s.trim()).filter(Boolean) : ['Aadhaar Card']),
       formSchema: data.formSchema || [],
       status: 'ACTIVE',
       approvalStatus: 'APPROVED',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
+    (newService as any).workerAmountPaise = workerAmountPaise;
+    (newService as any).platformFeePaise = platformFeePaise;
+    (newService as any).adminCommissionPaise = platformFeePaise;
 
     this.services.unshift(newService);
 
@@ -3162,22 +3243,31 @@ class ResilientStore {
       action: 'SERVICE_CREATED',
       entityType: 'SERVICE',
       entityId: id,
-      metadata: { name: newService.name, pricePaise: newService.pricePaise }
+      metadata: { name: newService.name, pricePaise: newService.pricePaise, workerAmountPaise, platformFeePaise }
     });
 
     return newService;
   }
 
-  updateOfficialServiceAdmin(serviceId: string, updates: Partial<ServiceItem>) {
+  updateOfficialServiceAdmin(serviceId: string, updates: Partial<ServiceItem> & any) {
     const service = this.getService(serviceId);
     if (!service) throw new Error('Service not found');
 
     if (updates.name) service.name = updates.name;
-    if (updates.description) service.description = updates.description;
+    if (updates.description !== undefined) service.description = updates.description;
     if (updates.category) service.category = updates.category;
     if (updates.pricePaise !== undefined) service.pricePaise = Number(updates.pricePaise);
+    if (updates.workerAmountPaise !== undefined) (service as any).workerAmountPaise = Number(updates.workerAmountPaise);
+    if (updates.platformFeePaise !== undefined) {
+      (service as any).platformFeePaise = Number(updates.platformFeePaise);
+      (service as any).adminCommissionPaise = Number(updates.platformFeePaise);
+    }
     if (updates.estimatedTime) service.estimatedTime = updates.estimatedTime;
-    if (updates.requiredDocuments) service.requiredDocuments = updates.requiredDocuments;
+    if (updates.requiredDocuments) {
+      service.requiredDocuments = Array.isArray(updates.requiredDocuments) 
+        ? updates.requiredDocuments 
+        : String(updates.requiredDocuments).split(',').map(s => s.trim()).filter(Boolean);
+    }
     if (updates.status) service.status = updates.status;
     service.updatedAt = new Date().toISOString();
 
@@ -3240,27 +3330,58 @@ class ResilientStore {
     });
   }
 
-  approveProposalAdmin(proposalId: string, adminId: string) {
+  approveProposalAdmin(proposalId: string, adminId: string, overrides?: any) {
     const proposal = this.serviceProposals.find(p => p.id === proposalId);
     if (!proposal) throw new Error('Proposal not found');
 
     proposal.status = 'APPROVED';
 
-    const serviceId = proposal.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const serviceName = (overrides?.name || proposal.name).trim();
+    const serviceDesc = overrides?.description || proposal.description;
+    const serviceCategory = overrides?.category || proposal.category;
+    const workerAmountPaise = overrides?.workerAmountPaise !== undefined
+      ? Number(overrides.workerAmountPaise)
+      : (proposal.requestedWorkerAmountPaise || Math.round((proposal.suggestedPricePaise || 0) * 0.8));
+    const platformFeePaise = overrides?.platformFeePaise !== undefined
+      ? Number(overrides.platformFeePaise)
+      : (overrides?.adminCommissionPaise !== undefined ? Number(overrides.adminCommissionPaise) : Math.round((proposal.suggestedPricePaise || 0) * 0.2));
+    const pricePaise = overrides?.pricePaise !== undefined
+      ? Number(overrides.pricePaise)
+      : (workerAmountPaise + platformFeePaise || proposal.suggestedPricePaise);
+    const estimatedTime = overrides?.estimatedTime || proposal.estimatedTime || '1-2 days';
+
+    let requiredDocs: string[] = [];
+    if (overrides?.requiredDocuments) {
+      if (Array.isArray(overrides.requiredDocuments)) {
+        requiredDocs = overrides.requiredDocuments.map((d: any) => String(d).trim()).filter(Boolean);
+      } else if (typeof overrides.requiredDocuments === 'string') {
+        requiredDocs = overrides.requiredDocuments.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
+    } else if (Array.isArray(proposal.requiredDocuments) && proposal.requiredDocuments.length > 0) {
+      requiredDocs = proposal.requiredDocuments;
+    } else {
+      requiredDocs = ['Identity Proof'];
+    }
+
+    const serviceId = serviceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const newService: ServiceItem = {
       id: serviceId,
-      name: proposal.name,
-      description: proposal.description,
-      category: proposal.category,
-      pricePaise: proposal.suggestedPricePaise,
-      estimatedTime: proposal.estimatedTime,
-      requiredDocuments: ['Aadhaar Card'],
+      name: serviceName,
+      description: serviceDesc,
+      category: serviceCategory,
+      pricePaise,
+      workerAmountPaise,
+      platformFeePaise,
+      adminCommissionPaise: platformFeePaise,
+      estimatedTime,
+      requiredDocuments: requiredDocs,
       status: 'ACTIVE',
       approvalStatus: 'APPROVED',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
+    this.services = this.services.filter(s => s.id !== serviceId);
     this.services.unshift(newService);
 
     this.notifications.unshift({
@@ -3280,7 +3401,7 @@ class ResilientStore {
       action: 'PROPOSAL_APPROVED',
       entityType: 'PROPOSAL',
       entityId: proposalId,
-      metadata: { serviceName: proposal.name }
+      metadata: { serviceName: proposal.name, pricePaise, workerAmountPaise, platformFeePaise }
     });
 
     return { proposal, newService };
@@ -3515,32 +3636,38 @@ class ResilientStore {
   }
 
 
-  getTopEarningWorkersAdmin(period: 'daily' | 'monthly') {
+  getTopEarningWorkersAdmin(period?: string) {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     const monthStr = todayStr.substring(0, 7);
 
     const rankings = this.workers.map(w => {
-      const orders = Array.from(this.orders.values()).filter(o => 
-        o.assignedWorkerId === w.id && o.status === 'COMPLETED'
+      const allWorkerCompletedOrders = Array.from(this.orders.values()).filter(o => 
+        (o.assignedWorkerId === w.id || o.assignedWorkerId === (w as any).workerId) && o.status === 'COMPLETED'
       );
 
-      const filteredOrders = orders.filter(o => {
-        if (!o.completedAt) return false;
-        if (period === 'daily') return o.completedAt.startsWith(todayStr);
-        return o.completedAt.startsWith(monthStr);
+      const filteredOrders = allWorkerCompletedOrders.filter(o => {
+        if (!period || period === 'all' || period === 'all_time') return true;
+        const dateStr = o.completedAt || o.updatedAt || o.createdAt;
+        if (!dateStr) return true;
+        if (period === 'daily' || period === 'today') return dateStr.startsWith(todayStr);
+        if (period === 'monthly' || period === 'this_month') return dateStr.startsWith(monthStr);
+        return true;
       });
 
-      const totalEarningsPaise = filteredOrders.reduce(
-        (sum, o) => sum + (o.workerEarningsPaise || Math.round((o.pricePaise || 0) * 0.8)),
+      // Default to all completed orders if specific period filter has no entries, but preserve 0 if none
+      const ordersToCount = filteredOrders.length > 0 ? filteredOrders : (period === 'daily' ? [] : allWorkerCompletedOrders);
+
+      const totalEarningsPaise = ordersToCount.reduce(
+        (sum, o) => sum + (o.workerAmountPaise || o.workerEarningsPaise || Math.round((o.pricePaise || 0) * 0.8)),
         0
       );
 
       return {
         workerId: w.id,
         workerName: w.name,
-        businessName: w.businessName,
-        completedOrders: filteredOrders.length,
+        businessName: w.businessName || (w as any).outletName || 'Cyber Cafe Outlet',
+        completedOrders: ordersToCount.length,
         totalEarningsPaise
       };
     });
@@ -3549,22 +3676,29 @@ class ResilientStore {
     return rankings.map((r, index) => ({ ...r, rank: index + 1 }));
   }
 
-  getAllComplaintsAdmin(filter?: { type?: string; status?: string; search?: string }) {
+  getAllComplaintsAdmin(filter?: { type?: string; status?: string; category?: string; search?: string }) {
     let list = Array.from(this.complaints.values());
 
-    if (filter?.type && filter.type !== 'ALL') {
-      list = list.filter(c => c.type === filter.type);
+    const type = filter?.type;
+    if (type && type !== 'ALL' && type !== 'All Roles' && type !== 'undefined') {
+      list = list.filter(c => c.type === type || c.complainantRole === type);
     }
-    if (filter?.status && filter.status !== 'ALL') {
-      list = list.filter(c => c.status === filter.status);
+    const status = filter?.status;
+    if (status && status !== 'ALL' && status !== 'All Status' && status !== 'undefined') {
+      list = list.filter(c => c.status === status);
+    }
+    const category = filter?.category;
+    if (category && category !== 'ALL' && category !== 'All Categories' && category !== 'undefined') {
+      list = list.filter(c => c.category === category || (c as any).reason === category);
     }
     if (filter?.search) {
-      const q = filter.search.toLowerCase();
+      const q = filter.search.toLowerCase().trim();
       list = list.filter(c =>
         c.id.toLowerCase().includes(q) ||
         (c.orderId && c.orderId.toLowerCase().includes(q)) ||
-        c.complainantName.toLowerCase().includes(q) ||
-        c.subject.toLowerCase().includes(q)
+        (c.complainantName && c.complainantName.toLowerCase().includes(q)) ||
+        (c.subject && c.subject.toLowerCase().includes(q)) ||
+        (c.description && c.description.toLowerCase().includes(q))
       );
     }
 
@@ -3649,22 +3783,36 @@ class ResilientStore {
     return complaint;
   }
 
-  resolveComplaintAdmin(complaintId: string, decision: 'APPROVE' | 'CORRECTION' | 'REFUND' | 'RESOLVED', resolutionNote: string) {
+  resolveComplaintAdmin(complaintId: string, decision: 'APPROVE' | 'CORRECTION' | 'REFUND' | 'RESOLVED' | string, resolutionNote: string) {
     const complaint = this.complaints.get(complaintId);
-    if (!complaint) throw new Error('Complaint not found');
+    if (complaint) {
+      complaint.status = 'RESOLVED';
+      complaint.resolution = resolutionNote;
+      (complaint as any).resolvedAt = new Date().toISOString();
+      complaint.updatedAt = new Date().toISOString();
 
-    complaint.status = 'Resolved';
-    complaint.resolution = resolutionNote;
-    complaint.updatedAt = new Date().toISOString();
-
-    if (complaint.orderId) {
-      if (decision === 'APPROVE') {
-        this.adminReleaseWorkerEarnings(complaint.orderId);
-      } else if (decision === 'CORRECTION') {
-        this.adminRequestCorrection(complaint.orderId, 'Dispute Resolution Correction', resolutionNote);
-      } else if (decision === 'REFUND') {
-        this.adminRefundOrder(complaint.orderId, resolutionNote);
+      if (complaint.orderId) {
+        if (decision === 'APPROVE') {
+          this.adminReleaseWorkerEarnings(complaint.orderId);
+        } else if (decision === 'CORRECTION') {
+          this.adminRequestCorrection(complaint.orderId, 'Dispute Resolution Correction', resolutionNote);
+        } else if (decision === 'REFUND') {
+          this.adminRefundOrder(complaint.orderId, resolutionNote);
+        }
       }
+    }
+
+    const tkt = (this as any).supportTickets.find((t: any) => t.id === complaintId);
+    if (tkt) {
+      tkt.status = 'RESOLVED';
+      tkt.updatedAt = new Date().toISOString();
+      if (!tkt.replies) tkt.replies = [];
+      tkt.replies.push({
+        sender: 'ADMIN',
+        author: 'Admin Operations',
+        message: resolutionNote || 'Dispute resolved by Admin',
+        createdAt: new Date().toISOString()
+      });
     }
 
     this.addAuditLog({
@@ -3676,7 +3824,54 @@ class ResilientStore {
       metadata: { decision, resolutionNote }
     });
 
-    return complaint;
+    return complaint || tkt;
+  }
+
+  addWorkerTicketReply(ticketId: string, author: string, message: string) {
+    const t = (this as any).supportTickets.find((ticket: any) => ticket.id === ticketId);
+    if (t) {
+      if (!t.replies) t.replies = [];
+      t.replies.push({
+        sender: 'WORKER',
+        author,
+        message,
+        createdAt: new Date().toISOString()
+      });
+      t.updatedAt = new Date().toISOString();
+    }
+    const c = this.complaints.get(ticketId);
+    if (c) {
+      if (!c.replies) c.replies = [];
+      c.replies.push({
+        sender: 'WORKER',
+        author,
+        message,
+        createdAt: new Date().toISOString()
+      });
+      c.updatedAt = new Date().toISOString();
+    }
+    return t || c;
+  }
+
+  resetWorkerPasswordAdmin(workerId: string, tempPassword?: string) {
+    const newPass = tempPassword || 'TempPass#2026';
+    const worker = this.getWorker(workerId);
+    if (!worker) throw new Error('Worker not found');
+    const user = this.users.get(worker.id) || this.findUserById(worker.id);
+    if (user) {
+      user.password = newPass;
+      (user as any).passwordHash = newPass;
+    }
+    (worker as any).temporaryPassword = newPass;
+    this.addAuditLog({
+      actorUserId: 'ADM-001',
+      actorRole: 'ADMIN',
+      action: 'WORKER_PASSWORD_RESET',
+      entityType: 'WORKER',
+      entityId: workerId,
+      metadata: { workerId, resetAt: new Date().toISOString() }
+    });
+    return { success: true, temporaryPassword: newPass, message: `Password reset successfully. Temporary password: ${newPass}` };
   }
 
   getAllSupportTicketsAdmin(filter?: { role?: string; status?: string; search?: string }) {
@@ -3801,80 +3996,172 @@ class ResilientStore {
     const allComplaints = Array.from(this.complaints.values());
     const summary = this.getAdminDashboardStats();
 
+    const now = new Date();
+    let startDate: Date | null = null;
+    let endDate: Date | null = null;
+
+    if (period === 'today') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    } else if (period === 'yesterday') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+    } else if (period === 'last_7_days') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    } else if (period === 'this_month') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else if (period === 'last_month') {
+      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    } else if (period === 'this_year') {
+      startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+    } else if (customStartDate && customEndDate) {
+      startDate = new Date(customStartDate + (customStartDate.includes('T') ? '' : 'T00:00:00'));
+      endDate = new Date(customEndDate + (customEndDate.includes('T') ? '' : 'T23:59:59.999'));
+    }
+
+    const isWithinDate = (d?: string | Date) => {
+      if (!startDate || !endDate) return true;
+      if (!d) return true;
+      const t = new Date(d).getTime();
+      return t >= startDate.getTime() && t <= endDate.getTime();
+    };
+
+    const targetOrders = allOrders.filter(o => isWithinDate(o.createdAt || o.completedAt));
+    const targetWithdrawals = allWithdrawals.filter(w => isWithinDate(w.createdAt));
+    const targetComplaints = allComplaints.filter(c => isWithinDate(c.createdAt));
+
     let columns = ['Metric / Item', 'Details', 'Volume / Value', 'Status / Timestamp'];
     let rows: any[] = [];
     let kpis: any[] = [];
 
-    if (reportType.includes('revenue') || reportType.includes('commission')) {
+    if (reportType.includes('revenue') || reportType.includes('commission') || reportType === 'total_revenue' || reportType === 'platform_commission') {
       columns = ['Order ID', 'Service', 'Price (Rs)', 'Worker Earning (Rs)', 'Platform Commission (Rs)', 'Status', 'Date'];
-      rows = allOrders.map(o => [
-        o.id.slice(0, 10),
-        o.serviceName,
-        `₹${((o.pricePaise || 0) / 100).toFixed(2)}`,
-        `₹${((o.workerEarningsPaise || 0) / 100).toFixed(2)}`,
-        `₹${((o.commissionPaise || 0) / 100).toFixed(2)}`,
-        o.status,
-        new Date(o.createdAt).toLocaleDateString()
-      ]);
+      let sumPrice = 0;
+      let sumWorker = 0;
+      let sumComm = 0;
+
+      rows = targetOrders.map(o => {
+        const price = o.customerPaidAmount || o.pricePaise || 0;
+        const workerAmt = o.workerAmount || o.workerAmountPaise || o.workerEarningsPaise || Math.round(price * 0.8);
+        const comm = o.adminCommissionPaise || (price - workerAmt) || Math.round(price * 0.2);
+
+        sumPrice += price;
+        sumWorker += workerAmt;
+        sumComm += comm;
+
+        return [
+          (o.orderNumber || o.id).slice(0, 10),
+          o.serviceName || (o.serviceSnapshot as any)?.name || 'Documentation Service',
+          `₹${(price / 100).toFixed(2)}`,
+          `₹${(workerAmt / 100).toFixed(2)}`,
+          `₹${(comm / 100).toFixed(2)}`,
+          o.status,
+          new Date(o.createdAt).toLocaleDateString()
+        ];
+      });
+
       kpis = [
-        { label: 'Total Revenue', value: `₹${((summary.totalRevenuePaise || 0) / 100).toFixed(2)}` },
-        { label: 'Commission Earned', value: `₹${((summary.totalCommissionPaise || 0) / 100).toFixed(2)}` },
-        { label: 'Orders Processed', value: allOrders.length }
+        { label: 'Total Revenue', value: `₹${(sumPrice / 100).toFixed(2)}` },
+        { label: 'Commission Earned', value: `₹${(sumComm / 100).toFixed(2)}` },
+        { label: 'Orders Processed', value: targetOrders.length }
       ];
-    } else if (reportType.includes('payout') || reportType.includes('withdrawal')) {
+    } else if (reportType.includes('payout') || reportType.includes('withdrawal') || reportType === 'worker_payouts') {
       columns = ['Withdrawal ID', 'Worker ID', 'Amount (Rs)', 'Destination', 'Status', 'Date'];
-      rows = allWithdrawals.map(w => [
-        w.id.slice(0, 10),
-        w.workerId,
-        `₹${((w.amountPaise || 0) / 100).toFixed(2)}`,
-        w.method,
-        w.status,
-        new Date(w.createdAt).toLocaleDateString()
-      ]);
+      let sumWithdrawals = 0;
+      rows = targetWithdrawals.map(w => {
+        sumWithdrawals += (w.amountPaise || 0);
+        return [
+          w.id.slice(0, 10),
+          w.workerId,
+          `₹${((w.amountPaise || 0) / 100).toFixed(2)}`,
+          w.method || 'Bank Transfer',
+          w.status,
+          new Date(w.createdAt).toLocaleDateString()
+        ];
+      });
       kpis = [
-        { label: 'Total Withdrawals', value: allWithdrawals.length },
-        { label: 'Pending Requests', value: allWithdrawals.filter(w => w.status === 'PENDING').length }
+        { label: 'Total Payouts', value: `₹${(sumWithdrawals / 100).toFixed(2)}` },
+        { label: 'Payout Requests', value: targetWithdrawals.length },
+        { label: 'Pending Requests', value: targetWithdrawals.filter(w => w.status === 'PENDING').length }
       ];
-    } else if (reportType.includes('worker')) {
+    } else if (reportType.includes('worker') || reportType === 'worker_performance' || reportType === 'worker_activity') {
       columns = ['Worker Name', 'City', 'Completed Orders', 'Rating', 'Total Earnings (Rs)', 'Status'];
-      rows = this.workers.map(w => [
-        w.name,
-        w.city,
-        w.completedJobs,
-        `★ ${w.rating}`,
-        `₹${((w.totalEarningsPaise || 0) / 100).toFixed(2)}`,
-        w.accountStatus
-      ]);
+      let totalWorkerEarnings = 0;
+      rows = this.workers.map(w => {
+        const workerCompleted = targetOrders.filter(o => (o.assignedWorkerId === w.id || o.assignedWorkerId === (w as any).workerId) && o.status === 'COMPLETED');
+        const earned = workerCompleted.reduce((sum, o) => sum + (o.workerAmountPaise || o.workerEarningsPaise || Math.round((o.pricePaise || 0) * 0.8)), 0);
+        totalWorkerEarnings += earned;
+        return [
+          w.name,
+          w.city || 'N/A',
+          workerCompleted.length,
+          `★ ${w.rating || 5.0}`,
+          `₹${(earned / 100).toFixed(2)}`,
+          w.accountStatus || w.status || 'ACTIVE'
+        ];
+      });
       kpis = [
         { label: 'Total Workers', value: this.workers.length },
+        { label: 'Total Paid Out', value: `₹${(totalWorkerEarnings / 100).toFixed(2)}` },
         { label: 'Active Online', value: this.workers.filter(w => w.isOnline).length }
       ];
-    } else if (reportType.includes('complaint')) {
+    } else if (reportType.includes('complaint') || reportType === 'complaints_disputes') {
       columns = ['Complaint ID', 'Complainant', 'Category', 'Subject', 'Status', 'Date'];
-      rows = allComplaints.map(c => [
+      rows = targetComplaints.map(c => [
         c.id.slice(0, 10),
-        c.complainantName,
-        c.category,
-        c.subject,
+        c.complainantName || 'User',
+        c.category || (c as any).reason || 'General',
+        c.subject || (c as any).description || 'Issue',
         c.status,
         new Date(c.createdAt).toLocaleDateString()
       ]);
       kpis = [
-        { label: 'Total Complaints', value: allComplaints.length },
-        { label: 'Open Disputes', value: allComplaints.filter(c => c.status !== 'Resolved').length }
+        { label: 'Total Complaints', value: targetComplaints.length },
+        { label: 'Open Disputes', value: targetComplaints.filter(c => (c.status as string) !== 'RESOLVED' && (c.status as string) !== 'Resolved').length },
+        { label: 'Resolved Tickets', value: targetComplaints.filter(c => (c.status as string) === 'RESOLVED' || (c.status as string) === 'Resolved').length }
+      ];
+    } else if (reportType.includes('order_volume') || reportType.includes('demand') || reportType.includes('service')) {
+      columns = ['Order ID', 'Service Name', 'Customer', 'Worker', 'Status', 'Date'];
+      rows = targetOrders.map(o => [
+        (o.orderNumber || o.id).slice(0, 10),
+        o.serviceName || (o.serviceSnapshot as any)?.name || 'Service',
+        o.customerName || 'Customer',
+        o.workerName || 'Worker',
+        o.status,
+        new Date(o.createdAt).toLocaleDateString()
+      ]);
+      kpis = [
+        { label: 'Total Orders', value: targetOrders.length },
+        { label: 'Completed', value: targetOrders.filter(o => o.status === 'COMPLETED').length },
+        { label: 'Active Pipeline', value: targetOrders.filter(o => ['ACCEPTED', 'IN_PROGRESS', 'RECEIPT_SUBMITTED'].includes(o.status)).length }
       ];
     } else {
-      columns = ['Metric / Dimension', 'Current Volume', 'Historical Comparison', 'Target / Status'];
-      rows = [
-        ['Order Fulfillment Volume', `${allOrders.length} Orders`, '+14.2% vs last period', 'ON TRACK'],
-        ['Average Completion Turnaround', '3.4 Hours', '-18.5% faster', 'OPTIMAL'],
-        ['Platform Active Retention', '91.8%', '+2.1% growth', 'HEALTHY'],
-        ['Complaint Dispute Ratio', `${((allComplaints.length / Math.max(allOrders.length, 1)) * 100).toFixed(1)}%`, 'Below 2% threshold', 'EXCELLENT']
-      ];
+      columns = ['Order ID', 'Service / Metric', 'Price (Rs)', 'Platform Commission (Rs)', 'Status', 'Date'];
+      let sumPrice = 0;
+      let sumComm = 0;
+      rows = targetOrders.map(o => {
+        const price = o.customerPaidAmount || o.pricePaise || 0;
+        const workerAmt = o.workerAmount || o.workerAmountPaise || o.workerEarningsPaise || Math.round(price * 0.8);
+        const comm = o.adminCommissionPaise || (price - workerAmt) || Math.round(price * 0.2);
+        sumPrice += price;
+        sumComm += comm;
+        return [
+          (o.orderNumber || o.id).slice(0, 10),
+          o.serviceName || 'Service',
+          `₹${(price / 100).toFixed(2)}`,
+          `₹${(comm / 100).toFixed(2)}`,
+          o.status,
+          new Date(o.createdAt).toLocaleDateString()
+        ];
+      });
       kpis = [
-        { label: 'Order Volume', value: allOrders.length },
-        { label: 'Active Customers', value: summary.totalCustomers },
-        { label: 'Satisfaction Score', value: '4.8 / 5.0' }
+        { label: 'Filtered Orders', value: targetOrders.length },
+        { label: 'Total Value', value: `₹${(sumPrice / 100).toFixed(2)}` },
+        { label: 'Commission Earned', value: `₹${(sumComm / 100).toFixed(2)}` }
       ];
     }
 
@@ -3888,10 +4175,10 @@ class ResilientStore {
       rows,
       kpis,
       summary,
-      orders: allOrders,
+      orders: targetOrders,
       workers: this.workers,
-      withdrawals: allWithdrawals,
-      complaints: allComplaints
+      withdrawals: targetWithdrawals,
+      complaints: targetComplaints
     };
   }
 

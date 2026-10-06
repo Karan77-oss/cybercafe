@@ -88,7 +88,7 @@ export default function Dashboard() {
     ])
       .then(([statsRes, workersRes]) => {
         if (statsRes.stats) setStats(statsRes.stats);
-        if (workersRes.rankings) setTopWorkers(workersRes.rankings.slice(0, 5));
+        if (workersRes.rankings) setTopWorkers(workersRes.rankings);
         setLoading(false);
       })
       .catch(err => {

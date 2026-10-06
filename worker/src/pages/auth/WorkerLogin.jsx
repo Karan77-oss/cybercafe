@@ -28,10 +28,9 @@ export default function WorkerLogin() {
 
       if (user.role === 'WORKER') {
         navigate('/worker', { replace: true });
-      } else if (user.role === 'ADMIN') {
-        navigate('/admin', { replace: true });
       } else {
-        setError('This account does not have a Worker profile. Please sign in via the Customer portal.');
+        await logout?.();
+        setError('Access Denied: This portal is exclusively for registered cyber cafe operators and workers.');
       }
     } catch (err) {
       setError(err.message || 'Invalid Worker User ID or password. Please try again.');

@@ -105,22 +105,26 @@ export const authController = {
         email: z.string().optional(), 
         emailOrId: z.string().optional(), 
         username: z.string().optional(),
+        phone: z.string().optional(),
+        portal: z.string().optional(),
+        expectedRole: z.string().optional(),
         password: z.string().min(1) 
-      }).refine(data => !!(data.email || data.emailOrId || data.username), { message: 'Valid login identifier required' });
+      }).refine(data => !!(data.email || data.emailOrId || data.username || data.phone), { message: 'Valid login identifier required' });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ success: false, error: 'Valid login identifier and password are required' });
       
-      const loginIdentifier = ((parsed.data.username || parsed.data.emailOrId || parsed.data.email) as string).trim();
+      const loginIdentifier = ((parsed.data.username || parsed.data.emailOrId || parsed.data.email || parsed.data.phone) as string).trim();
       const loginIdentifierLower = loginIdentifier.toLowerCase();
       let user: any = null;
       let address: string | null = null;
 
-      // 1. Check if loginIdentifier matches an existing user in localStore (by ID, Username, or Email)
+      // 1. Check if loginIdentifier matches an existing user in localStore (by ID, Username, Email, or Phone)
       const userFromStore = 
         localStore.findUserById(loginIdentifier) || 
         localStore.findUserById(loginIdentifierLower) ||
         localStore.findUserById(loginIdentifier.toUpperCase()) ||
-        localStore.findUserByEmail(loginIdentifierLower);
+        localStore.findUserByEmail(loginIdentifierLower) ||
+        localStore.findUserByPhone(loginIdentifier);
 
       if (userFromStore) {
         const hash = userFromStore.password || userFromStore.passwordHash;
@@ -144,7 +148,8 @@ export const authController = {
                   { email: loginIdentifierLower },
                   { id: loginIdentifier },
                   { id: loginIdentifierLower },
-                  { name: loginIdentifier }
+                  { name: loginIdentifier },
+                  { phone: loginIdentifier }
                 ]
               }
             });
@@ -220,6 +225,27 @@ export const authController = {
 
       if (!user) {
         return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' }});
+      }
+
+      // Portal Login Isolation Check
+      const requestedPortal = (parsed.data.portal || parsed.data.expectedRole || (req.body as any)?.role || '').toUpperCase();
+      if (requestedPortal === 'ADMIN' && user.role !== 'ADMIN') {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Access Denied: Only administrators are authorized to access the Admin Console.'
+          }
+        });
+      }
+      if (requestedPortal === 'WORKER' && user.role !== 'WORKER') {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Access Denied: This portal is exclusively for registered workers and operators.'
+          }
+        });
       }
 
       if (user.role === 'WORKER') {

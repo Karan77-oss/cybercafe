@@ -8,7 +8,9 @@ import {
   Lock, 
   ChevronDown, 
   ChevronUp,
-  AlertCircle
+  AlertCircle,
+  X,
+  Send 
 } from 'lucide-react';
 import { workerApi } from '../../api/worker';
 
@@ -22,6 +24,11 @@ export default function Help() {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [expandedFaq, setExpandedFaq] = useState(null);
+
+  // Ticket Thread Details Modal
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [replying, setReplying] = useState(false);
 
   const loadTickets = async () => {
     try {
@@ -64,6 +71,28 @@ export default function Help() {
       alert(err.message || 'Failed to create support ticket');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSendReply = async (e) => {
+    e.preventDefault();
+    if (!replyText.trim() || !selectedTicket) return;
+    setReplying(true);
+    try {
+      const res = await workerApi.replySupportTicket(selectedTicket.id, replyText.trim());
+      if (res?.success) {
+        setReplyText('');
+        const tktRes = await workerApi.getSupportTickets();
+        if (tktRes?.tickets) {
+          setTickets(tktRes.tickets);
+          const updated = tktRes.tickets.find(t => t.id === selectedTicket.id);
+          if (updated) setSelectedTicket(updated);
+        }
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to send reply');
+    } finally {
+      setReplying(false);
     }
   };
 
@@ -201,11 +230,22 @@ export default function Help() {
                 {tickets.map(tkt => (
                   <div
                     key={tkt.id}
+                    onClick={() => setSelectedTicket(tkt)}
                     style={{
                       border: '1px solid #e2e8f0',
                       borderRadius: '8px',
                       padding: '14px',
-                      background: '#f8fafc'
+                      background: '#f8fafc',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = '#3b82f6';
+                      e.currentTarget.style.background = '#f0fdf4';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = '#e2e8f0';
+                      e.currentTarget.style.background = '#f8fafc';
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
@@ -232,13 +272,17 @@ export default function Help() {
                     {tkt.replies && tkt.replies.length > 0 && (
                       <div style={{ background: 'white', padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '8px' }}>
                         <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10b981', marginBottom: '4px' }}>
-                          Admin Response:
+                          Latest Response ({tkt.replies[tkt.replies.length - 1].senderRole}):
                         </div>
                         <div style={{ fontSize: '0.84rem', color: '#334155' }}>
                           {tkt.replies[tkt.replies.length - 1].message}
                         </div>
                       </div>
                     )}
+
+                    <div style={{ marginTop: '10px', fontSize: '0.78rem', color: '#2563eb', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <MessageSquare size={13} /> View full conversation thread & reply →
+                    </div>
                   </div>
                 ))}
               </div>
@@ -294,6 +338,221 @@ export default function Help() {
         </div>
 
       </div>
+
+      {/* Ticket Details & Conversation Modal */}
+      {selectedTicket && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '12px',
+            width: '100%',
+            maxWidth: '650px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '18px 24px',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#f8fafc'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                  Ticket #{selectedTicket.id}
+                </span>
+                <span style={{
+                  fontSize: '0.75rem',
+                  padding: '3px 10px',
+                  borderRadius: '12px',
+                  fontWeight: 600,
+                  background: selectedTicket.status === 'Resolved' ? '#ecfdf5' : '#eff6ff',
+                  color: selectedTicket.status === 'Resolved' ? '#065f46' : '#1d4ed8'
+                }}>
+                  {selectedTicket.status}
+                </span>
+                <span style={{
+                  fontSize: '0.75rem',
+                  padding: '3px 10px',
+                  borderRadius: '12px',
+                  fontWeight: 600,
+                  background: '#f1f5f9',
+                  color: '#475569'
+                }}>
+                  {selectedTicket.category}
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedTicket(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '4px',
+                  borderRadius: '6px'
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div>
+                <h4 style={{ margin: '0 0 6px', fontSize: '1.05rem', color: '#1e293b' }}>
+                  {selectedTicket.subject}
+                </h4>
+                {selectedTicket.orderId && (
+                  <div style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '8px' }}>
+                    Linked Order ID: <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#3b82f6' }}>{selectedTicket.orderId}</span>
+                  </div>
+                )}
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '14px',
+                  fontSize: '0.88rem',
+                  color: '#334155',
+                  lineHeight: 1.5
+                }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginBottom: '6px' }}>
+                    INITIAL TICKET MESSAGE:
+                  </div>
+                  {selectedTicket.message}
+                </div>
+              </div>
+
+              {/* Replies Thread */}
+              <div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '10px' }}>
+                  Conversation Thread ({selectedTicket.replies?.length || 0})
+                </div>
+
+                {(!selectedTicket.replies || selectedTicket.replies.length === 0) ? (
+                  <div style={{ padding: '16px', background: '#f1f5f9', borderRadius: '8px', fontSize: '0.84rem', color: '#64748b', textAlign: 'center' }}>
+                    No replies yet. Our support operations team reviews open tickets periodically.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {selectedTicket.replies.map((reply, idx) => {
+                      const isAdmin = reply.senderRole === 'ADMIN' || reply.senderRole === 'SUPPORT';
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            padding: '12px 14px',
+                            borderRadius: '8px',
+                            border: '1px solid',
+                            borderColor: isAdmin ? '#bbf7d0' : '#e2e8f0',
+                            background: isAdmin ? '#f0fdf4' : '#f8fafc',
+                            alignSelf: isAdmin ? 'flex-start' : 'flex-end',
+                            maxWidth: '90%',
+                            width: 'fit-content'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                            <span style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: isAdmin ? '#dcfce7' : '#e2e8f0',
+                              color: isAdmin ? '#15803d' : '#475569'
+                            }}>
+                              {isAdmin ? 'Admin Operations' : 'You (Worker)'}
+                            </span>
+                            {reply.createdAt && (
+                              <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                                {new Date(reply.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.86rem', color: '#1e293b', lineHeight: 1.4 }}>
+                            {reply.message}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer / Reply Input */}
+            <form onSubmit={handleSendReply} style={{
+              padding: '16px 24px',
+              borderTop: '1px solid #e2e8f0',
+              background: '#f8fafc',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <textarea
+                value={replyText}
+                onChange={e => setReplyText(e.target.value)}
+                placeholder="Post a follow-up reply to operations team..."
+                rows={2}
+                disabled={replying}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.88rem',
+                  resize: 'none'
+                }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTicket(null)}
+                  className="btn btn-secondary"
+                  style={{ padding: '8px 14px', fontSize: '0.85rem' }}
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={replying || !replyText.trim()}
+                  className="btn btn-primary"
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Send size={14} />
+                  {replying ? 'Sending...' : 'Post Reply'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

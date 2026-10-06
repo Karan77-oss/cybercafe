@@ -123,6 +123,18 @@ export default function Complaints() {
     }
   };
 
+  const handleQuickResolve = async (id) => {
+    try {
+      await adminApi.resolveComplaint(id, 'RESOLVED', 'Dispute resolved by Administrator');
+      loadComplaints();
+      if (selectedComplaintId === id) {
+        openComplaintDetail(id);
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to resolve complaint');
+    }
+  };
+
   const exportCSV = () => {
     const headers = ['Complaint ID', 'Complainant', 'Role', 'Order ID', 'Subject', 'Category', 'Status', 'Date'];
     const rows = complaints.map(c => [
@@ -261,13 +273,24 @@ export default function Complaints() {
                     <div style={{ fontSize: '0.85rem' }}>{new Date(c.createdAt).toLocaleDateString()}</div>
                   </td>
                   <td>
-                    <button 
-                      className="btn btn-outline" 
-                      style={{ padding: '4px 10px', fontSize: '0.8rem' }}
-                      onClick={() => openComplaintDetail(c.id)}
-                    >
-                      Investigate
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button 
+                        className="btn btn-outline" 
+                        style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                        onClick={() => openComplaintDetail(c.id)}
+                      >
+                        Investigate
+                      </button>
+                      {(c.status !== 'RESOLVED' && c.status !== 'Resolved') && (
+                        <button
+                          className="btn btn-outline"
+                          style={{ padding: '4px 10px', fontSize: '0.8rem', color: '#16a34a', borderColor: '#16a34a' }}
+                          onClick={() => handleQuickResolve(c.id)}
+                        >
+                          Mark as Resolved
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
