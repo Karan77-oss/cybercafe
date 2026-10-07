@@ -6,8 +6,14 @@ export class SupabaseStorageAdapter implements StorageProvider {
   private bucket: string;
 
   constructor() {
-    const supabaseUrl = process.env.SUPABASE_URL || '';
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    let supabaseUrl = (process.env.SUPABASE_URL || '').replace(/['"]/g, '').trim();
+    if (!supabaseUrl || !supabaseUrl.startsWith('http')) {
+      supabaseUrl = 'https://bcslqaiwyzmhdmryuejs.supabase.co';
+    }
+    let supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').replace(/['"]/g, '').trim();
+    if (!supabaseKey) {
+      supabaseKey = 'dummy-service-key';
+    }
     
     // Server-side admin client using service_role key
     this.supabase = createClient(supabaseUrl, supabaseKey);
