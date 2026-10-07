@@ -21,7 +21,8 @@
     "build:worker": "npm run build --workspace=@cybercafe/worker",
     "build:mobile": "npm run build --workspace=cyber-cafe-mobile-app",
     "build:backend": "npm run build --workspace=backend",
-    "build:all": "npm run build:backend && npm run build:frontend && npm run build:admin && npm run build:worker && npm run build:mobile",
+    "build": "npm run build:backend",
+    "postinstall": "npm run --workspace=backend postinstall",
     "test:backend": "npm run test --workspace=backend",
     "start": "npm run start --workspace=backend"
   },
