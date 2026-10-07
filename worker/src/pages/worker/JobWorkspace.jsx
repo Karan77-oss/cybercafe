@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
   CheckCircle2, 
+  XCircle,
   FileText, 
   Send, 
   Upload, 
@@ -17,7 +18,11 @@ import {
   Info,
   Trash2,
   Download,
-  Paperclip
+  Paperclip,
+  Clock,
+  Check,
+  X,
+  HeartHandshake
 } from 'lucide-react';
 import { workerApi } from '../../api/worker';
 import { buildUrl } from '../../api/client';
@@ -36,6 +41,12 @@ export default function JobWorkspace() {
   const [slotEnd, setSlotEnd] = useState('12:00 PM');
   const [updatingSlot, setUpdatingSlot] = useState(false);
 
+  // Worker Reschedule Modal State
+  const [showWorkerRescheduleModal, setShowWorkerRescheduleModal] = useState(false);
+  const [workerProposedDate, setWorkerProposedDate] = useState('Tomorrow');
+  const [workerProposedSlot, setWorkerProposedSlot] = useState('11:00 AM - 01:00 PM');
+  const [submittingWorkerReschedule, setSubmittingWorkerReschedule] = useState(false);
+
   // Deliverables State
   const [deliverableName, setDeliverableName] = useState('');
   const [deliverableUrl, setDeliverableUrl] = useState('');
@@ -51,6 +62,58 @@ export default function JobWorkspace() {
   const [sendingMsg, setSendingMsg] = useState(false);
   const [isChatClosed, setIsChatClosed] = useState(false);
   const chatBottomRef = useRef(null);
+
+  // Customer Welfare Case for this Order (Read-only with notes & escalation)
+  const [welfareTicket, setWelfareTicket] = useState(null);
+  const [internalNoteText, setInternalNoteText] = useState('');
+  const [escalateReason, setEscalateReason] = useState('');
+  const [showEscalateModal, setShowEscalateModal] = useState(false);
+  const [submittingNote, setSubmittingNote] = useState(false);
+  const [submittingEscalate, setSubmittingEscalate] = useState(false);
+
+  const loadWelfare = async () => {
+    try {
+      const res = await workerApi.getWelfareTickets();
+      if (res?.tickets) {
+        const matching = res.tickets.find(t => t.order_id === jobId);
+        setWelfareTicket(matching || null);
+      }
+    } catch (err) {
+      console.warn('Welfare tickets check failed:', err);
+    }
+  };
+
+  const handleAddInternalNote = async (e) => {
+    e.preventDefault();
+    if (!welfareTicket || !internalNoteText.trim()) return;
+    setSubmittingNote(true);
+    try {
+      await workerApi.addWelfareNote(welfareTicket.id, internalNoteText.trim());
+      setInternalNoteText('');
+      await loadWelfare();
+      alert('Internal note appended.');
+    } catch (err) {
+      alert(err.message || 'Failed to add note');
+    } finally {
+      setSubmittingNote(false);
+    }
+  };
+
+  const handleEscalateToAdmin = async () => {
+    if (!welfareTicket || !escalateReason.trim()) return;
+    setSubmittingEscalate(true);
+    try {
+      await workerApi.escalateWelfareTicket(welfareTicket.id, escalateReason.trim());
+      setShowEscalateModal(false);
+      setEscalateReason('');
+      await loadWelfare();
+      alert('Complaint escalated to Administrator.');
+    } catch (err) {
+      alert(err.message || 'Failed to escalate ticket');
+    } finally {
+      setSubmittingEscalate(false);
+    }
+  };
 
   const loadJobData = async () => {
     try {
@@ -86,6 +149,7 @@ export default function JobWorkspace() {
   useEffect(() => {
     loadJobData();
     loadChat();
+    loadWelfare();
 
     const chatInterval = setInterval(loadChat, 5000);
     return () => clearInterval(chatInterval);
@@ -121,15 +185,63 @@ export default function JobWorkspace() {
   const handleAcceptReschedule = async () => {
     setUpdatingSlot(true);
     try {
-      const res = await workerApi.acceptReschedule(jobId);
+      const res = await workerApi.respondReschedule(jobId, { action: 'ACCEPT' });
       if (res?.success) {
-        setJob(res.order);
+        await loadJobData();
         alert('Customer reschedule accepted! Working window is confirmed.');
+      } else {
+        alert(res?.error || 'Failed to accept reschedule.');
       }
     } catch (err) {
       alert(err.message || 'Failed to accept reschedule');
     } finally {
       setUpdatingSlot(false);
+    }
+  };
+
+  // Decline Customer Reschedule
+  const handleDeclineReschedule = async () => {
+    setUpdatingSlot(true);
+    try {
+      const res = await workerApi.respondReschedule(jobId, { action: 'REJECT' });
+      if (res?.success) {
+        await loadJobData();
+        alert('Customer reschedule declined. Current window retained.');
+      } else {
+        alert(res?.error || 'Failed to decline reschedule.');
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to decline reschedule');
+    } finally {
+      setUpdatingSlot(false);
+    }
+  };
+
+  // Worker Propose New Time Slot
+  const handleWorkerProposeReschedule = async (e) => {
+    e?.preventDefault();
+    if (!workerProposedDate || !workerProposedSlot) {
+      alert('Please specify date and time slot.');
+      return;
+    }
+    setSubmittingWorkerReschedule(true);
+    try {
+      const res = await workerApi.requestReschedule(jobId, {
+        proposedDate: workerProposedDate,
+        proposedTimeSlot: workerProposedSlot,
+        requestedBy: 'WORKER'
+      });
+      if (res?.success) {
+        setShowWorkerRescheduleModal(false);
+        await loadJobData();
+        alert('Reschedule proposal sent to customer.');
+      } else {
+        alert(res?.error || 'Failed to propose reschedule.');
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to propose reschedule');
+    } finally {
+      setSubmittingWorkerReschedule(false);
     }
   };
 
@@ -309,9 +421,26 @@ export default function JobWorkspace() {
 
   const isCompleted = job.status === 'COMPLETED';
   const isCorrection = job.status === 'CORRECTION_REQUIRED';
-  const isAccepted = job.status === 'ACCEPTED';
+  const isAccepted = job.status === 'ACCEPTED' || job.status === 'ASSIGNED';
   const payout = (job.workerEarningsPaise || Math.round(job.pricePaise * 0.8)) / 100;
   const deliverables = job.deliverables || [];
+
+  const formatDateDisplay = (dateVal) => {
+    if (!dateVal) return '';
+    if (typeof dateVal === 'string' && (dateVal === 'Today' || dateVal === 'Tomorrow')) return dateVal;
+    try {
+      const d = new Date(dateVal);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    } catch (e) {}
+    return String(dateVal);
+  };
+
+  const formatSlotDisplay = (slotVal) => {
+    if (!slotVal) return '';
+    if (typeof slotVal === 'string') return slotVal;
+    if (slotVal.startTime && slotVal.endTime) return `${slotVal.startTime} - ${slotVal.endTime}`;
+    return String(slotVal);
+  };
 
   // Normalize form data: backend populates job.formData from serviceSnapshot.details,
   // but as a client-side safety fallback, also check serviceSnapshot.details directly.
@@ -411,9 +540,9 @@ export default function JobWorkspace() {
           <div style={{ display: 'flex', gap: '18px', fontSize: '0.88rem', color: '#64748b', flexWrap: 'wrap' }}>
             <span>Created: <strong>{new Date(job.createdAt).toLocaleDateString()}</strong></span>
             <span>Deadline: <strong style={{ color: '#0f172a' }}>{job.deadline ? new Date(job.deadline).toLocaleDateString() : 'Today'}</strong></span>
-            {job.timeSlot && (
+            {(job.timeSlot || job.bookingDate) && (
               <span style={{ color: '#0284c7', fontWeight: 700 }}>
-                Agreed Slot: {job.timeSlot.date || 'Today'} ({job.timeSlot.startTime} - {job.timeSlot.endTime})
+                Review Window: {formatDateDisplay(job.bookingDate || job.timeSlot?.date || 'Today')} ({formatSlotDisplay(job.timeSlot)})
               </span>
             )}
           </div>
@@ -497,6 +626,109 @@ export default function JobWorkspace() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Customer Welfare & Complaints Card (Read-only + internal notes & escalation) */}
+          <div className="form-card" style={{ margin: 0, padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <HeartHandshake size={18} color="#ec4899" /> Customer Welfare & Complaint
+              </h3>
+              {welfareTicket && (
+                <span style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '3px 8px',
+                  borderRadius: '999px',
+                  textTransform: 'uppercase',
+                  background: welfareTicket.status === 'refund_approved' ? '#dcfce7' : '#fee2e2',
+                  color: welfareTicket.status === 'refund_approved' ? '#166534' : '#991b1b'
+                }}>
+                  {welfareTicket.status}
+                </span>
+              )}
+            </div>
+
+            {welfareTicket ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ padding: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#991b1b' }}>
+                      Reported Issue: {welfareTicket.issue_type}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: '#7f1d1d' }}>
+                      {new Date(welfareTicket.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#7f1d1d', lineHeight: 1.4 }}>
+                    "{welfareTicket.description}"
+                  </p>
+                </div>
+
+                {/* Refund Record Info if any */}
+                {welfareTicket.refund_record && (
+                  <div style={{ padding: '10px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', fontSize: '0.82rem', color: '#166534' }}>
+                    Refund Status: <strong>{welfareTicket.refund_record.status?.toUpperCase()}</strong> (₹{welfareTicket.refund_record.amount})
+                    {welfareTicket.refund_record.utr_number && (
+                      <div style={{ fontSize: '0.75rem', marginTop: '2px' }}>
+                        UTR: {welfareTicket.refund_record.utr_number}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Existing Internal Notes */}
+                {welfareTicket.internal_notes && welfareTicket.internal_notes.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                      Internal Case Notes ({welfareTicket.internal_notes.length})
+                    </span>
+                    {welfareTicket.internal_notes.map((n, idx) => (
+                      <div key={idx} style={{ padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.8rem' }}>
+                        <div style={{ fontWeight: 600, color: '#475569', fontSize: '0.72rem', marginBottom: '2px' }}>
+                          {n.authorRole || 'Worker'} • {new Date(n.createdAt).toLocaleTimeString()}
+                        </div>
+                        <div style={{ color: '#1e293b' }}>{n.note}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Append Internal Note Form */}
+                <form onSubmit={handleAddInternalNote} style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="text"
+                    placeholder="Append internal operator note..."
+                    value={internalNoteText}
+                    onChange={e => setInternalNoteText(e.target.value)}
+                    style={{ flex: 1, padding: '7px 10px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={submittingNote || !internalNoteText.trim()}
+                    className="btn btn-outline"
+                    style={{ padding: '7px 12px', fontSize: '0.8rem' }}
+                  >
+                    Add Note
+                  </button>
+                </form>
+
+                {/* Escalate to Admin Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowEscalateModal(true)}
+                  className="btn btn-outline"
+                  style={{ color: '#dc2626', borderColor: '#fca5a5', fontSize: '0.8rem', padding: '7px 12px', width: '100%', justifyContent: 'center' }}
+                >
+                  <AlertTriangle size={14} /> Escalate to Administrator
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#059669', fontSize: '0.85rem', background: '#ecfdf5', padding: '12px', borderRadius: '8px' }}>
+                <CheckCircle2 size={16} />
+                <span>No complaints or welfare disputes submitted by customer.</span>
+              </div>
+            )}
           </div>
 
           {/* Section 11 & 15: Working Documents */}
@@ -589,149 +821,138 @@ export default function JobWorkspace() {
           
           {/* Section 10: Mutual Time-Slot Agreement */}
           <div className="form-card" style={{ margin: 0, padding: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Calendar size={18} color="#3b82f6" /> Mutual Time-Slot Agreement
               </h3>
-              {job.timeSlot && (
-                <span style={{
-                  fontSize: '0.75rem',
-                  padding: '4px 10px',
-                  borderRadius: '12px',
-                  fontWeight: 600,
-                  background: (job.timeSlot.status === 'ACCEPTED' || job.serviceSnapshot?.scheduling?.status === 'ACCEPTED')
-                    ? 'rgba(46,204,113,0.15)'
-                    : (job.serviceSnapshot?.scheduling?.status === 'RESCHEDULE_REQUESTED' ? 'rgba(230,126,34,0.15)' : 'rgba(59,130,246,0.15)'),
-                  color: (job.timeSlot.status === 'ACCEPTED' || job.serviceSnapshot?.scheduling?.status === 'ACCEPTED')
-                    ? '#166534'
-                    : (job.serviceSnapshot?.scheduling?.status === 'RESCHEDULE_REQUESTED' ? '#c0392b' : '#1d4ed8')
-                }}>
-                  {(job.timeSlot.status === 'ACCEPTED' || job.serviceSnapshot?.scheduling?.status === 'ACCEPTED')
-                    ? 'Slot Confirmed'
-                    : (job.serviceSnapshot?.scheduling?.status === 'RESCHEDULE_REQUESTED' ? 'Reschedule Requested' : 'Proposed to Customer')}
-                </span>
-              )}
+              <span style={{
+                fontSize: '0.75rem',
+                padding: '4px 10px',
+                borderRadius: '12px',
+                fontWeight: 600,
+                background: (job.slotStatus === 'RESCHEDULE_REQUESTED_BY_CUSTOMER' || job.serviceSnapshot?.scheduling?.status === 'RESCHEDULE_REQUESTED')
+                  ? '#fee2e2'
+                  : (job.slotStatus === 'RESCHEDULE_REQUESTED_BY_WORKER'
+                    ? '#fef3c7'
+                    : (job.slotStatus === 'CONFIRMED' || (!job.slotStatus && job.timeSlot) ? '#dcfce7' : '#f1f5f9')),
+                color: (job.slotStatus === 'RESCHEDULE_REQUESTED_BY_CUSTOMER' || job.serviceSnapshot?.scheduling?.status === 'RESCHEDULE_REQUESTED')
+                  ? '#dc2626'
+                  : (job.slotStatus === 'RESCHEDULE_REQUESTED_BY_WORKER'
+                    ? '#d97706'
+                    : (job.slotStatus === 'CONFIRMED' || (!job.slotStatus && job.timeSlot) ? '#166534' : '#475569'))
+              }}>
+                {(job.slotStatus === 'RESCHEDULE_REQUESTED_BY_CUSTOMER' || job.serviceSnapshot?.scheduling?.status === 'RESCHEDULE_REQUESTED')
+                  ? 'Customer Reschedule Request'
+                  : (job.slotStatus === 'RESCHEDULE_REQUESTED_BY_WORKER'
+                    ? 'Pending Customer Approval'
+                    : (job.slotStatus === 'CONFIRMED' || (!job.slotStatus && job.timeSlot) ? 'Slot Confirmed' : 'Unassigned Slot'))}
+              </span>
             </div>
 
-            {/* Customer Reschedule Request Notice */}
-            {job.serviceSnapshot?.scheduling?.status === 'RESCHEDULE_REQUESTED' && (
-              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', padding: '14px', borderRadius: '8px', marginBottom: '16px' }}>
-                <div style={{ fontWeight: 700, color: '#92400e', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Clock size={16} /> Customer Requested Reschedule
+            {/* Case A: Customer Reschedule Request Notice */}
+            {(job.slotStatus === 'RESCHEDULE_REQUESTED_BY_CUSTOMER' || job.serviceSnapshot?.scheduling?.status === 'RESCHEDULE_REQUESTED') && (
+              <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', padding: '16px', borderRadius: '10px', marginBottom: '16px' }}>
+                <div style={{ fontWeight: 700, color: '#92400e', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Clock size={16} /> Customer Proposed a New Review Window
                 </div>
-                <div style={{ fontSize: '0.92rem', color: '#78350f', marginTop: 4 }}>
-                  Requested Window: <strong>{job.serviceSnapshot?.scheduling?.timeSlot || job.timeSlot?.requestedTime || 'New slot requested'}</strong>
+                <div style={{ fontSize: '0.95rem', color: '#78350f', marginTop: 8 }}>
+                  Proposed Window: <strong style={{ color: '#92400e' }}>{formatDateDisplay(job.proposedDate || job.serviceSnapshot?.scheduling?.date || 'New Date')} at {formatSlotDisplay(job.proposedSlot || job.serviceSnapshot?.scheduling?.timeSlot || job.timeSlot?.requestedTime)}</strong>
                 </div>
-                {job.serviceSnapshot?.scheduling?.rescheduleNote && (
-                  <div style={{ fontSize: '0.82rem', color: '#92400e', marginTop: 4, fontStyle: 'italic' }}>
-                    Note: "{job.serviceSnapshot.scheduling.rescheduleNote}"
+                {(job.bookingDate || job.timeSlot) && (
+                  <div style={{ fontSize: '0.82rem', color: '#a16207', marginTop: 4 }}>
+                    Current Active: {formatDateDisplay(job.bookingDate || job.timeSlot?.date)} ({formatSlotDisplay(job.timeSlot)})
                   </div>
                 )}
                 {!isCompleted && (
-                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+                  <div style={{ marginTop: '14px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={handleAcceptReschedule}
                       disabled={updatingSlot}
                       className="btn btn-primary"
-                      style={{ padding: '6px 14px', fontSize: '0.82rem' }}
+                      style={{ padding: '8px 16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      <Check size={14} /> Accept Customer's Request
+                      <Check size={14} /> Accept New Slot
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeclineReschedule}
+                      disabled={updatingSlot}
+                      className="btn btn-outline"
+                      style={{ padding: '8px 16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', color: '#dc2626', borderColor: '#fecaca' }}
+                    >
+                      <X size={14} /> Decline & Keep Existing
                     </button>
                   </div>
                 )}
               </div>
             )}
 
-            {/* State: No time slot provided yet */}
-            {(!job.timeSlot || !job.timeSlot.startTime) && (
-              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '14px', borderRadius: '8px', marginBottom: '16px' }}>
-                <div style={{ fontWeight: 700, color: '#1e40af', fontSize: '0.88rem' }}>
-                  Action Required: Provide Working Time Slot
+            {/* Case B: Worker Reschedule Request Pending Customer */}
+            {job.slotStatus === 'RESCHEDULE_REQUESTED_BY_WORKER' && (
+              <div style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', padding: '16px', borderRadius: '10px', marginBottom: '16px' }}>
+                <div style={{ fontWeight: 700, color: '#0369a1', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Clock size={16} /> Your Reschedule Proposal is Pending Customer Confirmation
                 </div>
-                <p style={{ fontSize: '0.82rem', color: '#3b82f6', margin: '4px 0 0' }}>
-                  Customer is waiting for you to select and provide your working window for this order.
+                <div style={{ fontSize: '0.95rem', color: '#075985', marginTop: 8 }}>
+                  Proposed Window: <strong>{formatDateDisplay(job.proposedDate)} at {formatSlotDisplay(job.proposedSlot)}</strong>
+                </div>
+                {(job.bookingDate || job.timeSlot) && (
+                  <div style={{ fontSize: '0.82rem', color: '#0284c7', marginTop: 4 }}>
+                    Current Confirmed: {formatDateDisplay(job.bookingDate)} ({formatSlotDisplay(job.timeSlot)})
+                  </div>
+                )}
+                <p style={{ fontSize: '0.78rem', color: '#0284c7', margin: '8px 0 0' }}>
+                  The customer has been notified to either accept the new window or keep the existing time slot.
                 </p>
               </div>
             )}
 
-            {/* State: Time Slot Confirmed */}
-            {job.timeSlot && job.timeSlot.startTime && (job.timeSlot.status === 'ACCEPTED' || job.serviceSnapshot?.scheduling?.status === 'ACCEPTED') && (
-              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '14px', borderRadius: '8px', marginBottom: '16px' }}>
-                <div style={{ fontWeight: 700, color: '#166534', fontSize: '0.9rem' }}>
-                  Confirmed Working Window:
+            {/* Case C: Slot Confirmed */}
+            {(job.slotStatus === 'CONFIRMED' || (!job.slotStatus && job.timeSlot)) && (
+              <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', padding: '16px', borderRadius: '10px', marginBottom: '16px' }}>
+                <div style={{ fontWeight: 700, color: '#166534', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle2 size={16} /> Confirmed Review Window
                 </div>
-                <div style={{ fontSize: '0.95rem', color: '#15803d', marginTop: 4, fontWeight: 600 }}>
-                  {job.timeSlot.date || 'Today'} • {job.timeSlot.startTime} to {job.timeSlot.endTime}
+                <div style={{ fontSize: '1.05rem', color: '#15803d', marginTop: 6, fontWeight: 700 }}>
+                  {formatDateDisplay(job.bookingDate || job.timeSlot?.date || 'Today')} • {formatSlotDisplay(job.timeSlot)}
                 </div>
-                <p style={{ fontSize: '0.78rem', color: '#15803d', margin: '4px 0 0' }}>
-                  Mutually agreed with customer. You can propose a change below if necessary.
+                <p style={{ fontSize: '0.8rem', color: '#15803d', margin: '4px 0 12px' }}>
+                  Mutually agreed review window. Operator can propose a reschedule if portal issues or government downtime arise.
                 </p>
+                {!isCompleted && (
+                  <button
+                    type="button"
+                    onClick={() => setShowWorkerRescheduleModal(true)}
+                    className="btn btn-outline"
+                    style={{ fontSize: '0.82rem', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Clock size={14} /> Request Reschedule (Portal/Server Issue)
+                  </button>
+                )}
               </div>
             )}
 
-            {/* State: Time Slot Proposed */}
-            {job.timeSlot && job.timeSlot.startTime && job.timeSlot.status === 'PROPOSED' && job.serviceSnapshot?.scheduling?.status !== 'RESCHEDULE_REQUESTED' && (
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '14px', borderRadius: '8px', marginBottom: '16px' }}>
-                <div style={{ fontWeight: 700, color: '#334155', fontSize: '0.9rem' }}>
-                  Proposed Working Window:
+            {/* Case D: Slot Unassigned */}
+            {job.slotStatus === 'UNASSIGNED' && (
+              <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', padding: '16px', borderRadius: '10px', marginBottom: '16px' }}>
+                <div style={{ fontWeight: 700, color: '#334155', fontSize: '0.92rem' }}>
+                  No Review Window Assigned Yet
                 </div>
-                <div style={{ fontSize: '0.95rem', color: '#0f172a', marginTop: 4, fontWeight: 600 }}>
-                  {job.timeSlot.date || 'Today'} • {job.timeSlot.startTime} to {job.timeSlot.endTime}
-                </div>
-                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '4px 0 0' }}>
-                  Sent to customer for confirmation. You can update or change this slot below.
+                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '4px 0 12px' }}>
+                  Propose the earliest available review window for the customer.
                 </p>
+                {!isCompleted && (
+                  <button
+                    type="button"
+                    onClick={() => setShowWorkerRescheduleModal(true)}
+                    className="btn btn-primary"
+                    style={{ fontSize: '0.85rem', padding: '8px 16px' }}
+                  >
+                    Propose Review Window
+                  </button>
+                )}
               </div>
-            )}
-
-            {!isCompleted && (
-              <form onSubmit={handleSetTimeSlot} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>
-                  {job.timeSlot ? 'Propose New or Updated Slot:' : 'Select Working Slot:'}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>Date</label>
-                    <input
-                      type="text"
-                      value={slotDate}
-                      onChange={e => setSlotDate(e.target.value)}
-                      placeholder="e.g. Today"
-                      style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>Start</label>
-                    <input
-                      type="text"
-                      value={slotStart}
-                      onChange={e => setSlotStart(e.target.value)}
-                      placeholder="10:00 AM"
-                      style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>End</label>
-                    <input
-                      type="text"
-                      value={slotEnd}
-                      onChange={e => setSlotEnd(e.target.value)}
-                      placeholder="12:00 PM"
-                      style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={updatingSlot}
-                  className="btn btn-outline"
-                  style={{ alignSelf: 'flex-start', padding: '6px 14px', fontSize: '0.82rem', marginTop: '4px' }}
-                >
-                  {updatingSlot ? 'Saving...' : job.timeSlot ? 'Update Time Slot' : 'Confirm Time Slot'}
-                </button>
-              </form>
             )}
           </div>
 
@@ -1036,6 +1257,199 @@ export default function JobWorkspace() {
         </div>
 
       </div>
+
+      {/* Worker Reschedule Modal */}
+      {showWorkerRescheduleModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          backdropFilter: 'blur(3px)'
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '16px',
+            padding: '24px',
+            maxWidth: '460px',
+            width: '90%',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0, color: '#1e293b' }}>
+                Propose New Review Window
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowWorkerRescheduleModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+              >
+                <XCircle size={22} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.4, margin: '0 0 16px' }}>
+              Propose an updated call/processing time window for the customer due to portal availability or system maintenance.
+            </p>
+
+            <form onSubmit={handleWorkerProposeReschedule} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                  Select Date
+                </label>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  {['Today', 'Tomorrow'].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setWorkerProposedDate(preset)}
+                      style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        border: workerProposedDate === preset ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                        background: workerProposedDate === preset ? '#eff6ff' : 'white',
+                        color: workerProposedDate === preset ? '#1e40af' : '#475569',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="date"
+                  value={workerProposedDate !== 'Today' && workerProposedDate !== 'Tomorrow' ? workerProposedDate : ''}
+                  onChange={e => setWorkerProposedDate(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.85rem'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                  Select Time Window
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                  {[
+                    '10:00 AM - 12:00 PM',
+                    '11:00 AM - 01:00 PM',
+                    '02:00 PM - 04:00 PM',
+                    '04:00 PM - 06:00 PM'
+                  ].map(slot => (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => setWorkerProposedSlot(slot)}
+                      style={{
+                        padding: '8px',
+                        borderRadius: '8px',
+                        border: workerProposedSlot === slot ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                        background: workerProposedSlot === slot ? '#eff6ff' : 'white',
+                        color: workerProposedSlot === slot ? '#1e40af' : '#475569',
+                        fontWeight: 600,
+                        fontSize: '0.78rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {slot}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={workerProposedSlot}
+                  onChange={e => setWorkerProposedSlot(e.target.value)}
+                  placeholder="e.g. 05:00 PM - 07:00 PM"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.85rem'
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowWorkerRescheduleModal(false)}
+                  className="btn btn-outline"
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingWorkerReschedule}
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  {submittingWorkerReschedule ? 'Sending...' : 'Propose Reschedule'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Escalate to Admin Modal */}
+      {showEscalateModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+        }}>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '24px', maxWidth: '440px', width: '100%', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '1.1rem', color: '#0f172a' }}>
+              Escalate Complaint to Admin
+            </h3>
+            <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: '#64748b' }}>
+              Provide details for the Administrator to intervene, review proof, or authorize a refund.
+            </p>
+            <textarea
+              required
+              rows={3}
+              placeholder="e.g. Applicant claims documents were rejected by state portal; requesting admin refund assessment..."
+              value={escalateReason}
+              onChange={e => setEscalateReason(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', marginBottom: '14px' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setShowEscalateModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={submittingEscalate || !escalateReason.trim()}
+                className="btn btn-primary"
+                style={{ background: '#dc2626', borderColor: '#dc2626' }}
+                onClick={handleEscalateToAdmin}
+              >
+                {submittingEscalate ? 'Escalating...' : 'Confirm Escalation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

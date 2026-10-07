@@ -10,6 +10,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { workerApi } from '../../api/worker';
+import AcceptAndScheduleModal from '../../components/AcceptAndScheduleModal';
 
 export default function RequestDetails() {
   const { requestId } = useParams();
@@ -19,6 +20,7 @@ export default function RequestDetails() {
   const [error, setError] = useState('');
   const [accepting, setAccepting] = useState(false);
   const [remainingSecs, setRemainingSecs] = useState(600);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   // Rejection modal state
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -54,12 +56,19 @@ export default function RequestDetails() {
     return () => clearInterval(ticker);
   }, [remainingSecs]);
 
-  const handleAccept = async () => {
+  const handleAccept = () => {
+    setShowScheduleModal(true);
+  };
+
+  const handleConfirmAcceptAndSchedule = async ({ date, timeSlot }) => {
     setAccepting(true);
     try {
-      const res = await workerApi.acceptJob(req.id);
+      const res = await workerApi.acceptAndSchedule(req.id, { date, timeSlot });
       if (res?.success) {
+        setShowScheduleModal(false);
         navigate(`/worker/jobs/${req.id}`);
+      } else {
+        alert(res?.error || 'Failed to accept and schedule order.');
       }
     } catch (err) {
       alert(err.message || 'Failed to accept order. It may have expired.');
@@ -342,6 +351,15 @@ export default function RequestDetails() {
           </div>
         </div>
       )}
+
+      {/* Mandatory Accept & Initial Scheduling Modal */}
+      <AcceptAndScheduleModal
+        isOpen={showScheduleModal}
+        order={req}
+        onClose={() => setShowScheduleModal(false)}
+        onConfirm={handleConfirmAcceptAndSchedule}
+        isLoading={accepting}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, FileText, FolderLock, User } from 'lucide-react';
+import { Home, FileText, HeartHandshake, User } from 'lucide-react';
 
 export default function BottomNav() {
   const navigate = useNavigate();
@@ -9,7 +9,7 @@ export default function BottomNav() {
   const navItems = [
     { label: 'Home', path: '/', icon: Home },
     { label: 'Orders', path: '/orders', icon: FileText },
-    { label: 'Vault', path: '/vault', icon: FolderLock },
+    { label: 'Welfare', path: '/customer-welfare', icon: HeartHandshake },
     { label: 'Profile', path: '/profile', icon: User },
   ];
 

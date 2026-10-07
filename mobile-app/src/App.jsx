@@ -1,10 +1,10 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Home from './pages/Home';
 import ServiceForm from './pages/ServiceForm';
 import Orders from './pages/Orders';
 import OrderTracking from './pages/OrderTracking';
-import Vault from './pages/Vault';
+import CustomerWelfare from './pages/CustomerWelfare';
 import Auth from './pages/Auth';
 import Profile from './pages/Profile';
 import BottomNav from './components/BottomNav';
@@ -23,7 +23,8 @@ function AppLayout() {
           <Route path="/service/:id" element={<ServiceForm />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/orders/:id" element={<OrderTracking />} />
-          <Route path="/vault" element={<Vault />} />
+          <Route path="/customer-welfare" element={<CustomerWelfare />} />
+          <Route path="/vault" element={<Navigate to="/customer-welfare" replace />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/profile" element={<Profile />} />
         </Routes>

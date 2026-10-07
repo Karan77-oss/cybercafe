@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FileText, Clock, ChevronRight, RefreshCw, 
-  AlertCircle, CheckCircle2, Loader2, Plus, Calendar 
+  AlertCircle, CheckCircle2, Loader2, Plus, Calendar, PhoneCall, ShieldCheck
 } from 'lucide-react';
 import { ordersApi, authApi } from '../api/client';
 
@@ -138,6 +138,8 @@ export default function Orders() {
                 : timeSlotDisplay
             ) : null;
 
+            const docs = order.documents || [];
+
             return (
               <div
                 key={order.id}
@@ -159,11 +161,36 @@ export default function Orders() {
                   </span>
                 </div>
 
-                {/* Booked Time Slot Badge */}
+                {/* Highlighted Booked Call Slot: 📞 Callback Window */}
                 {fullSlotBadge && (
-                  <div className="flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/25 px-2.5 py-1 rounded-lg mb-2.5 w-fit">
-                    <Calendar className="w-3 h-3 text-cyan-400 shrink-0" />
-                    <span>📅 Slot: {fullSlotBadge}</span>
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2.5 py-1 rounded-lg mb-2.5 w-fit">
+                    <PhoneCall className="w-3 h-3 text-cyan-400 shrink-0" />
+                    <span>📞 Callback Window: {fullSlotBadge}</span>
+                  </div>
+                )}
+
+                {/* Uploaded Documents Count & Thumbnails */}
+                {docs.length > 0 && (
+                  <div className="flex items-center gap-2 mb-2.5 bg-slate-900/60 border border-slate-700/50 rounded-xl p-1.5 px-2.5 w-fit">
+                    <div className="flex -space-x-1.5 overflow-hidden">
+                      {docs.slice(0, 3).map((d, i) => (
+                        <div
+                          key={d.id || i}
+                          className="w-5 h-5 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-[8px] text-cyan-300 shrink-0 overflow-hidden"
+                          title={d.name || d.docName || 'Document'}
+                        >
+                          {d.url && (d.mimeType?.startsWith('image/') || d.fileName?.match(/\.(jpg|jpeg|png|webp)$/i)) ? (
+                            <img src={d.url} alt="doc" className="w-full h-full object-cover" />
+                          ) : (
+                            <FileText className="w-3 h-3 text-cyan-400" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <span className="text-[10px] text-slate-300 font-medium flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      <span>{docs.length} Doc{docs.length > 1 ? 's' : ''} Attached</span>
+                    </span>
                   </div>
                 )}
 

@@ -4,6 +4,7 @@ export const workerApi = {
   // Requests & Available Orders
   getAvailableRequests: () => apiClient('/worker/requests'),
   acceptJob: (orderId) => apiClient(`/worker/jobs/${orderId}/accept`, { method: 'POST' }),
+  acceptAndSchedule: (orderId, { date, timeSlot }) => apiClient(`/worker/orders/${orderId}/accept-and-schedule`, { method: 'POST', body: { date, timeSlot } }),
   rejectJob: (orderId, reason, note) => apiClient(`/worker/requests/${orderId}/reject`, { method: 'POST', body: { reason, note } }),
 
   // Active / Completed Jobs
@@ -12,6 +13,8 @@ export const workerApi = {
   startWork: (id) => apiClient(`/worker/jobs/${id}/start`, { method: 'POST' }),
   setTimeSlot: (id, timeSlot) => apiClient(`/worker/jobs/${id}/timeslot`, { method: 'POST', body: timeSlot }),
   acceptReschedule: (id) => apiClient(`/worker/jobs/${id}/timeslot/accept-reschedule`, { method: 'POST' }),
+  requestReschedule: (orderId, data) => apiClient(`/orders/${orderId}/request-reschedule`, { method: 'POST', body: data }),
+  respondReschedule: (orderId, data) => apiClient(`/orders/${orderId}/respond-reschedule`, { method: 'POST', body: data }),
   uploadDeliverables: (id, deliverables) => apiClient(`/worker/jobs/${id}/deliverables`, { method: 'POST', body: { deliverables } }),
   uploadDeliverableFile: (id, file, name) => {
     const formData = new FormData();
@@ -49,5 +52,10 @@ export const workerApi = {
   getProfile: () => apiClient('/worker/profile'),
   updateProfile: (data) => apiClient('/worker/profile', { method: 'PUT', body: data }),
   proposeService: (data) => apiClient('/worker/services/propose', { method: 'POST', body: data }),
-  getProposals: () => apiClient('/worker/services/proposals')
+  getProposals: () => apiClient('/worker/services/proposals'),
+
+  // Customer Welfare Cases for Assigned Orders
+  getWelfareTickets: () => apiClient('/welfare/worker/tickets'),
+  addWelfareNote: (ticketId, note) => apiClient(`/welfare/tickets/${ticketId}/notes`, { method: 'POST', body: { note } }),
+  escalateWelfareTicket: (ticketId, reason) => apiClient(`/welfare/tickets/${ticketId}/escalate`, { method: 'POST', body: { reason } })
 };

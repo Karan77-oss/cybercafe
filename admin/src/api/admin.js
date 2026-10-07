@@ -72,6 +72,12 @@ export const adminApi = {
   replyComplaint: (id, message) => apiClient(`/admin/complaints/${id}/reply`, { method: 'POST', body: { message } }),
   addComplaintNote: (id, note) => apiClient(`/admin/complaints/${id}/note`, { method: 'POST', body: { note } }),
   resolveComplaint: (id, decision, resolutionNote) => apiClient(`/admin/complaints/${id}/resolve`, { method: 'POST', body: { decision, resolutionNote } }),
+  getWelfareTickets: (params = {}) => {
+    const query = cleanParams(params);
+    return apiClient(`/admin/welfare/tickets${query ? `?${query}` : ''}`);
+  },
+  reviewWelfareTicket: (id, data) => apiClient(`/admin/welfare/tickets/${id}/review`, { method: 'POST', body: data }),
+  processRefund: (id, data) => apiClient(`/admin/welfare/tickets/${id}/refund`, { method: 'POST', body: data }),
 
   // 8. Help & Support
   getSupportTickets: (params = {}) => {

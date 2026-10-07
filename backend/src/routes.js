@@ -48,13 +48,23 @@ router.get('/workers/available', optionalAuth, extendedControllers_1.workersCont
 // 3. Customer Orders & Payments (Section 14 - 27)
 // ==========================================
 const ORDER_ROLES = ['CUSTOMER', 'ADMIN'];
-router.post('/orders', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), extendedControllers_1.ordersController.createOrder);
+router.post('/orders', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), upload.any(), extendedControllers_1.ordersController.createOrder);
 router.get('/orders', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), extendedControllers_1.ordersController.getOrders);
+router.get('/orders/my-orders', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), extendedControllers_1.ordersController.getOrders);
 router.get('/orders/:id', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), extendedControllers_1.ordersController.getOrder);
 router.post('/orders/:id/timeslot/accept', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), extendedControllers_1.ordersController.acceptTimeSlot);
 router.post('/orders/:id/timeslot/reschedule', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), extendedControllers_1.ordersController.rescheduleTimeSlot);
+router.post('/orders/:id/request-reschedule', auth_1.requireAuth, (0, auth_1.requireRole)(['CUSTOMER', 'WORKER', 'ADMIN']), extendedControllers_1.ordersController.requestReschedule);
+router.post('/orders/:id/respond-reschedule', auth_1.requireAuth, (0, auth_1.requireRole)(['CUSTOMER', 'WORKER', 'ADMIN']), extendedControllers_1.ordersController.respondReschedule);
 router.post('/orders/:id/pay', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), extendedControllers_1.ordersController.payOrder);
+router.post('/orders/create-payment', optionalAuth, extendedControllers_1.ordersController.createRazorpayPayment);
+router.post('/orders/verify-payment', optionalAuth, extendedControllers_1.ordersController.verifyRazorpayPayment);
+router.post('/orders/:id/create-payment', optionalAuth, extendedControllers_1.ordersController.createRazorpayPayment);
+router.post('/orders/:id/verify-payment', optionalAuth, extendedControllers_1.ordersController.verifyRazorpayPayment);
 router.post('/orders/:id/review', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), extendedControllers_1.ordersController.submitReview);
+// Customer Vault Routes
+router.get('/customer/vault/documents', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), extendedControllers_1.documentController.getVaultDocuments);
+router.post('/customer/vault/upload', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), upload.single('file'), extendedControllers_1.documentController.uploadVaultDocument);
 router.post('/payments/webhook', webhook_1.webhookController.razorpayWebhook);
 // Customer Document, Receipt, Complaint (Section 23, 24, 25, 27)
 router.post('/orders/:id/documents', auth_1.requireAuth, (0, auth_1.requireRole)(ORDER_ROLES), upload.single('file'), extendedControllers_1.ordersController.uploadOrderDocument);
@@ -77,6 +87,8 @@ const WORKER_ROLES = ['WORKER', 'ADMIN'];
 // Standard Specification Worker Routes
 router.get('/worker/orders/available', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.getAvailableOrders);
 router.post('/worker/orders/:id/accept', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.acceptJob);
+router.post('/worker/orders/:id/accept-and-schedule', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.acceptAndSchedule);
+router.post('/worker/jobs/:id/accept-and-schedule', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.acceptAndSchedule);
 router.get('/worker/orders/active', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.getActiveOrders);
 router.get('/worker/orders/:id', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.getOrderDetails);
 router.get('/worker/orders/:id/documents', auth_1.requireAuth, (0, auth_1.requireRole)(WORKER_ROLES), portalControllers_1.workerController.getOrderDocuments);

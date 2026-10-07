@@ -1690,7 +1690,12 @@
         "receiptUrl": null,
         "deliverableFiles": []
       },
-      "review": null
+      "review": null,
+      "expiry": {
+        "isExpired": true,
+        "expiredAt": "2026-10-07T14:44:26.721Z",
+        "refundCreditedPaise": 14900
+      }
     },
     "pricePaise": 14900,
     "workerEarningsPaise": 11920,
@@ -1760,5 +1765,1155 @@
     "deliverables": [],
     "createdAt": "2026-10-06T11:36:39.044Z",
     "updatedAt": "2026-10-06T11:36:39.045Z"
+  },
+  {
+    "id": "ord_1791352418753",
+    "orderNumber": "ord_1791352418753",
+    "customerId": "usr_1791352418611",
+    "customerName": "Test Customer",
+    "customerPhone": "9876543210",
+    "customerEmail": "cust_1791352418476@test.com",
+    "contactPhone": "9876543210",
+    "customerNotes": "Need urgent verification",
+    "notes": "Need urgent verification",
+    "formData": {
+      "contactPhone": "9876543210",
+      "customerNotes": "Need urgent verification"
+    },
+    "bookingDate": null,
+    "bookingTimeSlot": null,
+    "timeSlot": null,
+    "slotStatus": "UNASSIGNED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "PAYMENT_PENDING",
+    "paymentStatus": "PENDING",
+    "earningStatus": "PENDING",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {},
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-08T05:53:38.753Z",
+      "scheduling": {
+        "status": "UNASSIGNED",
+        "slotStatus": "UNASSIGNED",
+        "timeSlot": null,
+        "date": null,
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": null,
+    "payment": null,
+    "documents": [],
+    "deliverables": [],
+    "createdAt": "2026-10-07T05:53:38.753Z",
+    "updatedAt": "2026-10-07T05:53:38.753Z"
+  },
+  {
+    "id": "ord_1791352531548",
+    "orderNumber": "ord_1791352531548",
+    "customerId": "usr_1791352531253",
+    "customerName": "Test Customer",
+    "customerPhone": "9876543210",
+    "customerEmail": "cust_1791352530862@test.com",
+    "contactPhone": "9876543210",
+    "customerNotes": "Need urgent verification",
+    "notes": "Need urgent verification",
+    "formData": {
+      "contactPhone": "9876543210",
+      "customerNotes": "Need urgent verification"
+    },
+    "bookingDate": null,
+    "bookingTimeSlot": null,
+    "timeSlot": null,
+    "slotStatus": "UNASSIGNED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "PAYMENT_PENDING",
+    "paymentStatus": "PENDING",
+    "earningStatus": "PENDING",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {},
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-08T05:55:31.548Z",
+      "scheduling": {
+        "status": "UNSCHEDULED",
+        "timeSlot": null,
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": null,
+    "payment": null,
+    "documents": [],
+    "deliverables": [],
+    "createdAt": "2026-10-07T05:55:31.548Z",
+    "updatedAt": "2026-10-07T05:55:31.548Z"
+  },
+  {
+    "id": "ord_1791352586236",
+    "orderNumber": "ord_1791352586236",
+    "customerId": "usr_1791352585976",
+    "customerName": "Test Customer",
+    "customerPhone": "9876543210",
+    "customerEmail": "cust_1791352585709@test.com",
+    "contactPhone": "9876543210",
+    "customerNotes": "Need urgent verification",
+    "notes": "Need urgent verification",
+    "formData": {
+      "contactPhone": "9876543210",
+      "customerNotes": "Need urgent verification"
+    },
+    "bookingDate": "2026-10-08",
+    "bookingTimeSlot": "04:00 PM - 06:00 PM",
+    "timeSlot": "04:00 PM - 06:00 PM",
+    "slotStatus": "CONFIRMED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "ASSIGNED",
+    "paymentStatus": "PAID",
+    "earningStatus": "PENDING",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {},
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-08T05:56:26.235Z",
+      "scheduling": {
+        "date": "2026-10-08",
+        "timeSlot": "04:00 PM - 06:00 PM",
+        "slotStatus": "CONFIRMED",
+        "status": "CONFIRMED",
+        "proposedDate": null,
+        "proposedSlot": null,
+        "proposedTimeSlot": null,
+        "confirmedAt": "2026-10-07T05:56:26.291Z",
+        "requestedBy": "WORKER",
+        "requestedAt": "2026-10-07T05:56:26.299Z",
+        "rejectedAt": "2026-10-07T05:56:26.306Z"
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": "worker-amit-01",
+    "worker": {
+      "id": "worker-amit-01",
+      "name": "Amit Cyber Cafe & Digital Seva",
+      "phone": "9876543210",
+      "email": "amit.cyber@gmail.com"
+    },
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-10-07T05:56:26.247Z",
+    "payment": {
+      "status": "PAID",
+      "method": "UPI",
+      "paidAt": "2026-10-07T05:56:26.247Z"
+    },
+    "documents": [],
+    "deliverables": [],
+    "createdAt": "2026-10-07T05:56:26.237Z",
+    "updatedAt": "2026-10-07T05:56:26.306Z",
+    "workerAcceptedAt": "2026-10-07T05:56:26.274Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-10-07T10:56:26.274Z"
+  },
+  {
+    "id": "ord_1791352679319",
+    "orderNumber": "ord_1791352679319",
+    "customerId": "usr_1791352679176",
+    "customerName": "Test Customer",
+    "customerPhone": "9876543210",
+    "customerEmail": "cust_1791352679006@test.com",
+    "contactPhone": "9876543210",
+    "customerNotes": "Need urgent verification",
+    "notes": "Need urgent verification",
+    "formData": {
+      "contactPhone": "9876543210",
+      "customerNotes": "Need urgent verification"
+    },
+    "bookingDate": "2026-10-08",
+    "bookingTimeSlot": "04:00 PM - 06:00 PM",
+    "timeSlot": "04:00 PM - 06:00 PM",
+    "slotStatus": "CONFIRMED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "ASSIGNED",
+    "paymentStatus": "PAID",
+    "earningStatus": "PENDING",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {},
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-08T05:57:59.319Z",
+      "scheduling": {
+        "date": "2026-10-08",
+        "timeSlot": "04:00 PM - 06:00 PM",
+        "slotStatus": "CONFIRMED",
+        "status": "CONFIRMED",
+        "proposedDate": null,
+        "proposedSlot": null,
+        "proposedTimeSlot": null,
+        "confirmedAt": "2026-10-07T05:57:59.348Z",
+        "requestedBy": "WORKER",
+        "requestedAt": "2026-10-07T05:57:59.354Z",
+        "rejectedAt": "2026-10-07T05:57:59.359Z"
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": "worker-amit-01",
+    "worker": {
+      "id": "worker-amit-01",
+      "name": "Amit Cyber Cafe & Digital Seva",
+      "phone": "9876543210",
+      "email": "amit.cyber@gmail.com"
+    },
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-10-07T05:57:59.326Z",
+    "payment": {
+      "status": "PAID",
+      "method": "UPI",
+      "paidAt": "2026-10-07T05:57:59.326Z"
+    },
+    "documents": [],
+    "deliverables": [],
+    "createdAt": "2026-10-07T05:57:59.319Z",
+    "updatedAt": "2026-10-07T05:57:59.359Z",
+    "workerAcceptedAt": "2026-10-07T05:57:59.338Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-10-07T10:57:59.338Z"
+  },
+  {
+    "id": "ord_1791354813670",
+    "orderNumber": "ord_1791354813670",
+    "customerId": "usr_1791354813646",
+    "customerName": "Test Customer",
+    "customerPhone": "9876543210",
+    "customerEmail": "customer_1791354813458@test.com",
+    "contactPhone": "9876543210",
+    "customerNotes": "",
+    "notes": "",
+    "formData": {
+      "contactPhone": "9876543210",
+      "customerNotes": ""
+    },
+    "bookingDate": null,
+    "bookingTimeSlot": null,
+    "timeSlot": null,
+    "slotStatus": "UNASSIGNED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "PAYMENT_PENDING",
+    "paymentStatus": "PENDING",
+    "earningStatus": "PENDING",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {},
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-08T06:33:33.669Z",
+      "scheduling": {
+        "status": "UNSCHEDULED",
+        "timeSlot": null,
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": null,
+    "payment": null,
+    "documents": [],
+    "deliverables": [],
+    "createdAt": "2026-10-07T06:33:33.670Z",
+    "updatedAt": "2026-10-07T06:33:33.670Z"
+  },
+  {
+    "id": "ord_1791355003242",
+    "orderNumber": "ord_1791355003242",
+    "customerId": "usr_1791352539752",
+    "customerName": "Customer",
+    "customerPhone": "9693553077",
+    "customerEmail": null,
+    "contactPhone": "9693553077",
+    "customerNotes": "",
+    "notes": "",
+    "formData": {
+      "contactPhone": "9693553077",
+      "customerNotes": ""
+    },
+    "bookingDate": "Today",
+    "bookingTimeSlot": "02:00 PM - 04:00 PM",
+    "timeSlot": "02:00 PM - 04:00 PM",
+    "slotStatus": "CONFIRMED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "COMPLETED",
+    "paymentStatus": "PAID",
+    "earningStatus": "RELEASED",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {},
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-08T06:36:43.241Z",
+      "scheduling": {
+        "date": "Today",
+        "timeSlot": "02:00 PM - 04:00 PM",
+        "slotStatus": "CONFIRMED",
+        "status": "CONFIRMED",
+        "scheduledAt": "2026-10-07T06:41:49.708Z",
+        "proposedBy": "WORKER"
+      },
+      "completion": {
+        "referenceNumber": "CCM-APP-003242",
+        "completionMessage": "Application successfully processed and submitted.",
+        "receiptUrl": "/api/orders/ord_1791355003242/deliverables/deliv_1791355380798_e9f8q/download",
+        "deliverableFiles": [
+          {
+            "id": "deliv_1791355380798_e9f8q",
+            "name": "Screenshot 2025 06 29 140234",
+            "fileName": "Screenshot 2025-06-29 140234.png",
+            "mimeType": "image/png",
+            "size": "213 KB",
+            "sizeBytes": 218364,
+            "storageKey": "deliverables/ord_1791355003242/1791355380649_Screenshot_2025-06-29_140234.png",
+            "url": "/api/orders/ord_1791355003242/deliverables/deliv_1791355380798_e9f8q/download",
+            "isMandatory": true,
+            "uploadedAt": "2026-10-07T06:43:00.798Z"
+          }
+        ]
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": "worker-amit-01",
+    "worker": {
+      "id": "worker-amit-01",
+      "name": "Amit Cyber Cafe & Digital Seva",
+      "phone": "9876543210",
+      "email": "amit.cyber@gmail.com"
+    },
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-10-07T06:38:32.230Z",
+    "payment": {
+      "status": "PAID",
+      "provider": "RAZORPAY",
+      "providerOrderId": "order_TkvCdDUryvHy8y",
+      "providerPaymentId": "pay_TkvE3sGSGkguXq",
+      "paidAt": "2026-10-07T06:38:32.230Z"
+    },
+    "documents": [
+      {
+        "id": "doc_1791355003245_ypsz8",
+        "storageKey": "docs/usr_1791352539752/1791355003243_Screenshot_2025-06-29_134612.png",
+        "docName": "Aadhaar Card",
+        "name": "Aadhaar Card (Screenshot 2025-06-29 134612.png)",
+        "fileName": "Screenshot 2025-06-29 134612.png",
+        "url": "/api/documents/doc_1791355003245_ypsz8/download",
+        "mimeType": "image/png",
+        "size": 216146,
+        "type": "UPLOAD",
+        "customerId": "usr_1791352539752",
+        "orderId": "ord_1791355003242",
+        "orderNumber": "ord_1791355003242",
+        "createdAt": "2026-10-07T06:36:43.245Z"
+      },
+      {
+        "id": "doc_1791355003255_eacjy",
+        "storageKey": "docs/usr_1791352539752/1791355003255_Screenshot_2025-06-29_144153.png",
+        "docName": "Passport Size Photo",
+        "name": "Passport Size Photo (Screenshot 2025-06-29 144153.png)",
+        "fileName": "Screenshot 2025-06-29 144153.png",
+        "url": "/api/documents/doc_1791355003255_eacjy/download",
+        "mimeType": "image/png",
+        "size": 215914,
+        "type": "UPLOAD",
+        "customerId": "usr_1791352539752",
+        "orderId": "ord_1791355003242",
+        "orderNumber": "ord_1791355003242",
+        "createdAt": "2026-10-07T06:36:43.255Z"
+      },
+      {
+        "id": "doc_1791355003257_mcdcz",
+        "storageKey": "docs/usr_1791352539752/1791355003257_Screenshot_2025-06-29_140426.png",
+        "docName": "Signature Specimen",
+        "name": "Signature Specimen (Screenshot 2025-06-29 140426.png)",
+        "fileName": "Screenshot 2025-06-29 140426.png",
+        "url": "/api/documents/doc_1791355003257_mcdcz/download",
+        "mimeType": "image/png",
+        "size": 215412,
+        "type": "UPLOAD",
+        "customerId": "usr_1791352539752",
+        "orderId": "ord_1791355003242",
+        "orderNumber": "ord_1791355003242",
+        "createdAt": "2026-10-07T06:36:43.257Z"
+      }
+    ],
+    "deliverables": [
+      {
+        "id": "deliv_1791355380798_e9f8q",
+        "name": "Screenshot 2025 06 29 140234",
+        "fileName": "Screenshot 2025-06-29 140234.png",
+        "mimeType": "image/png",
+        "size": "213 KB",
+        "sizeBytes": 218364,
+        "storageKey": "deliverables/ord_1791355003242/1791355380649_Screenshot_2025-06-29_140234.png",
+        "url": "/api/orders/ord_1791355003242/deliverables/deliv_1791355380798_e9f8q/download",
+        "isMandatory": true,
+        "uploadedAt": "2026-10-07T06:43:00.798Z"
+      }
+    ],
+    "createdAt": "2026-10-07T06:36:43.243Z",
+    "updatedAt": "2026-10-07T06:43:20.573Z",
+    "workerAcceptedAt": "2026-10-07T06:41:49.707Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-10-07T11:41:49.707Z",
+    "workStartedAt": "2026-10-07T06:42:29.893Z",
+    "receiptSubmittedAt": "2026-10-07T06:43:05.693Z",
+    "workCompletedAt": "2026-10-07T06:43:05.693Z",
+    "completionNote": "",
+    "completedAt": "2026-10-07T06:43:20.573Z",
+    "receiptDownloadedAt": "2026-10-07T06:43:20.573Z"
+  },
+  {
+    "id": "ord_1791385063634",
+    "orderNumber": "ord_1791385063634",
+    "customerId": "usr_1791118201390",
+    "customerName": "Customer",
+    "customerPhone": "9693553077",
+    "customerEmail": null,
+    "contactPhone": "9693553077",
+    "customerNotes": "",
+    "notes": "",
+    "subCategory": "Male",
+    "formData": {
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "subCategory": "Male"
+    },
+    "bookingDate": null,
+    "bookingTimeSlot": null,
+    "timeSlot": null,
+    "slotStatus": "UNASSIGNED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "AVAILABLE",
+    "paymentStatus": "PAID",
+    "earningStatus": "PENDING",
+    "workerAmount": 15920,
+    "adminCommission": 3980,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "subCategory": "Male",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant (as per Aadhaar)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "subCategory": "Male"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-08T14:57:43.633Z",
+      "scheduling": {
+        "status": "UNSCHEDULED",
+        "timeSlot": null,
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 15920,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 3980,
+      "workerPayoutPaise": 15920
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-10-07T14:58:28.322Z",
+    "payment": {
+      "status": "PAID",
+      "provider": "RAZORPAY",
+      "providerOrderId": "order_Tl3jrWMCLgRK1K",
+      "providerPaymentId": "pay_Tl3kHizoTYpjQc",
+      "paidAt": "2026-10-07T14:58:28.322Z"
+    },
+    "documents": [
+      {
+        "id": "doc_1791385063635_uncnh",
+        "storageKey": "docs/usr_1791118201390/1791385063635_Screenshot_2025-06-29_143625.png",
+        "docName": "Aadhaar Card",
+        "name": "Aadhaar Card (Screenshot 2025-06-29 143625.png)",
+        "fileName": "Screenshot 2025-06-29 143625.png",
+        "url": "/api/documents/doc_1791385063635_uncnh/download",
+        "mimeType": "image/png",
+        "size": 214628,
+        "type": "UPLOAD",
+        "customerId": "usr_1791118201390",
+        "orderId": "ord_1791385063634",
+        "orderNumber": "ord_1791385063634",
+        "createdAt": "2026-10-07T14:57:43.635Z"
+      },
+      {
+        "id": "doc_1791385063641_clblc",
+        "storageKey": "docs/usr_1791118201390/1791385063641_Screenshot_2025-06-29_144402.png",
+        "docName": "Passport Size Photo",
+        "name": "Passport Size Photo (Screenshot 2025-06-29 144402.png)",
+        "fileName": "Screenshot 2025-06-29 144402.png",
+        "url": "/api/documents/doc_1791385063641_clblc/download",
+        "mimeType": "image/png",
+        "size": 214680,
+        "type": "UPLOAD",
+        "customerId": "usr_1791118201390",
+        "orderId": "ord_1791385063634",
+        "orderNumber": "ord_1791385063634",
+        "createdAt": "2026-10-07T14:57:43.641Z"
+      },
+      {
+        "id": "doc_1791385063642_vwdo3",
+        "storageKey": "docs/usr_1791118201390/1791385063642_Screenshot_2025-06-29_144153.png",
+        "docName": "Signature Specimen",
+        "name": "Signature Specimen (Screenshot 2025-06-29 144153.png)",
+        "fileName": "Screenshot 2025-06-29 144153.png",
+        "url": "/api/documents/doc_1791385063642_vwdo3/download",
+        "mimeType": "image/png",
+        "size": 215914,
+        "type": "UPLOAD",
+        "customerId": "usr_1791118201390",
+        "orderId": "ord_1791385063634",
+        "orderNumber": "ord_1791385063634",
+        "createdAt": "2026-10-07T14:57:43.642Z"
+      }
+    ],
+    "deliverables": [],
+    "createdAt": "2026-10-07T14:57:43.634Z",
+    "updatedAt": "2026-10-07T14:58:28.322Z"
   }
 ]

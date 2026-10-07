@@ -207,6 +207,12 @@ model Order {
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
 
+  timeSlot                String?
+  bookingDate             String?
+  slotStatus              String?        @default("UNASSIGNED")
+  proposedSlot            String?
+  proposedDate            String?
+
   job                     Job?           // 1-to-1 relationship guarantees ONLY ONE active assignment
   payments                Payment[]
   documents               Document[]
@@ -496,4 +502,44 @@ model AuditLog {
   @@index([actorUserId])
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+model WelfareCase {
+  id            String        @id @default(uuid())
+  userId        String        @map("user_id")
+  orderId       String        @map("order_id")
+  issueType     String        @map("issue_type")
+  description   String
+  status        String        @default("open") // open, in_review, refund_approved, resolved, rejected, refund_processed
+  internalNotes Json?         @map("internal_notes")
+  isEscalated   Boolean       @default(false) @map("is_escalated")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  refundRecord  RefundRecord?
+
+  @@map("tickets")
+  @@index([userId])
+  @@index([orderId])
+  @@index([status])
+}
+
+model RefundRecord {
+  id          String      @id @default(uuid())
+  ticketId    String      @unique @map("ticket_id")
+  orderId     String      @map("order_id")
+  amount      Float
+  status      String      @default("pending") // pending, processed
+  utrNumber   String?     @map("utr_number")
+  receiptUrl  String?     @map("receipt_url")
+  processedBy String?     @map("processed_by")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  ticket      WelfareCase @relation(fields: [ticketId], references: [id])
+
+  @@map("refund_records")
+  @@index([ticketId])
+  @@index([orderId])
+  @@index([status])
 }

@@ -536,6 +536,19 @@ class ResilientStore {
                 createdAt: new Date().toISOString()
             });
         }
+        const adminDemoHash = bcrypt_1.default.hashSync('password123', 10);
+        this.users.set('ADM-001', {
+            id: 'ADM-001',
+            adminId: 'ADM-001',
+            email: 'admin@cybercafe.com',
+            name: 'Central Administrator',
+            phone: '9876543200',
+            role: 'ADMIN',
+            password: adminDemoHash,
+            passwordHash: adminDemoHash,
+            accountStatus: 'ACTIVE',
+            createdAt: new Date().toISOString()
+        });
         // Seed default verified workers as users
         this.workers.forEach(w => {
             this.users.set(w.id, {
@@ -675,19 +688,32 @@ class ResilientStore {
         }
         return undefined;
     }
+    findUserByPhone(phone) {
+        if (!phone)
+            return undefined;
+        const clean = phone.replace(/\D/g, '');
+        for (const u of this.users.values()) {
+            if (u.phone && (u.phone === phone || (clean && u.phone.replace(/\D/g, '') === clean))) {
+                return u;
+            }
+        }
+        return undefined;
+    }
     findUserById(id) {
         if (!id)
             return undefined;
         if (this.users.has(id))
             return this.users.get(id);
         const idLower = id.toLowerCase();
+        const cleanId = id.replace(/\D/g, '');
         for (const u of this.users.values()) {
             if ((u.id && u.id.toLowerCase() === idLower) ||
                 (u.adminId && u.adminId.toLowerCase() === idLower) ||
                 (u.workerId && u.workerId.toLowerCase() === idLower) ||
                 (u.username && u.username.toLowerCase() === idLower) ||
                 (u.email && u.email.toLowerCase() === idLower) ||
-                (u.name && u.name.toLowerCase() === idLower)) {
+                (u.name && u.name.toLowerCase() === idLower) ||
+                (u.phone && (u.phone === id || (cleanId.length >= 10 && u.phone.replace(/\D/g, '') === cleanId)))) {
                 return u;
             }
         }
@@ -1003,7 +1029,10 @@ class ResilientStore {
                     deadline: ord.deadline,
                     offerExpiresAt: ord.offerExpiresAt,
                     remainingSeconds,
-                    status: ord.status
+                    status: ord.status,
+                    slotStatus: ord.slotStatus || 'UNASSIGNED',
+                    timeSlot: ord.timeSlot || null,
+                    bookingDate: ord.bookingDate || null
                 });
             }
         });
@@ -1411,6 +1440,276 @@ class ResilientStore {
         this.persistOrdersToDisk();
         return order;
     }
+    acceptAndScheduleOrder(orderId, workerId, schedule) {
+        const lockAcquired = this.acquireOrderLock(orderId);
+        if (!lockAcquired) {
+            const err = new Error('Order is currently being processed by another worker');
+            err.statusCode = 409;
+            err.code = 'ORDER_LOCKED';
+            throw err;
+        }
+        try {
+            const worker = this.getWorker(workerId);
+            if (!worker)
+                throw new Error('Worker not found');
+            if (!worker.isOnline) {
+                throw new Error('Worker must be online to accept orders');
+            }
+            if (worker.accountStatus === 'PAUSED' || worker.status === 'PAUSED' || worker.accountStatus === 'SUSPENDED' || worker.accountStatus === 'BLOCKED' || worker.accountStatus === 'DELETED') {
+                throw new Error('Worker account is inactive or suspended');
+            }
+            const order = this.orders.get(orderId);
+            if (!order)
+                throw new Error('Order not found');
+            if (order.status === 'ACCEPTED' || order.status === 'ASSIGNED' || order.status === 'IN_PROGRESS' || order.status === 'COMPLETED') {
+                const err = new Error('Order has already been accepted by another worker');
+                err.statusCode = 409;
+                err.code = 'ORDER_ALREADY_ASSIGNED';
+                throw err;
+            }
+            if (order.status !== 'OFFERED' && order.status !== 'AVAILABLE' && order.status !== 'PAID') {
+                const err = new Error(`Order cannot be accepted in status: ${order.status}`);
+                err.statusCode = 409;
+                err.code = 'ORDER_UNAVAILABLE';
+                throw err;
+            }
+            if (order.assignedWorkerId && order.assignedWorkerId !== workerId) {
+                const err = new Error('Order has already been accepted by another worker');
+                err.statusCode = 409;
+                err.code = 'ORDER_ALREADY_ASSIGNED';
+                throw err;
+            }
+            const slotStr = schedule.timeSlot ? schedule.timeSlot.trim() : '';
+            if (!slotStr) {
+                throw new Error('Initial time window is required to accept and schedule');
+            }
+            const dateStr = schedule.date ? schedule.date.trim() : 'Today';
+            order.status = 'ASSIGNED';
+            order.assignedWorkerId = workerId;
+            order.worker = { id: worker.id, name: worker.name, phone: worker.phone, email: worker.email };
+            order.workerAcceptedAt = new Date().toISOString();
+            order.acceptedOrder5HourWindowExpiresAt = new Date(Date.now() + 5 * 3600 * 1000).toISOString();
+            order.workerEarningsPaise = order.workerEarningsPaise || Math.round((order.pricePaise || 19900) * 0.8);
+            order.bookingDate = dateStr;
+            order.timeSlot = slotStr;
+            order.bookingTimeSlot = slotStr;
+            order.slotStatus = 'CONFIRMED';
+            order.proposedSlot = null;
+            order.proposedDate = null;
+            order.updatedAt = new Date().toISOString();
+            if (!order.serviceSnapshot)
+                order.serviceSnapshot = {};
+            order.serviceSnapshot.scheduling = {
+                date: dateStr,
+                timeSlot: slotStr,
+                slotStatus: 'CONFIRMED',
+                status: 'CONFIRMED',
+                scheduledAt: new Date().toISOString(),
+                proposedBy: 'WORKER'
+            };
+            worker.activeJobs += 1;
+            worker.pendingEarningsPaise += order.workerEarningsPaise;
+            worker.lastActivityAt = new Date().toISOString();
+            const workerName = worker.name || 'Certified Operator';
+            this.notifications.unshift({
+                id: `notif_${Date.now()}`,
+                recipientId: workerId,
+                recipientRole: 'WORKER',
+                type: 'ORDER_ACCEPTED',
+                title: 'Order Accepted & Scheduled',
+                message: `You accepted order ${order.id} for ${order.serviceName}. Initial review window confirmed for ${dateStr} at ${slotStr}.`,
+                orderId: order.id,
+                isRead: false,
+                createdAt: new Date().toISOString()
+            });
+            if (order.customerId) {
+                this.notifications.unshift({
+                    id: `notif_${Date.now()}_cust`,
+                    recipientId: order.customerId,
+                    recipientRole: 'CUSTOMER',
+                    type: 'ORDER_ACCEPTED',
+                    title: 'Operator Assigned & Time Slot Confirmed',
+                    message: `${workerName} has accepted your order and confirmed your review window: ${dateStr} at ${slotStr}.`,
+                    orderId: order.id,
+                    isRead: false,
+                    createdAt: new Date().toISOString()
+                });
+            }
+            this.chatMessages.push({
+                id: `msg_${Date.now()}`,
+                orderId: order.id,
+                senderId: workerId,
+                senderRole: 'WORKER',
+                senderName: workerName,
+                message: `[Review Window Scheduled]: ${dateStr} at ${slotStr}`,
+                createdAt: new Date().toISOString()
+            });
+            this.addAuditLog({
+                actorUserId: workerId,
+                actorRole: 'WORKER',
+                action: 'ORDER_ACCEPTED_AND_SCHEDULED',
+                orderId: order.id
+            });
+            this.persistOrdersToDisk();
+            return order;
+        }
+        finally {
+            this.releaseOrderLock(orderId);
+        }
+    }
+    requestReschedule(orderId, userId, data) {
+        const order = this.orders.get(orderId);
+        if (!order)
+            throw new Error('Order not found');
+        const requestedBy = data.requestedBy || (order.assignedWorkerId === userId ? 'WORKER' : 'CUSTOMER');
+        const proposedDate = data.proposedDate ? data.proposedDate.trim() : (order.bookingDate || 'Today');
+        const proposedSlot = data.proposedTimeSlot ? data.proposedTimeSlot.trim() : '';
+        if (!proposedSlot) {
+            throw new Error('Proposed time slot is required');
+        }
+        const slotStatus = requestedBy === 'CUSTOMER'
+            ? 'RESCHEDULE_REQUESTED_BY_CUSTOMER'
+            : 'RESCHEDULE_REQUESTED_BY_WORKER';
+        order.slotStatus = slotStatus;
+        order.proposedDate = proposedDate;
+        order.proposedSlot = proposedSlot;
+        order.updatedAt = new Date().toISOString();
+        if (!order.serviceSnapshot)
+            order.serviceSnapshot = {};
+        order.serviceSnapshot.scheduling = {
+            ...(order.serviceSnapshot.scheduling || {}),
+            proposedDate,
+            proposedSlot,
+            proposedTimeSlot: proposedSlot,
+            slotStatus,
+            status: 'RESCHEDULE_REQUESTED',
+            requestedBy,
+            requestedAt: new Date().toISOString()
+        };
+        const targetRole = requestedBy === 'CUSTOMER' ? 'WORKER' : 'CUSTOMER';
+        const targetRecipientId = requestedBy === 'CUSTOMER' ? order.assignedWorkerId : order.customerId;
+        const requesterName = requestedBy === 'CUSTOMER' ? (order.customerName || 'Customer') : (this.getWorker(order.assignedWorkerId)?.name || 'Operator');
+        if (targetRecipientId) {
+            this.notifications.unshift({
+                id: `notif_${Date.now()}_resched`,
+                recipientId: targetRecipientId,
+                recipientRole: targetRole,
+                type: 'RESCHEDULE_REQUESTED',
+                title: 'Reschedule Requested',
+                message: `${requesterName} proposed a new review window: ${proposedDate} at ${proposedSlot}. Please review and respond.`,
+                orderId: order.id,
+                isRead: false,
+                createdAt: new Date().toISOString()
+            });
+        }
+        this.chatMessages.push({
+            id: `msg_${Date.now()}`,
+            orderId: order.id,
+            senderId: userId,
+            senderRole: requestedBy,
+            senderName: requesterName,
+            message: `[Reschedule Proposed]: ${proposedDate} at ${proposedSlot}`,
+            createdAt: new Date().toISOString()
+        });
+        this.persistOrdersToDisk();
+        return order;
+    }
+    respondReschedule(orderId, userId, data) {
+        const order = this.orders.get(orderId);
+        if (!order)
+            throw new Error('Order not found');
+        const action = data.action === 'ACCEPT' ? 'ACCEPT' : 'REJECT';
+        const proposedDate = order.proposedDate || order.serviceSnapshot?.scheduling?.proposedDate || order.bookingDate || 'Today';
+        const proposedSlot = order.proposedSlot || order.serviceSnapshot?.scheduling?.proposedSlot || order.serviceSnapshot?.scheduling?.proposedTimeSlot || order.timeSlot;
+        const responderRole = order.assignedWorkerId === userId ? 'WORKER' : 'CUSTOMER';
+        const responderName = responderRole === 'WORKER' ? (this.getWorker(order.assignedWorkerId)?.name || 'Operator') : (order.customerName || 'Customer');
+        const targetRecipientId = responderRole === 'WORKER' ? order.customerId : order.assignedWorkerId;
+        const targetRole = responderRole === 'WORKER' ? 'CUSTOMER' : 'WORKER';
+        if (action === 'ACCEPT') {
+            order.bookingDate = proposedDate;
+            order.timeSlot = proposedSlot;
+            order.bookingTimeSlot = proposedSlot;
+            order.proposedDate = null;
+            order.proposedSlot = null;
+            order.slotStatus = 'CONFIRMED';
+            order.updatedAt = new Date().toISOString();
+            if (!order.serviceSnapshot)
+                order.serviceSnapshot = {};
+            order.serviceSnapshot.scheduling = {
+                date: proposedDate,
+                timeSlot: proposedSlot,
+                slotStatus: 'CONFIRMED',
+                status: 'CONFIRMED',
+                proposedDate: null,
+                proposedSlot: null,
+                proposedTimeSlot: null,
+                confirmedAt: new Date().toISOString()
+            };
+            if (targetRecipientId) {
+                this.notifications.unshift({
+                    id: `notif_${Date.now()}_resched_acc`,
+                    recipientId: targetRecipientId,
+                    recipientRole: targetRole,
+                    type: 'RESCHEDULE_ACCEPTED',
+                    title: 'Reschedule Confirmed',
+                    message: `${responderName} accepted the proposed review window: ${proposedDate} at ${proposedSlot}.`,
+                    orderId: order.id,
+                    isRead: false,
+                    createdAt: new Date().toISOString()
+                });
+            }
+            this.chatMessages.push({
+                id: `msg_${Date.now()}`,
+                orderId: order.id,
+                senderId: userId,
+                senderRole: responderRole,
+                senderName: responderName,
+                message: `[Reschedule Confirmed]: New review window is ${proposedDate} at ${proposedSlot}`,
+                createdAt: new Date().toISOString()
+            });
+        }
+        else {
+            order.proposedDate = null;
+            order.proposedSlot = null;
+            order.slotStatus = 'CONFIRMED';
+            order.updatedAt = new Date().toISOString();
+            if (!order.serviceSnapshot)
+                order.serviceSnapshot = {};
+            order.serviceSnapshot.scheduling = {
+                ...(order.serviceSnapshot.scheduling || {}),
+                slotStatus: 'CONFIRMED',
+                status: 'CONFIRMED',
+                proposedDate: null,
+                proposedSlot: null,
+                proposedTimeSlot: null,
+                rejectedAt: new Date().toISOString()
+            };
+            if (targetRecipientId) {
+                this.notifications.unshift({
+                    id: `notif_${Date.now()}_resched_rej`,
+                    recipientId: targetRecipientId,
+                    recipientRole: targetRole,
+                    type: 'RESCHEDULE_REJECTED',
+                    title: 'Reschedule Declined',
+                    message: `${responderName} kept the existing review window: ${order.bookingDate} at ${order.timeSlot}.`,
+                    orderId: order.id,
+                    isRead: false,
+                    createdAt: new Date().toISOString()
+                });
+            }
+            this.chatMessages.push({
+                id: `msg_${Date.now()}`,
+                orderId: order.id,
+                senderId: userId,
+                senderRole: responderRole,
+                senderName: responderName,
+                message: `[Reschedule Declined]: Keeping existing review window: ${order.bookingDate} at ${order.timeSlot}`,
+                createdAt: new Date().toISOString()
+            });
+        }
+        this.persistOrdersToDisk();
+        return order;
+    }
     startWork(orderId, workerId) {
         const order = this.orders.get(orderId);
         if (!order)
@@ -1420,8 +1719,8 @@ class ResilientStore {
         if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
             throw new Error(`Cannot start work on an order in status: ${order.status}`);
         }
-        if (order.status !== 'ACCEPTED' && order.status !== 'IN_PROGRESS') {
-            throw new Error(`Order must be ACCEPTED before starting work. Current status: ${order.status}`);
+        if (order.status !== 'ACCEPTED' && order.status !== 'ASSIGNED' && order.status !== 'IN_PROGRESS') {
+            throw new Error(`Order must be ACCEPTED or ASSIGNED before starting work. Current status: ${order.status}`);
         }
         order.status = 'IN_PROGRESS';
         order.workStartedAt = new Date().toISOString();
@@ -1697,7 +1996,7 @@ class ResilientStore {
             return all.map(o => this.getOrderForWorker(o.id, workerId));
         if (statusFilter === 'ACTIVE') {
             return all
-                .filter(o => ['ACCEPTED', 'IN_PROGRESS', 'CORRECTION_REQUIRED'].includes(o.status))
+                .filter(o => ['ACCEPTED', 'ASSIGNED', 'IN_PROGRESS', 'CORRECTION_REQUIRED'].includes(o.status))
                 .map(o => this.getOrderForWorker(o.id, workerId));
         }
         if (statusFilter === 'COMPLETED') {

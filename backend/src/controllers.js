@@ -103,20 +103,24 @@ exports.authController = {
                 email: zod_1.z.string().optional(),
                 emailOrId: zod_1.z.string().optional(),
                 username: zod_1.z.string().optional(),
+                phone: zod_1.z.string().optional(),
+                portal: zod_1.z.string().optional(),
+                expectedRole: zod_1.z.string().optional(),
                 password: zod_1.z.string().min(1)
-            }).refine(data => !!(data.email || data.emailOrId || data.username), { message: 'Valid login identifier required' });
+            }).refine(data => !!(data.email || data.emailOrId || data.username || data.phone), { message: 'Valid login identifier required' });
             const parsed = schema.safeParse(req.body);
             if (!parsed.success)
                 return res.status(400).json({ success: false, error: 'Valid login identifier and password are required' });
-            const loginIdentifier = (parsed.data.username || parsed.data.emailOrId || parsed.data.email).trim();
+            const loginIdentifier = (parsed.data.username || parsed.data.emailOrId || parsed.data.email || parsed.data.phone).trim();
             const loginIdentifierLower = loginIdentifier.toLowerCase();
             let user = null;
             let address = null;
-            // 1. Check if loginIdentifier matches an existing user in localStore (by ID, Username, or Email)
+            // 1. Check if loginIdentifier matches an existing user in localStore (by ID, Username, Email, or Phone)
             const userFromStore = catalogData_1.localStore.findUserById(loginIdentifier) ||
                 catalogData_1.localStore.findUserById(loginIdentifierLower) ||
                 catalogData_1.localStore.findUserById(loginIdentifier.toUpperCase()) ||
-                catalogData_1.localStore.findUserByEmail(loginIdentifierLower);
+                catalogData_1.localStore.findUserByEmail(loginIdentifierLower) ||
+                catalogData_1.localStore.findUserByPhone(loginIdentifier);
             if (userFromStore) {
                 const hash = userFromStore.password || userFromStore.passwordHash;
                 let match = hash ? await bcrypt_1.default.compare(parsed.data.password, hash) : false;
@@ -138,7 +142,8 @@ exports.authController = {
                                     { email: loginIdentifierLower },
                                     { id: loginIdentifier },
                                     { id: loginIdentifierLower },
-                                    { name: loginIdentifier }
+                                    { name: loginIdentifier },
+                                    { phone: loginIdentifier }
                                 ]
                             }
                         });
@@ -213,6 +218,26 @@ exports.authController = {
             }
             if (!user) {
                 return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
+            }
+            // Portal Login Isolation Check
+            const requestedPortal = (parsed.data.portal || parsed.data.expectedRole || req.body?.role || '').toUpperCase();
+            if (requestedPortal === 'ADMIN' && user.role !== 'ADMIN') {
+                return res.status(403).json({
+                    success: false,
+                    error: {
+                        code: 'FORBIDDEN',
+                        message: 'Access Denied: Only administrators are authorized to access the Admin Console.'
+                    }
+                });
+            }
+            if (requestedPortal === 'WORKER' && user.role !== 'WORKER') {
+                return res.status(403).json({
+                    success: false,
+                    error: {
+                        code: 'FORBIDDEN',
+                        message: 'Access Denied: This portal is exclusively for registered workers and operators.'
+                    }
+                });
             }
             if (user.role === 'WORKER') {
                 const worker = catalogData_1.localStore.getWorker(user.id);

@@ -1,12 +1,59 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, CheckCircle2, ChevronRight, Upload, Camera, 
-  Trash2, FileText, AlertCircle, ShieldCheck, Loader2, Sparkles, Clock, Calendar 
+  Trash2, FileText, AlertCircle, ShieldCheck, Loader2, Sparkles, 
+  Phone, Zap, HelpCircle, X, PlusCircle, Check, User
 } from 'lucide-react';
-import { servicesApi, ordersApi, authApi, vaultApi } from '../api/client';
+import { servicesApi, ordersApi, authApi } from '../api/client';
 import { takePhoto } from '../utils/camera';
-import TimeSlotPicker from '../components/TimeSlotPicker';
+import { servicesConfig, getServiceConfig } from '../config/servicesConfig';
+
+// Derive application types dynamically from service or universal tailored defaults
+function getApplicationTypesForService(srv) {
+  if (!srv) return ['New Application', 'Correction / Update', 'Duplicate / Reprint'];
+  let types = [];
+  if (Array.isArray(srv.applicationTypes) && srv.applicationTypes.length > 0) {
+    types = srv.applicationTypes;
+  } else if (Array.isArray(srv.subCategories) && srv.subCategories.length > 0) {
+    types = srv.subCategories;
+  } else if (Array.isArray(srv.formSchema)) {
+    const selectField = srv.formSchema.find(
+      (f) => (f.id === 'application_type' || f.id === 'applicationType' || f.type === 'select') && Array.isArray(f.options) && f.options.length > 0
+    );
+    if (selectField) {
+      types = selectField.options;
+    }
+  }
+
+  if (types.length === 0) {
+    const text = `${srv.name || ''} ${srv.id || ''} ${srv.category || ''}`.toLowerCase();
+    if (text.includes('aadhaar') || text.includes('uidai')) {
+      types = ['Mobile Link / Change', 'Address Update', 'Biometric Update', 'Name / DOB Correction'];
+    } else if (text.includes('pan')) {
+      types = ['New PAN (Form 49A)', 'Correction in Existing PAN', 'Duplicate / Lost Reprint'];
+    } else if (text.includes('passport')) {
+      types = ['Fresh Passport (Normal)', 'Passport Renewal / Re-issue', 'Tatkaal Application', 'Address / Name Change'];
+    } else if (text.includes('voter') || text.includes('epic') || text.includes('election')) {
+      types = ['New Voter Registration (Form 6)', 'Correction / Update (Form 8)', 'Shifting of Residence', 'Reprint Lost EPIC'];
+    } else if (text.includes('driving') || text.includes('dl') || text.includes('licence') || text.includes('license') || text.includes('rto')) {
+      types = ['Learner Licence', 'Permanent DL', 'Renewal / Address Change', 'Duplicate / Lost DL'];
+    } else if (text.includes('ration')) {
+      types = ['New Ration Card', 'Member Addition / Deletion', 'Address / FPS Change', 'Split / Surrender'];
+    } else if (text.includes('income') || text.includes('caste') || text.includes('domicile') || text.includes('certificate')) {
+      types = ['Fresh Certificate Application', 'Renewal / Verification', 'Correction of Details'];
+    } else if (text.includes('pf') || text.includes('epfo') || text.includes('uan')) {
+      types = ['PF Full Withdrawal (Form 19)', 'PF Advance (Form 31)', 'KYC / Bank Link', 'UAN Activation'];
+    } else {
+      types = ['New Application', 'Correction / Update', 'Duplicate / Lost Reprint', 'Renewal / Extension'];
+    }
+  }
+
+  // Decouple demographics: remove gender values from application types
+  return types
+    .map((item) => (typeof item === 'string' ? item : item.name || item.label || item.value || String(item)))
+    .filter((t) => !['male', 'female', 'other', 'transgender'].includes(t.toLowerCase().trim()));
+}
 
 export default function ServiceForm() {
   const { id } = useParams();
@@ -15,17 +62,26 @@ export default function ServiceForm() {
   const [service, setService] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(1); // 1: Documents & Notes, 2: Callback & Payment
   const [error, setError] = useState(null);
 
-  // Form state
-  const [formData, setFormData] = useState({});
-  const [uploadedFiles, setUploadedFiles] = useState({}); // { [docName]: File }
-  const [filePreviews, setFilePreviews] = useState({});   // { [docName]: string }
+  // Standardized application type selection
+  const [selectedApplicationType, setSelectedApplicationType] = useState('New Application');
+  // Decoupled demographics: Gender selector
+  const [selectedGender, setSelectedGender] = useState('Male');
+  // Mandatory Terms & Conditions Checkbox
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
-  // Time slot state
-  const [bookingDate, setBookingDate] = useState('Today');
-  const [timeSlot, setTimeSlot] = useState('10:30 AM - 12:00 PM');
+  // Uploaded documents state: array of { type: string, file: File, previewUrl: string, size: number, fileName: string }
+  const [uploadedItems, setUploadedItems] = useState([]);
+  const [operatorNotes, setOperatorNotes] = useState('');
+
+  // Step 2 state: Contact phone
+  const [contactPhone, setContactPhone] = useState('');
+
+  // Custom document slot add
+  const [customDocName, setCustomDocName] = useState('');
+  const [showAddCustomDoc, setShowAddCustomDoc] = useState(false);
 
   useEffect(() => {
     async function loadService() {
@@ -35,13 +91,19 @@ export default function ServiceForm() {
         const s = res?.service || res;
         setService(s);
 
-        // Prepopulate default fields
-        if (s?.formSchema) {
-          const initial = {};
-          s.formSchema.forEach(field => {
-            initial[field.id] = field.defaultValue || '';
-          });
-          setFormData(initial);
+        // Pre-select first application type if available
+        const cfg = getServiceConfig(s || id);
+        const appTypes = cfg?.applicationTypes || [];
+        if (appTypes.length > 0) {
+          setSelectedApplicationType(appTypes[0].title || appTypes[0]);
+        }
+
+        // Prepopulate contact number from logged in user profile
+        const user = authApi.getCurrentUser();
+        if (user?.phone) {
+          setContactPhone(user.phone);
+        } else if (user?.email) {
+          setContactPhone('');
         }
       } catch (err) {
         console.error('Failed to load service:', err);
@@ -53,68 +115,132 @@ export default function ServiceForm() {
     loadService();
   }, [id]);
 
-  const handleInputChange = (fieldId, value) => {
-    setFormData(prev => ({ ...prev, [fieldId]: value }));
-  };
-
-  const handleFileSelect = (docName, file) => {
+  // Handle file picker selection
+  const handleFileSelect = (docType, file) => {
     if (!file) return;
-    setUploadedFiles(prev => ({ ...prev, [docName]: file }));
+
+    let previewUrl = null;
     if (file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      setFilePreviews(prev => ({ ...prev, [docName]: url }));
-    } else {
-      setFilePreviews(prev => ({ ...prev, [docName]: null }));
+      previewUrl = URL.createObjectURL(file);
+    }
+
+    setUploadedItems(prev => {
+      // Remove any existing file for this docType or add new
+      const filtered = prev.filter(item => item.type !== docType);
+      return [...filtered, {
+        type: docType,
+        file,
+        previewUrl,
+        fileName: file.name,
+        size: file.size
+      }];
+    });
+    setError(null);
+  };
+
+  // Handle camera capture using native or web camera
+  const handleCameraCapture = async (docType) => {
+    try {
+      const result = await takePhoto(docType);
+      if (result && result.file) {
+        handleFileSelect(docType, result.file);
+      }
+    } catch (err) {
+      console.warn('Camera capture failed:', err);
     }
   };
 
-  const handleCameraCapture = async (docName) => {
-    const result = await takePhoto(docName);
-    if (result && result.file) {
-      handleFileSelect(docName, result.file);
-    }
-  };
-
-  const handleRemoveFile = (docName) => {
-    setUploadedFiles(prev => {
-      const copy = { ...prev };
-      delete copy[docName];
-      return copy;
-    });
-    setFilePreviews(prev => {
-      const copy = { ...prev };
-      delete copy[docName];
-      return copy;
+  // Remove uploaded document
+  const handleRemoveFile = (docType) => {
+    setUploadedItems(prev => {
+      const target = prev.find(i => i.type === docType);
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter(item => item.type !== docType);
     });
   };
 
+  // Compute normalized service object and sub-categories
+  const selectedService = useMemo(() => {
+    if (!service) return { price: 199 };
+    return {
+      ...service,
+      price: service.price || (service.pricePaise ? Math.round(service.pricePaise / 100) : 199)
+    };
+  }, [service]);
+
+  const serviceKey = useMemo(() => {
+    const sId = (service?.id || id || '').toLowerCase();
+    const sName = (service?.name || '').toLowerCase();
+    const sCat = (service?.category || '').toLowerCase();
+    const text = `${sId} ${sName} ${sCat}`;
+
+    if (text.includes('pan')) return 'pan';
+    if (text.includes('aadhaar') || text.includes('uidai')) return 'aadhaar';
+    if (text.includes('voter') || text.includes('epic') || text.includes('election')) return 'voter';
+    if (text.includes('dl') || text.includes('driving') || text.includes('licence') || text.includes('license') || text.includes('rto')) return 'dl';
+    if (text.includes('certificate') || text.includes('income') || text.includes('caste') || text.includes('domicile')) return 'certificates';
+    if (text.includes('ration')) return 'ration';
+    if (text.includes('passport')) return 'passport';
+    if (servicesConfig[sId]) return sId;
+    return 'pan';
+  }, [service, id]);
+
+  const applicationTypes = useMemo(() => {
+    return servicesConfig[serviceKey]?.applicationTypes || getServiceConfig(service || serviceKey).applicationTypes;
+  }, [serviceKey, service]);
+
+  // Check if step 1 inputs and documents and terms are valid
+  const isStep1Valid = Boolean(
+    selectedApplicationType &&
+    selectedGender &&
+    termsAccepted &&
+    (
+      (service?.requiredDocuments && service.requiredDocuments.length > 0)
+        ? service.requiredDocuments.every(doc => uploadedItems.some(i => i.type === doc))
+        : uploadedItems.length > 0
+    )
+  );
+
+  // Step 1 Validation
   const validateStep1 = () => {
-    if (!service?.formSchema) return true;
-    for (const field of service.formSchema) {
-      if (field.required && !formData[field.id]) {
-        setError(`Please fill in "${field.label}"`);
+    if (!selectedApplicationType) {
+      setError('Please choose a valid application type.');
+      return false;
+    }
+    if (!selectedGender) {
+      setError('Please choose applicant gender.');
+      return false;
+    }
+    if (!termsAccepted) {
+      setError('Please agree to the Terms & Conditions before proceeding.');
+      return false;
+    }
+    const requiredDocs = service?.requiredDocuments || [];
+    if (requiredDocs.length > 0) {
+      const uploadedTypes = uploadedItems.map(i => i.type);
+      const missing = requiredDocs.find(doc => !uploadedTypes.includes(doc));
+      if (missing) {
+        setError(`Please attach or capture photo for: "${missing}"`);
         return false;
       }
+    } else if (uploadedItems.length === 0) {
+      setError('Please upload at least one relevant document for the operator.');
+      return false;
     }
     setError(null);
     return true;
   };
 
-  const validateStep2 = () => {
-    if (!service?.requiredDocuments || service.requiredDocuments.length === 0) return true;
-    for (const doc of service.requiredDocuments) {
-      if (!uploadedFiles[doc]) {
-        setError(`Please attach or scan "${doc}"`);
-        return false;
-      }
+  // Step 2 Validation & Payment / Order Submission
+  const handleProceedToPayment = async () => {
+    if (!contactPhone || contactPhone.trim().length < 10) {
+      setError('Please provide a valid 10-digit contact / WhatsApp number for operator callback.');
+      return;
     }
-    setError(null);
-    return true;
-  };
 
-  const handleSubmitOrder = async () => {
     if (!authApi.isAuthenticated()) {
-      // Store current path to redirect back after login
       localStorage.setItem('redirectAfterAuth', window.location.pathname);
       navigate('/auth');
       return;
@@ -124,60 +250,43 @@ export default function ServiceForm() {
       setSubmitting(true);
       setError(null);
 
-      // 1. Upload files first through the upload endpoint to get document references
-      const docIds = [];
-      const clientDocs = [];
-
-      for (const [docName, file] of Object.entries(uploadedFiles)) {
-        const fileForm = new FormData();
-        fileForm.append('file', file);
-        fileForm.append('docName', docName);
-
-        try {
-          const uploadRes = await vaultApi.uploadGeneralDoc(fileForm);
-          if (uploadRes?.document?.id) {
-            docIds.push(uploadRes.document.id);
-            clientDocs.push({
-              id: uploadRes.document.id,
-              docName,
-              fileName: file.name,
-              size: file.size
-            });
-          }
-        } catch (uploadErr) {
-          console.warn('Doc upload error, fallback to direct FormData:', uploadErr);
-        }
+      // 1. Construct multipart FormData payload with universal application_type & gender
+      const formData = new FormData();
+      formData.append('serviceId', selectedService.id || id);
+      if (selectedApplicationType) {
+        formData.append('application_type', selectedApplicationType);
+        formData.append('subCategory', selectedApplicationType); // backward compatibility
       }
+      if (selectedGender) {
+        formData.append('gender', selectedGender);
+      }
+      formData.append('contactPhone', contactPhone.trim());
+      formData.append('customerNotes', operatorNotes.trim());
 
-      // 2. Prepare order payload with Time Slot & Booking Date
-      const serviceAmount = service.pricePaise ? Math.round(service.pricePaise / 100) : 199;
-      const orderPayload = {
-        serviceId: service.id,
-        serviceName: service.name,
-        formData: formData,
-        bookingDate: bookingDate || 'Today',
-        timeSlot: timeSlot || '10:00 AM - 12:00 PM',
-        amount: serviceAmount,
-        documentIds: docIds,
-        clientDocuments: clientDocs,
-        notes: formData.notes || formData.instructions || '',
-      };
+      // Attach all uploaded document files
+      uploadedItems.forEach((item) => {
+        formData.append('documents', item.file);
+        formData.append('documentTypes', item.type);
+      });
 
-      const res = await ordersApi.createOrder(orderPayload);
+      // 2. Submit to POST /api/orders
+      const res = await ordersApi.createOrder(formData);
       const createdOrder = res?.order || res?.data?.order || res;
       const orderId = createdOrder?.id || createdOrder?.orderId;
 
       if (!orderId) {
-        throw new Error('Order placement failed: no order ID returned.');
+        throw new Error('Order placement failed: no order ID returned from server.');
       }
 
       const currentUser = authApi.getCurrentUser() || {};
+      const totalPaise = createdOrder.pricePaise || selectedService.pricePaise || ((selectedService.price || 199) * 100);
+      const totalRupees = Math.round(totalPaise / 100);
 
-      // 3. Initiate Razorpay Gateway Checkout
+      // 3. Initiate Razorpay Checkout Gateway
       try {
         const paymentRes = await ordersApi.createPayment({
           orderId,
-          amount: serviceAmount,
+          amount: totalRupees,
         });
 
         const razorpayOrderId = paymentRes?.razorpayOrderId;
@@ -186,14 +295,13 @@ export default function ServiceForm() {
         if (window.Razorpay && razorpayOrderId) {
           const options = {
             key: razorpayKey,
-            amount: (createdOrder.pricePaise || service.pricePaise || (serviceAmount * 100)),
+            amount: totalPaise,
             currency: 'INR',
-            name: 'Cyber Cafe Marketplace',
-            description: createdOrder.serviceName || service.name,
+            name: 'Cyber Cafe Express',
+            description: `${selectedService.name || 'Service'} - ${selectedApplicationType || 'Assisted'}`,
             order_id: razorpayOrderId,
             handler: async function (response) {
               try {
-                // Verify signature on backend
                 await ordersApi.verifyPayment({
                   orderId,
                   razorpay_order_id: response.razorpay_order_id,
@@ -201,17 +309,17 @@ export default function ServiceForm() {
                   razorpay_signature: response.razorpay_signature,
                 });
               } catch (verifyErr) {
-                console.warn('Payment verification notice:', verifyErr);
+                console.warn('Payment verification callback notice:', verifyErr);
               }
               navigate(`/orders/${orderId}`);
             },
             prefill: {
-              name: currentUser.name || formData.fullName || '',
-              email: currentUser.email || formData.email || '',
-              contact: currentUser.phone || formData.phone || '',
+              name: currentUser.name || 'Customer',
+              email: currentUser.email || '',
+              contact: contactPhone || currentUser.phone || '',
             },
             theme: {
-              color: '#4F46E5',
+              color: '#06B6D4',
             },
             modal: {
               ondismiss: function () {
@@ -222,7 +330,7 @@ export default function ServiceForm() {
 
           const rzp = new window.Razorpay(options);
           rzp.on('payment.failed', function (resp) {
-            console.warn('Razorpay payment failed:', resp);
+            console.warn('Razorpay payment dismissed or failed:', resp);
             navigate(`/orders/${orderId}`);
           });
           rzp.open();
@@ -236,7 +344,12 @@ export default function ServiceForm() {
       navigate(`/orders/${orderId}`);
     } catch (err) {
       console.error('Order submission error:', err);
-      setError(err.response?.data?.error?.message || err.response?.data?.error || err.message || 'Order submission failed. Please try again.');
+      setError(
+        err.response?.data?.error?.message || 
+        err.response?.data?.error || 
+        err.message || 
+        'Order submission failed. Please try again.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -247,7 +360,7 @@ export default function ServiceForm() {
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-          <p className="text-xs text-slate-400">Loading service configuration...</p>
+          <p className="text-xs text-slate-400">Loading service requirements...</p>
         </div>
       </div>
     );
@@ -268,12 +381,21 @@ export default function ServiceForm() {
     );
   }
 
-  const priceFormatted = service.pricePaise ? `₹${Math.round(service.pricePaise / 100)}` : 'Free';
+  // Price calculations & breakdown
+  const totalAmount = selectedService.price || 199;
+  const serviceFee = Math.round(totalAmount * 0.7);
+  const govtCharges = totalAmount - serviceFee;
+
+  // Determine required documents list
+  const defaultRequiredDocs = ['Identity Proof (Aadhaar / Voter ID)', 'Photo / Signature Specimen'];
+  const docList = (service.requiredDocuments && service.requiredDocuments.length > 0)
+    ? service.requiredDocuments
+    : defaultRequiredDocs;
 
   return (
-    <div className="min-h-screen pb-24 px-4 pt-3 max-w-lg mx-auto">
-      {/* Top Navigation */}
-      <div className="flex items-center justify-between mb-4">
+    <div className="min-h-screen pb-36 px-4 pt-3 max-w-lg mx-auto">
+      {/* Top Header */}
+      <div className="flex items-center justify-between mb-3">
         <button
           onClick={() => {
             if (currentStep > 1) setCurrentStep(currentStep - 1);
@@ -283,62 +405,83 @@ export default function ServiceForm() {
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-          Step {currentStep} of 4
-        </span>
-        <div className="w-9" /> {/* Spacer */}
+        <div className="text-center">
+          <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest block">
+            Express Assisted Flow
+          </span>
+          <span className="text-xs font-extrabold text-slate-200">
+            Step {currentStep} of 2: {currentStep === 1 ? 'Documents & Notes' : 'Callback & Payment'}
+          </span>
+        </div>
+        <div className="w-9" />
       </div>
 
-      {/* Service Header Card */}
-      <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-4 mb-5 shadow-lg">
+      {/* Service Info Banner */}
+      <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-4 mb-4 shadow-lg">
         <div className="flex items-start justify-between gap-3">
           <div>
             <span className="text-[10px] font-bold text-indigo-400 bg-indigo-500/15 px-2 py-0.5 rounded-md uppercase tracking-wider">
-              {service.category || 'Service'}
+              {service.category || 'Government Service'}
             </span>
-            <h1 className="text-base font-extrabold text-slate-100 mt-1 leading-snug">
+            <h1 className="text-sm font-extrabold text-slate-100 mt-1 leading-snug">
               {service.name}
             </h1>
+            <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+              <span>⚡ Fast 2-Step Application</span>
+              <span>•</span>
+              <span className="text-emerald-400 font-semibold">{service.estimatedTime || '24h Delivery'}</span>
+            </p>
           </div>
           <div className="text-right shrink-0">
-            <span className="text-xs text-slate-400 block">Total</span>
-            <span className="text-sm font-black text-cyan-400">{priceFormatted}</span>
+            <span className="text-[10px] text-slate-400 block">Total Fee</span>
+            <span className="text-base font-black text-cyan-400">₹{totalAmount}</span>
           </div>
         </div>
       </div>
 
-      {/* Stepper Indicator */}
-      <div className="flex items-center justify-between mb-6 px-1">
-        {[
-          { step: 1, title: 'Details' },
-          { step: 2, title: 'Documents' },
-          { step: 3, title: 'Time Slot' },
-          { step: 4, title: 'Review & Pay' },
-        ].map((s, idx) => (
-          <React.Fragment key={s.step}>
-            <div className="flex flex-col items-center">
-              <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                  currentStep >= s.step
-                    ? 'bg-cyan-500 text-slate-950 glow-cyan'
-                    : 'bg-slate-800 text-slate-500 border border-slate-700'
-                }`}
-              >
-                {currentStep > s.step ? <CheckCircle2 className="w-4 h-4" /> : s.step}
-              </div>
-              <span className={`text-[10px] mt-1 font-medium ${
-                currentStep >= s.step ? 'text-cyan-300 font-semibold' : 'text-slate-500'
-              }`}>
-                {s.title}
-              </span>
-            </div>
-            {idx < 3 && (
-              <div className={`flex-1 h-0.5 mx-1.5 rounded ${
-                currentStep > idx + 1 ? 'bg-cyan-500' : 'bg-slate-800'
-              }`} />
-            )}
-          </React.Fragment>
-        ))}
+      {/* 2-Step Modern Indicator */}
+      <div className="grid grid-cols-2 gap-2 mb-5">
+        <button
+          type="button"
+          onClick={() => setCurrentStep(1)}
+          className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
+            currentStep === 1
+              ? 'bg-gradient-to-r from-indigo-950/60 to-cyan-950/60 border-cyan-400/80 ring-1 ring-cyan-500/30'
+              : 'bg-slate-850/70 border-slate-750 text-slate-400'
+          }`}
+        >
+          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
+            currentStep === 1 ? 'bg-cyan-500 text-slate-950' : (uploadedItems.length > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400')
+          }`}>
+            {uploadedItems.length > 0 ? <Check className="w-3.5 h-3.5" /> : '1'}
+          </div>
+          <div className="truncate">
+            <span className="text-[11px] font-bold text-slate-200 block truncate">1. Upload Files</span>
+            <span className="text-[9px] text-slate-400">{uploadedItems.length} attached</span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (validateStep1()) setCurrentStep(2);
+          }}
+          className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
+            currentStep === 2
+              ? 'bg-gradient-to-r from-indigo-950/60 to-cyan-950/60 border-cyan-400/80 ring-1 ring-cyan-500/30'
+              : 'bg-slate-850/70 border-slate-750 text-slate-400'
+          }`}
+        >
+          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold ${
+            currentStep === 2 ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800 text-slate-400'
+          }`}>
+            2
+          </div>
+          <div className="truncate">
+            <span className="text-[11px] font-bold text-slate-200 block truncate">2. Review & Pay</span>
+            <span className="text-[9px] text-slate-400">Callback & Payment</span>
+          </div>
+        </button>
       </div>
 
       {/* Error Banner */}
@@ -349,296 +492,489 @@ export default function ServiceForm() {
         </div>
       )}
 
-      {/* Step 1: Form Fields */}
+      {/* ======================================================== */}
+      {/* STEP 1: Document Upload & Instructions                   */}
+      {/* ======================================================== */}
       {currentStep === 1 && (
         <div className="space-y-4">
-          <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-            Applicant & Application Information
-          </h3>
-
-          {service.formSchema?.map((field) => (
-            <div key={field.id} className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-300 flex items-center justify-between">
-                <span>{field.label}</span>
-                {field.required && <span className="text-[10px] text-amber-400 font-bold">*Required</span>}
+          {/* Universal Application Type Selector */}
+          <div className="bg-slate-850/90 border border-slate-750 rounded-2xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Application Type</span>
+                <span className="text-rose-400 text-xs">*</span>
               </label>
-
-              {field.type === 'select' ? (
-                <select
-                  value={formData[field.id] || ''}
-                  onChange={(e) => handleInputChange(field.id, e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-800/90 border border-slate-700/70 rounded-xl text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
-                >
-                  <option value="">Select an option</option>
-                  {field.options?.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              ) : field.type === 'textarea' ? (
-                <textarea
-                  rows={3}
-                  value={formData[field.id] || ''}
-                  onChange={(e) => handleInputChange(field.id, e.target.value)}
-                  placeholder={field.placeholder || `Enter ${field.label}...`}
-                  className="w-full px-3.5 py-2.5 bg-slate-800/90 border border-slate-700/70 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
-                />
-              ) : (
-                <input
-                  type={field.type || 'text'}
-                  value={formData[field.id] || ''}
-                  onChange={(e) => handleInputChange(field.id, e.target.value)}
-                  placeholder={field.placeholder || `Enter ${field.label}...`}
-                  className="w-full px-3.5 py-2.5 bg-slate-800/90 border border-slate-700/70 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
-                />
-              )}
+              <span className="text-[10px] text-cyan-400 font-semibold bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30">
+                Required
+              </span>
             </div>
-          ))}
+            <p className="text-[11px] text-slate-400">
+              Select the nature of your application so the operator prepares the exact filing forms:
+            </p>
+            <div className="grid grid-cols-1 gap-2 pt-1">
+              {(servicesConfig[serviceKey]?.applicationTypes || []).map((appType) => {
+                const title = typeof appType === 'string' ? appType : appType.title;
+                const desc = typeof appType === 'object' ? appType.description : null;
+                const badge = typeof appType === 'object' ? (appType.badge || appType.formType) : null;
+                const isSelected = selectedApplicationType === title || selectedApplicationType === appType.id;
 
-          <button
-            type="button"
-            onClick={() => {
-              if (validateStep1()) setCurrentStep(2);
-            }}
-            className="w-full mt-6 py-3 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-lg active:scale-98 transition-all"
-          >
-            <span>Continue to Documents</span>
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Step 2: Document Uploads */}
-      {currentStep === 2 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              Required Documents
-            </h3>
-            <span className="text-[11px] text-cyan-400">Mobile Scanner Ready</span>
+                return (
+                  <button
+                    key={typeof appType === 'object' ? appType.id : appType}
+                    type="button"
+                    onClick={() => {
+                      setSelectedApplicationType(title);
+                      setError(null);
+                    }}
+                    className={`p-3 rounded-xl text-left border transition-all flex items-start justify-between gap-3 active:scale-[0.99] ${
+                      isSelected
+                        ? 'border-cyan-400 bg-cyan-950/40 text-cyan-200 shadow-sm shadow-cyan-500/20 ring-1 ring-cyan-500/30'
+                        : 'border-slate-800 bg-slate-900/60 hover:bg-slate-900 hover:border-slate-700 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <div
+                        className={`w-4 h-4 rounded-full mt-0.5 border flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected
+                            ? 'border-cyan-400 bg-cyan-400'
+                            : 'border-slate-600 bg-slate-800'
+                        }`}
+                      >
+                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs font-bold leading-tight ${isSelected ? 'text-cyan-300' : 'text-slate-200'}`}>
+                            {title}
+                          </span>
+                          {badge && (
+                            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full tracking-wider uppercase ${
+                              isSelected
+                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                                : 'bg-slate-800 text-slate-400 border border-slate-700'
+                            }`}>
+                              {badge}
+                            </span>
+                          )}
+                        </div>
+                        {desc && (
+                          <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                            {desc}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <p className="text-xs text-slate-400 mb-3">
-            Capture clear photos using your camera or upload scanned PDF / images from your phone.
-          </p>
-
-          {(!service.requiredDocuments || service.requiredDocuments.length === 0) ? (
-            <div className="glass-card p-5 rounded-2xl text-center">
-              <ShieldCheck className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-              <p className="text-xs text-slate-300 font-medium">No documents required for this service.</p>
+          {/* Decoupled Gender Demographic Selector */}
+          <div className="bg-slate-850/90 border border-slate-750 rounded-2xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Applicant Gender</span>
+                <span className="text-rose-400 text-xs">*</span>
+              </label>
+              <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full border border-slate-700">
+                Demographic
+              </span>
             </div>
-          ) : (
-            service.requiredDocuments.map((docName) => {
-              const file = uploadedFiles[docName];
-              const preview = filePreviews[docName];
+            <div className="flex gap-2 pt-1">
+              {['Male', 'Female', 'Other'].map((g) => {
+                const isSelected = selectedGender === g;
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => {
+                      setSelectedGender(g);
+                      setError(null);
+                    }}
+                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-medium border transition-all text-center active:scale-95 ${
+                      isSelected
+                        ? 'border-cyan-400 bg-cyan-950/40 text-cyan-300 shadow-sm ring-1 ring-cyan-500/30 font-semibold'
+                        : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    {g}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Step 1 Title */}
+          <div className="flex items-center justify-between pt-1">
+            <div>
+              <h2 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                Upload Required Documents
+              </h2>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Take a clear photo or upload JPG, PNG, or PDF files.
+              </p>
+            </div>
+            <span className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30">
+              No Typing Required
+            </span>
+          </div>
+
+          {/* Dynamic Required Documents List */}
+          <div className="space-y-3">
+            {docList.map((docName) => {
+              const uploadedItem = uploadedItems.find(i => i.type === docName);
 
               return (
-                <div key={docName} className="bg-slate-800/90 border border-slate-700/70 rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-slate-200">{docName}</span>
-                    {file ? (
-                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Ready
+                <div
+                  key={docName}
+                  className="bg-slate-850/90 border border-slate-750 rounded-2xl p-3.5 transition-all"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+                      <span>{docName}</span>
+                      <span className="text-rose-400 text-xs">*</span>
+                    </span>
+
+                    {uploadedItem ? (
+                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        Attached
                       </span>
                     ) : (
-                      <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
                         Pending
                       </span>
                     )}
                   </div>
 
-                  {file ? (
-                    <div className="flex items-center justify-between bg-slate-900/80 rounded-xl p-2.5 border border-slate-700/50">
+                  {uploadedItem ? (
+                    /* Compact File Preview Badge with remove icon */
+                    <div className="flex items-center justify-between bg-slate-900/90 rounded-xl p-2.5 border border-slate-700/60">
                       <div className="flex items-center gap-2.5 overflow-hidden">
-                        {preview ? (
-                          <img src={preview} alt="preview" className="w-9 h-9 object-cover rounded-lg shrink-0 border border-slate-700" />
+                        {uploadedItem.previewUrl ? (
+                          <img
+                            src={uploadedItem.previewUrl}
+                            alt="Preview"
+                            className="w-10 h-10 object-cover rounded-lg border border-slate-700 shrink-0"
+                          />
                         ) : (
-                          <div className="w-9 h-9 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
-                            <FileText className="w-4 h-4" />
+                          <div className="w-10 h-10 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                            <FileText className="w-5 h-5" />
                           </div>
                         )}
                         <div className="truncate">
-                          <p className="text-xs font-medium text-slate-200 truncate">{file.name}</p>
-                          <span className="text-[10px] text-slate-500">{(file.size / 1024).toFixed(1)} KB</span>
+                          <p className="text-xs font-semibold text-slate-200 truncate">
+                            {uploadedItem.fileName}
+                          </p>
+                          <span className="text-[10px] text-slate-400">
+                            {(uploadedItem.size / 1024).toFixed(1)} KB • Ready for Operator
+                          </span>
                         </div>
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => handleRemoveFile(docName)}
-                        className="p-1.5 text-slate-400 hover:text-rose-400 transition-colors"
+                        className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-all ml-2 shrink-0"
+                        title="Remove file"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleCameraCapture(docName)}
-                        className="flex items-center justify-center gap-2 py-2.5 px-3 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 rounded-xl text-xs font-semibold text-indigo-300 transition-all active:scale-95"
-                      >
-                        <Camera className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>Camera Scan</span>
-                      </button>
+                    /* Touch-friendly Dashed Upload Dropzone */
+                    <div className="border-2 border-dashed border-slate-700 hover:border-cyan-500/60 rounded-xl p-3 bg-slate-900/40 text-center transition-colors">
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Camera Scan Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleCameraCapture(docName)}
+                          className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 rounded-xl text-xs font-bold text-indigo-300 transition-all active:scale-95"
+                        >
+                          <Camera className="w-4 h-4 text-indigo-400" />
+                          <span>Scan / Camera</span>
+                        </button>
 
-                      <label className="flex items-center justify-center gap-2 py-2.5 px-3 bg-slate-700/50 hover:bg-slate-700/70 border border-slate-600/50 rounded-xl text-xs font-semibold text-slate-200 cursor-pointer transition-all active:scale-95">
-                        <Upload className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>Upload File</span>
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          className="hidden"
-                          onChange={(e) => handleFileSelect(docName, e.target.files[0])}
-                        />
-                      </label>
+                        {/* File Picker Upload Label */}
+                        <label className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-cyan-600/15 hover:bg-cyan-600/25 border border-cyan-500/30 rounded-xl text-xs font-bold text-cyan-300 cursor-pointer transition-all active:scale-95">
+                          <Upload className="w-4 h-4 text-cyan-400" />
+                          <span>Pick File</span>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,application/pdf"
+                            className="hidden"
+                            onChange={(e) => handleFileSelect(docName, e.target.files[0])}
+                          />
+                        </label>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-2">
+                        Supported: JPG, PNG, PDF up to 15MB
+                      </p>
                     </div>
                   )}
                 </div>
               );
-            })
-          )}
+            })}
 
-          <button
-            type="button"
-            onClick={() => {
-              if (validateStep2()) setCurrentStep(3);
-            }}
-            className="w-full mt-6 py-3 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-lg active:scale-98 transition-all"
-          >
-            <span>Continue to Time Slot</span>
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+            {/* Any Additional Custom Uploads */}
+            {uploadedItems.filter(i => !docList.includes(i.type)).map(customItem => (
+              <div
+                key={customItem.type}
+                className="bg-slate-850/90 border border-slate-750 rounded-2xl p-3.5"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-100">{customItem.type}</span>
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                    Attached
+                  </span>
+                </div>
+                <div className="flex items-center justify-between bg-slate-900/90 rounded-xl p-2.5 border border-slate-700/60">
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    {customItem.previewUrl ? (
+                      <img src={customItem.previewUrl} alt="Preview" className="w-10 h-10 object-cover rounded-lg border border-slate-700 shrink-0" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                    )}
+                    <div className="truncate">
+                      <p className="text-xs font-semibold text-slate-200 truncate">{customItem.fileName}</p>
+                      <span className="text-[10px] text-slate-400">{(customItem.size / 1024).toFixed(1)} KB</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFile(customItem.type)}
+                    className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-rose-400 flex items-center justify-center transition-all ml-2 shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
 
-      {/* Step 3: Time Slot Selection */}
-      {currentStep === 3 && (
-        <div className="space-y-4">
-          <TimeSlotPicker
-            selectedDate={bookingDate}
-            onSelectDate={setBookingDate}
-            selectedSlot={timeSlot}
-            onSelectSlot={setTimeSlot}
-          />
-
-          <button
-            type="button"
-            onClick={() => {
-              if (!timeSlot) {
-                setError('Please choose a preferred time slot');
-                return;
-              }
-              setError(null);
-              setCurrentStep(4);
-            }}
-            className="w-full mt-6 py-3 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-lg active:scale-98 transition-all"
-          >
-            <span>Continue to Review & Pay</span>
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Step 4: Review & Payment */}
-      {currentStep === 4 && (
-        <div className="space-y-4">
-          <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-            Review Order Summary
-          </h3>
-
-          {/* Service Details Card */}
-          <div className="glass-card rounded-2xl p-4 space-y-3">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-700/50">
-              <span className="text-xs text-slate-400">Selected Service</span>
-              <span className="text-xs font-bold text-slate-100">{service.name}</span>
-            </div>
-
-            <div className="flex justify-between items-center pb-2 border-b border-slate-700/50">
-              <span className="text-xs text-slate-400">Fulfillment Guarantee</span>
-              <span className="text-xs font-bold text-emerald-400">Cyber Cafe Verified</span>
-            </div>
-
-            <div className="flex justify-between items-center pb-2 border-b border-slate-700/50">
-              <span className="text-xs text-slate-400">Estimated Turnaround</span>
-              <span className="text-xs font-bold text-cyan-400">{service.estimatedTime || '15-30 Mins'}</span>
-            </div>
-
-            <div className="flex justify-between items-center pt-1">
-              <span className="text-xs font-bold text-slate-200">Total Application Fee</span>
-              <span className="text-base font-extrabold text-cyan-400">{priceFormatted}</span>
-            </div>
+            {/* Optional Additional Document Toggle */}
+            {!showAddCustomDoc ? (
+              <button
+                type="button"
+                onClick={() => setShowAddCustomDoc(true)}
+                className="w-full py-2.5 border border-slate-700/70 border-dashed rounded-xl text-slate-400 hover:text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <PlusCircle className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Add Another Document (Marksheet, Income Proof, etc.)</span>
+              </button>
+            ) : (
+              <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-200">Custom Document Label</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCustomDoc(false)}
+                    className="text-slate-400 hover:text-slate-200"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder="e.g. 10th Marksheet, Domicile Certificate"
+                  value={customDocName}
+                  onChange={(e) => setCustomDocName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                />
+                <label className="flex items-center justify-center gap-1.5 py-2 px-3 bg-cyan-600/20 border border-cyan-500/30 rounded-lg text-xs font-bold text-cyan-300 cursor-pointer">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Choose File for "{customDocName || 'Custom Doc'}"</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files[0]) {
+                        handleFileSelect(customDocName.trim() || 'Additional Document', e.target.files[0]);
+                        setCustomDocName('');
+                        setShowAddCustomDoc(false);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+            )}
           </div>
 
-          {/* Booked Time Slot Card */}
-          <div className="bg-slate-800/80 border border-cyan-500/40 rounded-2xl p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                <Clock className="w-4 h-4" />
+          {/* Mandatory Terms & Conditions Checkbox */}
+          <div className="bg-slate-850/90 border border-slate-750 rounded-2xl p-3.5">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => {
+                  setTermsAccepted(e.target.checked);
+                  setError(null);
+                }}
+                className="mt-0.5 w-4 h-4 rounded border-slate-750 bg-slate-900 text-cyan-500 focus:ring-cyan-400 focus:ring-offset-slate-900 cursor-pointer"
+              />
+              <div className="text-xs text-slate-300 leading-snug">
+                <span className="font-semibold text-slate-200">I accept the Terms & Conditions</span>
+                <span className="text-rose-400 ml-1 font-bold">*</span>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  I confirm that all uploaded documents are authentic and authorize the operator to process the application on my behalf.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {/* Operator Notes (Optional) */}
+          <div className="space-y-1.5 pt-2">
+            <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+              <span>Specific Instructions / Notes for Operator (Optional)</span>
+              <span className="text-[10px] text-slate-500">Optional</span>
+            </label>
+            <textarea
+              rows={3}
+              value={operatorNotes}
+              onChange={(e) => setOperatorNotes(e.target.value)}
+              placeholder="e.g., Annual income to mention is ₹1,50,000, or exam center preference: Patna."
+              className="w-full px-3.5 py-2.5 bg-slate-850 border border-slate-750 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* STEP 2: Review & Payment                                 */}
+      {/* ======================================================== */}
+      {currentStep === 2 && (
+        <div className="space-y-4">
+          {/* Assurance / Trust Banner */}
+          <div className="bg-gradient-to-br from-indigo-950/70 via-slate-850 to-cyan-950/50 border border-cyan-500/40 rounded-2xl p-4 shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0 mt-0.5">
+                <Zap className="w-4 h-4" />
               </div>
               <div>
-                <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
-                  Booked Time Slot
-                </span>
-                <span className="text-xs font-bold text-cyan-300">
-                  📅 {bookingDate || 'Today'}, {timeSlot}
-                </span>
+                <h3 className="text-xs font-extrabold text-cyan-300 mb-1">
+                  ⚡ Operator-Assisted Review
+                </h3>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  ⚡ No manual forms or slot guesswork. Upload your documents and complete payment. Once your order is paired with an expert operator, they will propose the earliest available review window.
+                </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setCurrentStep(3)}
-              className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 underline"
-            >
-              Change
-            </button>
           </div>
 
-          {/* Form Responses Preview */}
-          <div className="bg-slate-800/70 border border-slate-700/60 rounded-2xl p-4">
-            <h4 className="text-xs font-bold text-slate-300 uppercase mb-2">Submitted Details</h4>
-            <div className="space-y-1.5">
-              {Object.entries(formData).map(([k, v]) => (
-                <div key={k} className="flex justify-between text-xs py-0.5">
-                  <span className="text-slate-400 capitalize">{k.replace(/([A-Z])/g, ' $1')}</span>
-                  <span className="text-slate-200 font-medium max-w-[180px] truncate">{String(v)}</span>
-                </div>
-              ))}
+          {/* Selected Application Type Confirmation */}
+          {selectedApplicationType && (
+            <div className="bg-slate-850/80 border border-slate-750 rounded-2xl p-3.5 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">
+                  Application Type
+                </span>
+                <span className="text-xs font-bold text-cyan-300">
+                  {selectedApplicationType}
+                </span>
+                {selectedGender && (
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    Gender: <span className="text-slate-200 font-medium">{selectedGender}</span>
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setCurrentStep(1)}
+                className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300"
+              >
+                Change
+              </button>
             </div>
+          )}
+
+          {/* Contact Number Verification */}
+          <div className="bg-slate-850 border border-slate-750 rounded-2xl p-4 space-y-2">
+            <label className="text-xs font-bold text-slate-200 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Contact / WhatsApp Number</span>
+              </span>
+              <span className="text-[10px] text-emerald-400 font-semibold">For Operator Updates</span>
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">+91</span>
+              <input
+                type="tel"
+                maxLength={10}
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value.replace(/\D/g, ''))}
+                placeholder="10-digit mobile number"
+                className="w-full pl-12 pr-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 font-bold tracking-wider placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+              />
+            </div>
+            <p className="text-[10px] text-slate-400">
+              Prefilled from your account. You can edit this if you prefer calls on an alternate number.
+            </p>
           </div>
 
-          {/* Documents Count */}
-          <div className="bg-slate-800/70 border border-slate-700/60 rounded-2xl p-4 flex items-center justify-between">
+          {/* Uploaded Documents Confirmation */}
+          <div className="bg-slate-850/80 border border-slate-750 rounded-2xl p-3.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span className="text-xs font-medium text-slate-200">
-                {Object.keys(uploadedFiles).length} Documents Attached
+                {uploadedItems.length} Document{uploadedItems.length !== 1 ? 's' : ''} Ready to Send
               </span>
             </div>
-            <span className="text-[10px] text-cyan-400 font-bold">Auto-Stored in Vault</span>
+            <button
+              type="button"
+              onClick={() => setCurrentStep(1)}
+              className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300"
+            >
+              Modify Files
+            </button>
           </div>
-
-          {/* Submit Action */}
-          <button
-            type="button"
-            disabled={submitting}
-            onClick={handleSubmitOrder}
-            className="w-full mt-4 py-3.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-slate-950 font-black rounded-xl text-sm flex items-center justify-center gap-2 shadow-xl active:scale-98 transition-all disabled:opacity-50"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                <span>Authorizing Razorpay Gateway...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                <span>Proceed to Pay ({priceFormatted})</span>
-              </>
-            )}
-          </button>
         </div>
       )}
+
+      {/* ======================================================== */}
+      {/* Sticky Bottom Action Bar Right Above Bottom Navigation  */}
+      {/* ======================================================== */}
+      <div className="fixed bottom-16 left-0 right-0 p-4 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 z-30">
+        <div className="max-w-md mx-auto flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs text-slate-400">Total Payable</p>
+            <p className="text-xl font-bold text-cyan-400">₹{selectedService.price || 199}</p>
+          </div>
+          {currentStep === 1 ? (
+            <button
+              type="button"
+              disabled={!isStep1Valid}
+              onClick={() => {
+                if (validateStep1()) setCurrentStep(2);
+              }}
+              className="flex-1 py-3 px-6 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/25 active:scale-95 transition-all text-center flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            >
+              <span>Continue to Payment ➔</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={handleProceedToPayment}
+              className="flex-1 py-3 px-6 bg-gradient-to-r from-indigo-500 to-cyan-500 hover:from-indigo-600 hover:to-cyan-600 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/25 active:scale-95 transition-all text-center flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <span>Pay & Submit Order ➔</span>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

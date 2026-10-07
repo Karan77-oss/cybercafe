@@ -109,7 +109,7 @@ export const ordersApi = {
     // Check if orderData is FormData or regular object
     const isFormData = orderData instanceof FormData;
     const config = isFormData
-      ? { headers: { 'Content-Type': 'multipart/form-data' } }
+      ? { headers: {} }
       : {};
     const res = await apiClient.post('/orders', orderData, config);
     return res.data;
@@ -132,6 +132,14 @@ export const ordersApi = {
   },
   verifyPayment: async (verificationData = {}) => {
     const res = await apiClient.post('/orders/verify-payment', verificationData);
+    return res.data;
+  },
+  requestReschedule: async (id, data) => {
+    const res = await apiClient.post(`/orders/${id}/request-reschedule`, data);
+    return res.data;
+  },
+  respondReschedule: async (id, data) => {
+    const res = await apiClient.post(`/orders/${id}/respond-reschedule`, data);
     return res.data;
   }
 };
@@ -156,6 +164,30 @@ export const vaultApi = {
         'Content-Type': 'multipart/form-data',
       },
     });
+    return res.data;
+  }
+};
+
+// 5. Customer Welfare & Support
+export const welfareApi = {
+  createTicket: async (data) => {
+    const res = await apiClient.post('/welfare/tickets', data);
+    return res.data;
+  },
+  getMyTickets: async () => {
+    const res = await apiClient.get('/welfare/my-tickets');
+    return res.data;
+  },
+  getTicketDetails: async (id) => {
+    const res = await apiClient.get(`/welfare/tickets/${id}`);
+    return res.data;
+  }
+};
+
+// 6. System & App Version
+export const systemApi = {
+  getAppVersion: async () => {
+    const res = await apiClient.get('/system/app-version');
     return res.data;
   }
 };

@@ -15,7 +15,7 @@ const allowedOrigins = [
     'http://localhost:5175', // Worker portal
     'http://localhost:5176', // Mobile dev server
     'capacitor://localhost', // iOS / Native Capacitor origin
-    'http://localhost',      // Android WebView origin
+    'http://localhost', // Android WebView origin
 ];
 const corsOptions = {
     origin: (origin, callback) => {
@@ -27,7 +27,7 @@ const corsOptions = {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
 };
 // 1. CORS & Preflight handling
 app.use((0, cors_1.default)(corsOptions));

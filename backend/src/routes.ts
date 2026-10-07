@@ -7,7 +7,9 @@ import {
   documentController,
   workersController,
   walletController,
-  notificationsController
+  notificationsController,
+  systemController,
+  welfareController
 } from './extendedControllers';
 import { workerController, adminController, generalNotificationController } from './portalControllers';
 import { requireAuth, requireRole } from './middleware/auth';
@@ -54,12 +56,14 @@ router.get('/workers/available', optionalAuth, workersController.getAvailableWor
 // 3. Customer Orders & Payments (Section 14 - 27)
 // ==========================================
 const ORDER_ROLES = ['CUSTOMER', 'ADMIN'];
-router.post('/orders', requireAuth, requireRole(ORDER_ROLES), ordersController.createOrder);
+router.post('/orders', requireAuth, requireRole(ORDER_ROLES), upload.any(), ordersController.createOrder);
 router.get('/orders', requireAuth, requireRole(ORDER_ROLES), ordersController.getOrders);
 router.get('/orders/my-orders', requireAuth, requireRole(ORDER_ROLES), ordersController.getOrders);
 router.get('/orders/:id', requireAuth, requireRole(ORDER_ROLES), ordersController.getOrder);
 router.post('/orders/:id/timeslot/accept', requireAuth, requireRole(ORDER_ROLES), ordersController.acceptTimeSlot);
 router.post('/orders/:id/timeslot/reschedule', requireAuth, requireRole(ORDER_ROLES), ordersController.rescheduleTimeSlot);
+router.post('/orders/:id/request-reschedule', requireAuth, requireRole(['CUSTOMER', 'WORKER', 'ADMIN']), ordersController.requestReschedule);
+router.post('/orders/:id/respond-reschedule', requireAuth, requireRole(['CUSTOMER', 'WORKER', 'ADMIN']), ordersController.respondReschedule);
 router.post('/orders/:id/pay', requireAuth, requireRole(ORDER_ROLES), ordersController.payOrder);
 router.post('/orders/create-payment', optionalAuth, ordersController.createRazorpayPayment);
 router.post('/orders/verify-payment', optionalAuth, ordersController.verifyRazorpayPayment);
@@ -98,6 +102,8 @@ const WORKER_ROLES = ['WORKER', 'ADMIN'];
 // Standard Specification Worker Routes
 router.get('/worker/orders/available', requireAuth, requireRole(WORKER_ROLES), workerController.getAvailableOrders);
 router.post('/worker/orders/:id/accept', requireAuth, requireRole(WORKER_ROLES), workerController.acceptJob);
+router.post('/worker/orders/:id/accept-and-schedule', requireAuth, requireRole(WORKER_ROLES), workerController.acceptAndSchedule);
+router.post('/worker/jobs/:id/accept-and-schedule', requireAuth, requireRole(WORKER_ROLES), workerController.acceptAndSchedule);
 router.get('/worker/orders/active', requireAuth, requireRole(WORKER_ROLES), workerController.getActiveOrders);
 router.get('/worker/orders/:id', requireAuth, requireRole(WORKER_ROLES), workerController.getOrderDetails);
 router.get('/worker/orders/:id/documents', requireAuth, requireRole(WORKER_ROLES), workerController.getOrderDocuments);
@@ -241,5 +247,28 @@ router.put('/admin/profile', requireAuth, requireRole(['ADMIN']), adminControlle
 router.get('/notifications', requireAuth, generalNotificationController.getUserNotifications);
 router.post('/notifications/:id/read', requireAuth, generalNotificationController.markUserNotificationRead);
 router.put('/notifications/:id/read', requireAuth, generalNotificationController.markUserNotificationRead);
+
+// ==========================================
+// 7. System & Remote Config (Section 4)
+// ==========================================
+router.get('/system/app-version', systemController.getAppVersion);
+
+// ==========================================
+// 8. Customer Welfare & Refund Pipeline (Section 3)
+// ==========================================
+// User Welfare Routes
+router.post('/welfare/tickets', requireAuth, welfareController.createTicket);
+router.get('/welfare/my-tickets', requireAuth, welfareController.getMyTickets);
+router.get('/welfare/tickets/:id', requireAuth, welfareController.getTicketDetails);
+
+// Worker Welfare Routes
+router.get('/welfare/worker/tickets', requireAuth, requireRole(['WORKER', 'ADMIN']), welfareController.getWorkerTickets);
+router.post('/welfare/tickets/:id/notes', requireAuth, requireRole(['WORKER', 'ADMIN']), welfareController.addWorkerNote);
+router.post('/welfare/tickets/:id/escalate', requireAuth, requireRole(['WORKER', 'ADMIN']), welfareController.escalateTicket);
+
+// Admin Welfare & Refund Pipeline Routes
+router.get('/admin/welfare/tickets', requireAuth, requireRole(['ADMIN']), welfareController.getAdminTickets);
+router.post('/admin/welfare/tickets/:id/review', requireAuth, requireRole(['ADMIN']), welfareController.reviewAdminTicket);
+router.post('/admin/welfare/tickets/:id/refund', requireAuth, requireRole(['ADMIN']), upload.single('receipt'), welfareController.processAdminRefund);
 
 export default router;

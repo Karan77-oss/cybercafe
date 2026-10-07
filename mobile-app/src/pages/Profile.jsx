@@ -1,11 +1,12 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  User, ShieldCheck, FolderLock, FileText, 
+  User, ShieldCheck, HeartHandshake, FileText, 
   LogOut, ChevronRight, Phone, Mail, HelpCircle, 
   ExternalLink, LogIn 
 } from 'lucide-react';
 import { authApi } from '../api/client';
+import AppVersionCard from '../components/AppVersionCard';
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -75,14 +76,14 @@ export default function Profile() {
         </button>
 
         <button
-          onClick={() => navigate('/vault')}
+          onClick={() => navigate('/customer-welfare')}
           className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-slate-700/50 text-slate-200 transition-all text-xs font-semibold"
         >
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
-              <FolderLock className="w-4 h-4" />
+              <HeartHandshake className="w-4 h-4" />
             </div>
-            <span>Encrypted Document Vault</span>
+            <span>Customer Welfare & Complaints</span>
           </div>
           <ChevronRight className="w-4 h-4 text-slate-500" />
         </button>
@@ -99,6 +100,11 @@ export default function Profile() {
           </div>
           <ExternalLink className="w-4 h-4 text-slate-500" />
         </a>
+      </div>
+
+      {/* App Version Card */}
+      <div className="mb-5">
+        <AppVersionCard currentVersion="1.0.0" />
       </div>
 
       {/* Auth Action */}
@@ -119,12 +125,6 @@ export default function Profile() {
           <span>Sign In or Register</span>
         </button>
       )}
-
-      {/* Version Tag */}
-      <div className="mt-8 text-center text-[10px] text-slate-500 space-y-0.5">
-        <p className="font-semibold text-slate-400">Cyber Cafe Mobile v1.0.0 (Capacitor Native)</p>
-        <p>Connected to http://localhost:4000/api</p>
-      </div>
     </div>
   );
 }

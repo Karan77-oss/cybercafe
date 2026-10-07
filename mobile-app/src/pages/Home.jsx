@@ -51,26 +51,21 @@ export default function Home() {
 
   return (
     <div className="min-h-screen pb-24 px-4 pt-3 max-w-lg mx-auto">
-      {/* Top Bar: Location Pill & Notification */}
+      {/* Top Bar */}
       <div className="flex items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 rounded-full px-3.5 py-1.5 shadow-sm">
-          <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-          <div className="flex flex-col">
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Your Station</span>
-            <span className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
-              Sector 4 Digital Hub
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            </span>
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white font-extrabold text-xs shadow-md">
+            CC
+          </div>
+          <div>
+            <h1 className="text-sm font-extrabold text-slate-100 tracking-tight leading-none">Cyber Cafe</h1>
+            <p className="text-[10px] text-slate-400 font-medium mt-0.5">Online Citizen & Digital Services</p>
           </div>
         </div>
-
-        <button 
-          onClick={() => navigate('/vault')}
-          className="flex items-center gap-1.5 bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 px-3 py-1.5 rounded-full text-xs font-medium hover:bg-indigo-600/30 transition-all"
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-          <span>My Vault</span>
-        </button>
+        <div className="flex items-center gap-1.5 bg-slate-800/90 border border-slate-700/60 rounded-full px-2.5 py-1 shadow-sm">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[10px] font-bold text-slate-300">Live Support</span>
+        </div>
       </div>
 
       {/* Search Bar */}

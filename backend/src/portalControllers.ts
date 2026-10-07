@@ -97,6 +97,84 @@ export const workerController = {
     }
   },
 
+  acceptAndSchedule: async (req: Request, res: Response) => {
+    try {
+      const workerId = (req as any).user.id;
+      const orderId = req.params.id as string;
+      const { date, timeSlot } = req.body;
+
+      if (!timeSlot) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Initial timeSlot is mandatory to accept and schedule the order' 
+        });
+      }
+
+      const order = localStore.acceptAndScheduleOrder(orderId, workerId, {
+        date: date || 'Today',
+        timeSlot
+      });
+
+      try {
+        if (await checkDb()) {
+          await prisma.$transaction(async (tx: any) => {
+            const dbOrder = await tx.order.findUnique({ where: { id: orderId } });
+            if (!dbOrder || (dbOrder.status !== 'AVAILABLE' && dbOrder.status !== 'PAID')) {
+              const err: any = new Error('Order has already been accepted by another worker');
+              err.statusCode = 409;
+              err.code = 'ORDER_ALREADY_ASSIGNED';
+              throw err;
+            }
+            await tx.order.update({
+              where: { id: orderId },
+              data: {
+                status: 'ASSIGNED',
+                serviceSnapshot: order.serviceSnapshot
+              }
+            });
+            const existingJob = await tx.job.findFirst({ where: { orderId } });
+            if (!existingJob) {
+              await tx.job.create({
+                data: {
+                  orderId,
+                  workerId,
+                  status: 'ASSIGNED'
+                }
+              });
+            } else if (existingJob.workerId !== workerId) {
+              const err: any = new Error('Order has already been accepted by another worker');
+              err.statusCode = 409;
+              err.code = 'ORDER_ALREADY_ASSIGNED';
+              throw err;
+            }
+          });
+        }
+      } catch (dbErr: any) {
+        if (dbErr.code === 'P2002' || dbErr.message === 'ORDER_ALREADY_ASSIGNED' || dbErr.statusCode === 409) {
+          return res.status(409).json({ 
+            success: false, 
+            error: 'Order has already been accepted by another worker',
+            code: 'ORDER_ALREADY_ASSIGNED' 
+          });
+        }
+      }
+
+      return res.json({ 
+        success: true, 
+        order, 
+        data: { order }, 
+        message: 'Order accepted and review window scheduled successfully' 
+      });
+    } catch (e: any) {
+      const statusCode = e.statusCode || (e.code === 'P2002' || e.code === 'ORDER_ALREADY_ASSIGNED' ? 409 : 400);
+      return res.status(statusCode).json({ 
+        success: false, 
+        error: e.message || 'Failed to accept and schedule order',
+        code: e.code || (statusCode === 409 ? 'ORDER_ALREADY_ASSIGNED' : 'ACCEPT_FAILED')
+      });
+    }
+  },
+
   rejectJob: async (req: Request, res: Response) => {
     try {
       const workerId = (req as any).user.id;

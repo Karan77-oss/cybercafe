@@ -38,5 +38,22 @@ export const ordersApi = {
 
   getNotifications: async () => {
     return await apiClient('/customer/notifications');
+  },
+
+  // Welfare & Complaints
+  createWelfareTicket: async (data) => {
+    return await apiClient('/welfare/tickets', { method: 'POST', body: data });
+  },
+
+  getMyWelfareTickets: async () => {
+    return await apiClient('/welfare/my-tickets');
+  },
+
+  getWelfareTicketDetails: async (id) => {
+    return await apiClient(`/welfare/tickets/${id}`);
+  },
+
+  getAppVersion: async () => {
+    return await apiClient('/system/app-version');
   }
 };

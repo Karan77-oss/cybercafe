@@ -183,6 +183,37 @@ export interface PlatformSettings {
   emailNotifications: boolean;
   smsNotifications: boolean;
   urgentAlerts: boolean;
+  latest_version?: string;
+  min_required_version?: string;
+}
+
+export interface WelfareCaseItem {
+  id: string;
+  user_id: string;
+  order_id: string;
+  issue_type: string;
+  description: string;
+  status: 'open' | 'in_review' | 'refund_approved' | 'resolved' | 'rejected' | 'refund_processed';
+  internal_notes?: Array<{ id: string; authorId: string; authorName: string; role: string; note: string; createdAt: string }>;
+  is_escalated?: boolean;
+  created_at: string;
+  updated_at?: string;
+  user?: any;
+  order?: any;
+  refundRecord?: RefundRecordItem;
+}
+
+export interface RefundRecordItem {
+  id: string;
+  ticket_id: string;
+  order_id: string;
+  amount: number;
+  status: 'pending' | 'processed';
+  utr_number?: string | null;
+  receipt_url?: string | null;
+  processed_by?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ChatMessageItem {
@@ -691,6 +722,8 @@ class ResilientStore {
   ledgerEntries: FinancialLedgerItem[] = [];
 
   complaints: Map<string, ComplaintItem> = new Map();
+  welfareCases: Map<string, WelfareCaseItem> = new Map();
+  refundRecords: Map<string, RefundRecordItem> = new Map();
   settings: PlatformSettings = {
     adminName: process.env.ADMIN_ID || 'Karan Kumar',
     adminId: process.env.ADMIN_ID || 'Karan Kumar',
@@ -707,7 +740,9 @@ class ResilientStore {
     correctionWindowHours: 2,
     emailNotifications: true,
     smsNotifications: true,
-    urgentAlerts: true
+    urgentAlerts: true,
+    latest_version: '1.2.0',
+    min_required_version: '1.0.0'
   };
 
   private orderAcceptLocks: Set<string> = new Set();
@@ -787,6 +822,7 @@ class ResilientStore {
     this.loadPersistedOrdersFromDisk();
     this.loadPersistedDocumentsFromDisk();
     this.loadPersistedLedgerFromDisk();
+    this.loadPersistedWelfareFromDisk();
   }
 
   getServices(): ServiceItem[] {
@@ -1046,6 +1082,67 @@ class ResilientStore {
     } catch {}
   }
 
+  persistWelfareToDisk() {
+    try {
+      const dataDir = this.getDataDir();
+      const casesArray = Array.from(this.welfareCases.values());
+      fs.writeFileSync(path.join(dataDir, 'persisted_welfare_cases.json'), JSON.stringify(casesArray, null, 2), 'utf-8');
+      const refundsArray = Array.from(this.refundRecords.values());
+      fs.writeFileSync(path.join(dataDir, 'persisted_refund_records.json'), JSON.stringify(refundsArray, null, 2), 'utf-8');
+    } catch {}
+  }
+
+  loadPersistedWelfareFromDisk() {
+    try {
+      const dataDir = this.getDataDir();
+      const casesPath = path.join(dataDir, 'persisted_welfare_cases.json');
+      if (fs.existsSync(casesPath)) {
+        const arr = JSON.parse(fs.readFileSync(casesPath, 'utf-8'));
+        if (Array.isArray(arr)) {
+          arr.forEach(c => {
+            if (c && c.id) this.welfareCases.set(c.id, c);
+          });
+        }
+      }
+      const refundsPath = path.join(dataDir, 'persisted_refund_records.json');
+      if (fs.existsSync(refundsPath)) {
+        const arr = JSON.parse(fs.readFileSync(refundsPath, 'utf-8'));
+        if (Array.isArray(arr)) {
+          arr.forEach(r => {
+            if (r && r.id) this.refundRecords.set(r.id, r);
+          });
+        }
+      }
+    } catch {}
+  }
+
+  saveWelfareCase(c: WelfareCaseItem): WelfareCaseItem {
+    this.welfareCases.set(c.id, c);
+    this.persistWelfareToDisk();
+    return c;
+  }
+
+  getWelfareCase(id: string): WelfareCaseItem | undefined {
+    return this.welfareCases.get(id);
+  }
+
+  saveRefundRecord(r: RefundRecordItem): RefundRecordItem {
+    this.refundRecords.set(r.id, r);
+    this.persistWelfareToDisk();
+    return r;
+  }
+
+  getRefundRecord(id: string): RefundRecordItem | undefined {
+    return this.refundRecords.get(id);
+  }
+
+  getRefundRecordByTicketId(ticketId: string): RefundRecordItem | undefined {
+    for (const r of this.refundRecords.values()) {
+      if (r.ticket_id === ticketId) return r;
+    }
+    return undefined;
+  }
+
   appendLedgerEntry(entry: Omit<FinancialLedgerItem, 'id' | 'createdAt'>): FinancialLedgerItem {
     // Idempotency check
     const existing = this.ledgerEntries.find(l => l.idempotencyKey === entry.idempotencyKey);
@@ -1273,7 +1370,10 @@ class ResilientStore {
           deadline: ord.deadline,
           offerExpiresAt: ord.offerExpiresAt,
           remainingSeconds,
-          status: ord.status
+          status: ord.status,
+          slotStatus: ord.slotStatus || 'UNASSIGNED',
+          timeSlot: ord.timeSlot || null,
+          bookingDate: ord.bookingDate || null
         });
       }
 
@@ -1714,6 +1814,306 @@ class ResilientStore {
     return order;
   }
 
+  acceptAndScheduleOrder(orderId: string, workerId: string, schedule: { date?: string; timeSlot: string }): any {
+    const lockAcquired = this.acquireOrderLock(orderId);
+    if (!lockAcquired) {
+      const err: any = new Error('Order is currently being processed by another worker');
+      err.statusCode = 409;
+      err.code = 'ORDER_LOCKED';
+      throw err;
+    }
+
+    try {
+      const worker = this.getWorker(workerId);
+      if (!worker) throw new Error('Worker not found');
+
+      if (!worker.isOnline) {
+        throw new Error('Worker must be online to accept orders');
+      }
+
+      if (worker.accountStatus === 'PAUSED' || worker.status === 'PAUSED' || worker.accountStatus === 'SUSPENDED' || worker.accountStatus === 'BLOCKED' || worker.accountStatus === 'DELETED') {
+        throw new Error('Worker account is inactive or suspended');
+      }
+
+      const order = this.orders.get(orderId);
+      if (!order) throw new Error('Order not found');
+
+      if (order.status === 'ACCEPTED' || order.status === 'ASSIGNED' || order.status === 'IN_PROGRESS' || order.status === 'COMPLETED') {
+        const err: any = new Error('Order has already been accepted by another worker');
+        err.statusCode = 409;
+        err.code = 'ORDER_ALREADY_ASSIGNED';
+        throw err;
+      }
+
+      if (order.status !== 'OFFERED' && order.status !== 'AVAILABLE' && order.status !== 'PAID') {
+        const err: any = new Error(`Order cannot be accepted in status: ${order.status}`);
+        err.statusCode = 409;
+        err.code = 'ORDER_UNAVAILABLE';
+        throw err;
+      }
+
+      if (order.assignedWorkerId && order.assignedWorkerId !== workerId) {
+        const err: any = new Error('Order has already been accepted by another worker');
+        err.statusCode = 409;
+        err.code = 'ORDER_ALREADY_ASSIGNED';
+        throw err;
+      }
+
+      const slotStr = schedule.timeSlot ? schedule.timeSlot.trim() : '';
+      if (!slotStr) {
+        throw new Error('Initial time window is required to accept and schedule');
+      }
+      const dateStr = schedule.date ? schedule.date.trim() : 'Today';
+
+      order.status = 'ASSIGNED';
+      order.assignedWorkerId = workerId;
+      order.worker = { id: worker.id, name: worker.name, phone: worker.phone, email: worker.email };
+      order.workerAcceptedAt = new Date().toISOString();
+      order.acceptedOrder5HourWindowExpiresAt = new Date(Date.now() + 5 * 3600 * 1000).toISOString();
+      order.workerEarningsPaise = order.workerEarningsPaise || Math.round((order.pricePaise || 19900) * 0.8);
+
+      order.bookingDate = dateStr;
+      order.timeSlot = slotStr;
+      order.bookingTimeSlot = slotStr;
+      order.slotStatus = 'CONFIRMED';
+      order.proposedSlot = null;
+      order.proposedDate = null;
+      order.updatedAt = new Date().toISOString();
+
+      if (!order.serviceSnapshot) order.serviceSnapshot = {};
+      order.serviceSnapshot.scheduling = {
+        date: dateStr,
+        timeSlot: slotStr,
+        slotStatus: 'CONFIRMED',
+        status: 'CONFIRMED',
+        scheduledAt: new Date().toISOString(),
+        proposedBy: 'WORKER'
+      };
+
+      worker.activeJobs += 1;
+      worker.pendingEarningsPaise += order.workerEarningsPaise;
+      worker.lastActivityAt = new Date().toISOString();
+
+      const workerName = worker.name || 'Certified Operator';
+
+      this.notifications.unshift({
+        id: `notif_${Date.now()}`,
+        recipientId: workerId,
+        recipientRole: 'WORKER',
+        type: 'ORDER_ACCEPTED',
+        title: 'Order Accepted & Scheduled',
+        message: `You accepted order ${order.id} for ${order.serviceName}. Initial review window confirmed for ${dateStr} at ${slotStr}.`,
+        orderId: order.id,
+        isRead: false,
+        createdAt: new Date().toISOString()
+      });
+
+      if (order.customerId) {
+        this.notifications.unshift({
+          id: `notif_${Date.now()}_cust`,
+          recipientId: order.customerId,
+          recipientRole: 'CUSTOMER',
+          type: 'ORDER_ACCEPTED',
+          title: 'Operator Assigned & Time Slot Confirmed',
+          message: `${workerName} has accepted your order and confirmed your review window: ${dateStr} at ${slotStr}.`,
+          orderId: order.id,
+          isRead: false,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      this.chatMessages.push({
+        id: `msg_${Date.now()}`,
+        orderId: order.id,
+        senderId: workerId,
+        senderRole: 'WORKER',
+        senderName: workerName,
+        message: `[Review Window Scheduled]: ${dateStr} at ${slotStr}`,
+        createdAt: new Date().toISOString()
+      });
+
+      this.addAuditLog({
+        actorUserId: workerId,
+        actorRole: 'WORKER',
+        action: 'ORDER_ACCEPTED_AND_SCHEDULED',
+        orderId: order.id
+      });
+
+      this.persistOrdersToDisk();
+      return order;
+    } finally {
+      this.releaseOrderLock(orderId);
+    }
+  }
+
+  requestReschedule(orderId: string, userId: string, data: { proposedDate: string; proposedTimeSlot: string; requestedBy?: string }): any {
+    const order = this.orders.get(orderId);
+    if (!order) throw new Error('Order not found');
+
+    const requestedBy = data.requestedBy || (order.assignedWorkerId === userId ? 'WORKER' : 'CUSTOMER');
+    const proposedDate = data.proposedDate ? data.proposedDate.trim() : (order.bookingDate || 'Today');
+    const proposedSlot = data.proposedTimeSlot ? data.proposedTimeSlot.trim() : '';
+
+    if (!proposedSlot) {
+      throw new Error('Proposed time slot is required');
+    }
+
+    const slotStatus = requestedBy === 'CUSTOMER' 
+      ? 'RESCHEDULE_REQUESTED_BY_CUSTOMER' 
+      : 'RESCHEDULE_REQUESTED_BY_WORKER';
+
+    order.slotStatus = slotStatus;
+    order.proposedDate = proposedDate;
+    order.proposedSlot = proposedSlot;
+    order.updatedAt = new Date().toISOString();
+
+    if (!order.serviceSnapshot) order.serviceSnapshot = {};
+    order.serviceSnapshot.scheduling = {
+      ...(order.serviceSnapshot.scheduling || {}),
+      proposedDate,
+      proposedSlot,
+      proposedTimeSlot: proposedSlot,
+      slotStatus,
+      status: 'RESCHEDULE_REQUESTED',
+      requestedBy,
+      requestedAt: new Date().toISOString()
+    };
+
+    const targetRole = requestedBy === 'CUSTOMER' ? 'WORKER' : 'CUSTOMER';
+    const targetRecipientId = requestedBy === 'CUSTOMER' ? order.assignedWorkerId : order.customerId;
+    const requesterName = requestedBy === 'CUSTOMER' ? (order.customerName || 'Customer') : (this.getWorker(order.assignedWorkerId)?.name || 'Operator');
+
+    if (targetRecipientId) {
+      this.notifications.unshift({
+        id: `notif_${Date.now()}_resched`,
+        recipientId: targetRecipientId,
+        recipientRole: targetRole as any,
+        type: 'RESCHEDULE_REQUESTED',
+        title: 'Reschedule Requested',
+        message: `${requesterName} proposed a new review window: ${proposedDate} at ${proposedSlot}. Please review and respond.`,
+        orderId: order.id,
+        isRead: false,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    this.chatMessages.push({
+      id: `msg_${Date.now()}`,
+      orderId: order.id,
+      senderId: userId,
+      senderRole: requestedBy as any,
+      senderName: requesterName,
+      message: `[Reschedule Proposed]: ${proposedDate} at ${proposedSlot}`,
+      createdAt: new Date().toISOString()
+    });
+
+    this.persistOrdersToDisk();
+    return order;
+  }
+
+  respondReschedule(orderId: string, userId: string, data: { action: 'ACCEPT' | 'REJECT' }): any {
+    const order = this.orders.get(orderId);
+    if (!order) throw new Error('Order not found');
+
+    const action = data.action === 'ACCEPT' ? 'ACCEPT' : 'REJECT';
+    const proposedDate = order.proposedDate || order.serviceSnapshot?.scheduling?.proposedDate || order.bookingDate || 'Today';
+    const proposedSlot = order.proposedSlot || order.serviceSnapshot?.scheduling?.proposedSlot || order.serviceSnapshot?.scheduling?.proposedTimeSlot || order.timeSlot;
+
+    const responderRole = order.assignedWorkerId === userId ? 'WORKER' : 'CUSTOMER';
+    const responderName = responderRole === 'WORKER' ? (this.getWorker(order.assignedWorkerId)?.name || 'Operator') : (order.customerName || 'Customer');
+    const targetRecipientId = responderRole === 'WORKER' ? order.customerId : order.assignedWorkerId;
+    const targetRole = responderRole === 'WORKER' ? 'CUSTOMER' : 'WORKER';
+
+    if (action === 'ACCEPT') {
+      order.bookingDate = proposedDate;
+      order.timeSlot = proposedSlot;
+      order.bookingTimeSlot = proposedSlot;
+      order.proposedDate = null;
+      order.proposedSlot = null;
+      order.slotStatus = 'CONFIRMED';
+      order.updatedAt = new Date().toISOString();
+
+      if (!order.serviceSnapshot) order.serviceSnapshot = {};
+      order.serviceSnapshot.scheduling = {
+        date: proposedDate,
+        timeSlot: proposedSlot,
+        slotStatus: 'CONFIRMED',
+        status: 'CONFIRMED',
+        proposedDate: null,
+        proposedSlot: null,
+        proposedTimeSlot: null,
+        confirmedAt: new Date().toISOString()
+      };
+
+      if (targetRecipientId) {
+        this.notifications.unshift({
+          id: `notif_${Date.now()}_resched_acc`,
+          recipientId: targetRecipientId,
+          recipientRole: targetRole as any,
+          type: 'RESCHEDULE_ACCEPTED',
+          title: 'Reschedule Confirmed',
+          message: `${responderName} accepted the proposed review window: ${proposedDate} at ${proposedSlot}.`,
+          orderId: order.id,
+          isRead: false,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      this.chatMessages.push({
+        id: `msg_${Date.now()}`,
+        orderId: order.id,
+        senderId: userId,
+        senderRole: responderRole as any,
+        senderName: responderName,
+        message: `[Reschedule Confirmed]: New review window is ${proposedDate} at ${proposedSlot}`,
+        createdAt: new Date().toISOString()
+      });
+    } else {
+      order.proposedDate = null;
+      order.proposedSlot = null;
+      order.slotStatus = 'CONFIRMED';
+      order.updatedAt = new Date().toISOString();
+
+      if (!order.serviceSnapshot) order.serviceSnapshot = {};
+      order.serviceSnapshot.scheduling = {
+        ...(order.serviceSnapshot.scheduling || {}),
+        slotStatus: 'CONFIRMED',
+        status: 'CONFIRMED',
+        proposedDate: null,
+        proposedSlot: null,
+        proposedTimeSlot: null,
+        rejectedAt: new Date().toISOString()
+      };
+
+      if (targetRecipientId) {
+        this.notifications.unshift({
+          id: `notif_${Date.now()}_resched_rej`,
+          recipientId: targetRecipientId,
+          recipientRole: targetRole as any,
+          type: 'RESCHEDULE_REJECTED',
+          title: 'Reschedule Declined',
+          message: `${responderName} kept the existing review window: ${order.bookingDate} at ${order.timeSlot}.`,
+          orderId: order.id,
+          isRead: false,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      this.chatMessages.push({
+        id: `msg_${Date.now()}`,
+        orderId: order.id,
+        senderId: userId,
+        senderRole: responderRole as any,
+        senderName: responderName,
+        message: `[Reschedule Declined]: Keeping existing review window: ${order.bookingDate} at ${order.timeSlot}`,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    this.persistOrdersToDisk();
+    return order;
+  }
+
   startWork(orderId: string, workerId: string): any {
     const order = this.orders.get(orderId);
     if (!order) throw new Error('Order not found');
@@ -1721,8 +2121,8 @@ class ResilientStore {
     if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
       throw new Error(`Cannot start work on an order in status: ${order.status}`);
     }
-    if (order.status !== 'ACCEPTED' && order.status !== 'IN_PROGRESS') {
-      throw new Error(`Order must be ACCEPTED before starting work. Current status: ${order.status}`);
+    if (order.status !== 'ACCEPTED' && order.status !== 'ASSIGNED' && order.status !== 'IN_PROGRESS') {
+      throw new Error(`Order must be ACCEPTED or ASSIGNED before starting work. Current status: ${order.status}`);
     }
     order.status = 'IN_PROGRESS';
     order.workStartedAt = new Date().toISOString();
@@ -2024,7 +2424,7 @@ class ResilientStore {
 
     if (statusFilter === 'ACTIVE') {
       return all
-        .filter(o => ['ACCEPTED', 'IN_PROGRESS', 'CORRECTION_REQUIRED'].includes(o.status))
+        .filter(o => ['ACCEPTED', 'ASSIGNED', 'IN_PROGRESS', 'CORRECTION_REQUIRED'].includes(o.status))
         .map(o => this.getOrderForWorker(o.id, workerId));
     }
 

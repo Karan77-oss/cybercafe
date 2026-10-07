@@ -189,6 +189,14 @@ const processCustomerOrder = async (order: any) => {
     };
   }
 
+  const effectiveSlotStatus = order.slotStatus || rawStoreOrder?.slotStatus || snapshot.scheduling?.slotStatus || (order.timeSlot ? 'CONFIRMED' : 'UNASSIGNED');
+  const effectiveBookingDate = order.bookingDate || rawStoreOrder?.bookingDate || snapshot.scheduling?.date || null;
+  const resolvedTimeSlotStr = (typeof order.timeSlot === 'string' ? order.timeSlot : order.timeSlot?.timeSlotStr) || 
+                              (typeof rawStoreOrder?.timeSlot === 'string' ? rawStoreOrder?.timeSlot : rawStoreOrder?.timeSlot?.timeSlotStr) || 
+                              snapshot.scheduling?.timeSlot || null;
+  const effectiveProposedSlot = order.proposedSlot || rawStoreOrder?.proposedSlot || snapshot.scheduling?.proposedSlot || snapshot.scheduling?.proposedTimeSlot || null;
+  const effectiveProposedDate = order.proposedDate || rawStoreOrder?.proposedDate || snapshot.scheduling?.proposedDate || null;
+
   return {
     ...order,
     orderNumber: order.orderNumber || order.id,
@@ -197,9 +205,12 @@ const processCustomerOrder = async (order: any) => {
     serviceSnapshot: snapshot,
     deliverables,
     worker: assignedWorker,
-    bookingDate: order.bookingDate || rawStoreOrder?.bookingDate || snapshot.scheduling?.date || null,
-    timeSlot: order.timeSlot || rawStoreOrder?.timeSlot || snapshot.scheduling?.timeSlot || null,
-    bookingTimeSlot: order.bookingTimeSlot || rawStoreOrder?.bookingTimeSlot || snapshot.scheduling?.timeSlot || null
+    slotStatus: effectiveSlotStatus,
+    proposedSlot: effectiveProposedSlot,
+    proposedDate: effectiveProposedDate,
+    bookingDate: effectiveBookingDate,
+    timeSlot: resolvedTimeSlotStr,
+    bookingTimeSlot: resolvedTimeSlotStr
   };
 };
 
@@ -208,6 +219,10 @@ export const ordersController = {
     try {
       const { 
         serviceId, 
+        application_type,
+        applicationType,
+        subCategory,
+        gender,
         details, 
         formData, 
         bookingDate, 
@@ -220,6 +235,9 @@ export const ordersController = {
       } = req.body;
       const customerId = (req as any).user?.id || 'customer-local-id';
       const resolvedDetails = details || formData || {};
+      const resolvedApplicationType = application_type || applicationType || subCategory || req.body.subCategory || (resolvedDetails as any)?.application_type || (resolvedDetails as any)?.applicationType || (resolvedDetails as any)?.subCategory || null;
+      const resolvedGender = gender || req.body.gender || (resolvedDetails as any)?.gender || null;
+      const resolvedSubCategory = resolvedApplicationType;
 
       // Find service either in DB or local store
       let service: any = null;
@@ -270,14 +288,17 @@ export const ordersController = {
 
       const initialScheduling = slotStr ? {
         status: 'CONFIRMED',
+        slotStatus: 'CONFIRMED',
         timeSlot: formattedSlot || slotStr,
         date: resolvedDate,
         startTime: typeof timeSlot === 'object' ? timeSlot.startTime : (slotStr.split('-')[0]?.trim() || ''),
         endTime: typeof timeSlot === 'object' ? timeSlot.endTime : (slotStr.split('-')[1]?.trim() || ''),
         proposedBy: 'CUSTOMER'
       } : {
-        status: 'UNSCHEDULED',
+        status: 'UNASSIGNED',
+        slotStatus: 'UNASSIGNED',
         timeSlot: null,
+        date: null,
         rescheduleNote: null
       };
 
@@ -299,9 +320,19 @@ export const ordersController = {
       const initialSnapshot = {
         name: service.name || service.title,
         category: service.category,
+        application_type: resolvedApplicationType,
+        applicationType: resolvedApplicationType,
+        subCategory: resolvedSubCategory,
+        gender: resolvedGender,
         pricePaise,
         formSchema: service.formSchema,
-        details: resolvedDetails,
+        details: {
+          ...resolvedDetails,
+          application_type: resolvedApplicationType,
+          applicationType: resolvedApplicationType,
+          subCategory: resolvedSubCategory,
+          gender: resolvedGender
+        },
         additionalInfo: additionalInfo || '',
         workerSelection: workerSelection || { mode: 'auto' },
         expiresAt,
@@ -320,8 +351,10 @@ export const ordersController = {
       // Resolve customer name/phone/email from the authenticated user record
       // so that the worker workspace and admin always see real customer data.
       const customerUser = localStore.findUserById(customerId);
+      const contactPhone = req.body.contactPhone || req.body.customerPhone || req.body.phone || (resolvedDetails as any)?.phone || customerUser?.phone || null;
+      const customerNotes = req.body.customerNotes || req.body.notes || additionalInfo || '';
       const resolvedCustomerName = customerUser?.name || (resolvedDetails as any)?.fullName || 'Customer';
-      const resolvedCustomerPhone = customerUser?.phone || (resolvedDetails as any)?.phone || null;
+      const resolvedCustomerPhone = contactPhone || customerUser?.phone || null;
       const resolvedCustomerEmail = customerUser?.email || (resolvedDetails as any)?.email || null;
 
       const orderData = {
@@ -332,12 +365,30 @@ export const ordersController = {
         customerName: resolvedCustomerName,
         customerPhone: resolvedCustomerPhone,
         customerEmail: resolvedCustomerEmail,
+        contactPhone: resolvedCustomerPhone,
+        customerNotes,
+        notes: customerNotes,
+        application_type: resolvedApplicationType,
+        applicationType: resolvedApplicationType,
+        subCategory: resolvedSubCategory,
+        gender: resolvedGender,
         // formData mirrors serviceSnapshot.details so the worker JobWorkspace
         // can render the form fields without needing to dig into serviceSnapshot
-        formData: resolvedDetails,
-        bookingDate: resolvedDate,
-        bookingTimeSlot: slotStr,
-        timeSlot: initialTimeSlotObj,
+        formData: {
+          ...resolvedDetails,
+          contactPhone: resolvedCustomerPhone,
+          customerNotes,
+          application_type: resolvedApplicationType,
+          applicationType: resolvedApplicationType,
+          subCategory: resolvedSubCategory,
+          gender: resolvedGender
+        },
+        bookingDate: slotStr ? resolvedDate : (bookingDate || null),
+        bookingTimeSlot: slotStr || null,
+        timeSlot: initialTimeSlotObj ? (formattedSlot || slotStr) : null,
+        slotStatus: slotStr ? 'CONFIRMED' : 'UNASSIGNED',
+        proposedSlot: null,
+        proposedDate: null,
         serviceId,
         serviceName: service.name || service.title,
         category: service.category || null,
@@ -414,14 +465,64 @@ export const ordersController = {
       }
 
 
-      // Bind uploaded document IDs to this order
+      // Process files uploaded directly via multipart/form-data
+      if (req.files && Array.isArray(req.files) && (req.files as Express.Multer.File[]).length > 0) {
+        const uploadedMulterFiles = req.files as Express.Multer.File[];
+        const rawDocTypes = req.body.documentTypes;
+        const docTypes = Array.isArray(rawDocTypes) 
+          ? rawDocTypes 
+          : (rawDocTypes ? [rawDocTypes] : []);
+
+        for (let i = 0; i < uploadedMulterFiles.length; i++) {
+          const file = uploadedMulterFiles[i];
+          const docType = docTypes[i] || file.fieldname || 'Uploaded Document';
+          const fileKey = 'docs/' + customerId + '/' + Date.now() + '_' + file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+          fileBufferStore.set(fileKey, {
+            buffer: file.buffer,
+            mimeType: file.mimetype,
+            fileName: file.originalname,
+            createdAt: Date.now()
+          });
+
+          const docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+          const displayName = docType ? `${docType} (${file.originalname})` : file.originalname;
+
+          const docObj = {
+            id: docId,
+            storageKey: fileKey,
+            docName: docType,
+            name: displayName,
+            fileName: file.originalname,
+            url: `/api/documents/${docId}/download`,
+            mimeType: file.mimetype,
+            size: file.size,
+            type: 'UPLOAD',
+            customerId,
+            orderId: orderData.id,
+            orderNumber: orderData.orderNumber || orderData.id,
+            createdAt: new Date().toISOString()
+          };
+
+          orderData.documents.push(docObj);
+          localStore.saveDocument(docObj);
+
+          try {
+            if (await checkDb()) {
+              await prisma.document.create({ data: docObj as any });
+            }
+          } catch {}
+        }
+      }
+
+      // Bind uploaded document IDs to this order (from legacy ID arrays)
       const clientDocsList = Array.isArray(req.body.documents) ? req.body.documents : [];
       const rawDocIds = (documentIds && Array.isArray(documentIds)) 
         ? documentIds 
         : clientDocsList.map((d: any) => typeof d === 'string' ? d : d?.id).filter(Boolean);
 
       if (rawDocIds.length > 0) {
-        orderData.documents = await Promise.all(rawDocIds.map(async (docId: string) => {
+        const boundDocs = await Promise.all(rawDocIds.map(async (docId: string) => {
           let doc = localStore.getDocument(docId);
           if (!doc) {
             try {
@@ -462,6 +563,7 @@ export const ordersController = {
           localStore.saveDocument(fallbackDoc);
           return fallbackDoc;
         }));
+        orderData.documents.push(...boundDocs);
 
         try {
           if (await checkDb()) {
@@ -750,6 +852,77 @@ export const ordersController = {
       return res.json({ success: true, order: await processCustomerOrder(order) });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e.message });
+    }
+  },
+
+  requestReschedule: async (req: Request, res: Response) => {
+    try {
+      const orderId = String(req.params.id);
+      const user = (req as any).user;
+      const { proposedDate, proposedTimeSlot, requestedBy } = req.body;
+      const effectiveRequester = requestedBy || (user?.role === 'WORKER' ? 'WORKER' : 'CUSTOMER');
+
+      if (!proposedTimeSlot) {
+        return res.status(400).json({ success: false, error: 'proposedTimeSlot is required' });
+      }
+
+      const existing = localStore.getOrder(orderId);
+      if (!existing) {
+        return res.status(404).json({ success: false, error: 'Order not found' });
+      }
+
+      const updated = localStore.requestReschedule(orderId, user?.id || 'unknown', {
+        proposedDate: proposedDate || 'Today',
+        proposedTimeSlot,
+        requestedBy: effectiveRequester
+      });
+
+      try {
+        if (await checkDb()) {
+          await prisma.order.update({
+            where: { id: orderId },
+            data: { serviceSnapshot: updated.serviceSnapshot }
+          });
+        }
+      } catch {}
+
+      const processed = await processCustomerOrder(updated);
+      return res.json({ success: true, order: processed, data: { order: processed } });
+    } catch (e: any) {
+      return res.status(400).json({ success: false, error: e.message });
+    }
+  },
+
+  respondReschedule: async (req: Request, res: Response) => {
+    try {
+      const orderId = String(req.params.id);
+      const user = (req as any).user;
+      const { action } = req.body;
+
+      if (!action || (action !== 'ACCEPT' && action !== 'REJECT')) {
+        return res.status(400).json({ success: false, error: 'action must be ACCEPT or REJECT' });
+      }
+
+      const existing = localStore.getOrder(orderId);
+      if (!existing) {
+        return res.status(404).json({ success: false, error: 'Order not found' });
+      }
+
+      const updated = localStore.respondReschedule(orderId, user?.id || 'unknown', { action });
+
+      try {
+        if (await checkDb()) {
+          await prisma.order.update({
+            where: { id: orderId },
+            data: { serviceSnapshot: updated.serviceSnapshot }
+          });
+        }
+      } catch {}
+
+      const processed = await processCustomerOrder(updated);
+      return res.json({ success: true, order: processed, data: { order: processed } });
+    } catch (e: any) {
+      return res.status(400).json({ success: false, error: e.message });
     }
   },
 
@@ -1828,6 +2001,423 @@ export const documentController = {
 
   uploadVaultDocument: async (req: Request, res: Response) => {
     return documentController.upload(req, res);
+  }
+};
+
+export const systemController = {
+  getAppVersion: async (req: Request, res: Response) => {
+    try {
+      const settings = localStore.getPlatformSettings();
+      const latest_version = settings?.latest_version || '1.2.0';
+      const min_required_version = settings?.min_required_version || '1.0.0';
+      return res.json({
+        success: true,
+        data: {
+          latest_version,
+          min_required_version,
+          current_version: '1.0.0'
+        },
+        latest_version,
+        min_required_version,
+        current_version: '1.0.0'
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: e.message });
+    }
+  }
+};
+
+export const welfareController = {
+  // User creates a ticket
+  createTicket: async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const { order_id, orderId, issue_type, issueType, description } = req.body;
+      const targetOrderId = order_id || orderId;
+      const targetIssueType = issue_type || issueType;
+
+      if (!targetOrderId || !targetIssueType || !description) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: 'Order ID, issue type, and description are required.' }
+        });
+      }
+
+      const order = localStore.getOrder(targetOrderId);
+      if (!order) {
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found.' } });
+      }
+
+      const ticketId = `welf_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const now = new Date().toISOString();
+
+      const newCase: any = {
+        id: ticketId,
+        user_id: user?.id || order.customerId,
+        order_id: order.id,
+        issue_type: targetIssueType,
+        description: description.trim(),
+        status: 'open',
+        internal_notes: [],
+        is_escalated: false,
+        created_at: now,
+        updated_at: now,
+        user: { id: user?.id, name: user?.name, email: user?.email, phone: user?.phone },
+        order: {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          serviceName: order.serviceName,
+          amount: ((order.pricePaise || 19900) / 100),
+          status: order.status,
+          workerId: order.assignedWorkerId || order.workerId
+        }
+      };
+
+      // Also create an initial pending refund record if it's a refund issue
+      const isRefundIssue = targetIssueType.toLowerCase().includes('refund') || targetIssueType.toLowerCase().includes('payment');
+      if (isRefundIssue) {
+        const orderAmount = (order.pricePaise ? order.pricePaise / 100 : order.amount || 199);
+        const refundRec: any = {
+          id: `ref_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          ticket_id: ticketId,
+          order_id: order.id,
+          amount: orderAmount,
+          status: 'pending',
+          utr_number: null,
+          receipt_url: null,
+          processed_by: null,
+          created_at: now,
+          updated_at: now
+        };
+        localStore.saveRefundRecord(refundRec);
+        newCase.refundRecord = refundRec;
+      }
+
+      localStore.saveWelfareCase(newCase);
+
+      // Notify admin
+      localStore.notifications.unshift({
+        id: `notif_${Date.now()}_welf`,
+        recipientId: 'admin',
+        recipientRole: 'ADMIN',
+        type: 'WELFARE_TICKET_CREATED',
+        title: 'New Customer Welfare Complaint',
+        message: `New case on Order #${order.id}: ${targetIssueType}`,
+        orderId: order.id,
+        isRead: false,
+        createdAt: now
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'Complaint submitted successfully.',
+        ticket: newCase,
+        data: newCase
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { message: e.message } });
+    }
+  },
+
+  // User fetches their own tickets
+  getMyTickets: async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const allCases = Array.from(localStore.welfareCases.values());
+      const userCases = allCases.filter(c => c.user_id === user?.id || (user?.email && c.user?.email === user.email));
+      
+      // Enrich with refund record if available
+      const enriched = userCases.map(c => {
+        const refund = localStore.getRefundRecordByTicketId(c.id);
+        return {
+          ...c,
+          refundRecord: refund || c.refundRecord || null
+        };
+      }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      return res.json({ success: true, tickets: enriched, data: enriched });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { message: e.message } });
+    }
+  },
+
+  // Get ticket by ID
+  getTicketDetails: async (req: Request, res: Response) => {
+    try {
+      const id = req.params.id as string;
+      const c = localStore.getWelfareCase(id);
+      if (!c) {
+        return res.status(404).json({ success: false, error: { message: 'Ticket not found' } });
+      }
+      const refund = localStore.getRefundRecordByTicketId(c.id);
+      const enriched = { ...c, refundRecord: refund || c.refundRecord || null };
+      return res.json({ success: true, ticket: enriched, data: enriched });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { message: e.message } });
+    }
+  },
+
+  // Worker: Read-only access to complaints for assigned orders
+  getWorkerTickets: async (req: Request, res: Response) => {
+    try {
+      const worker = (req as any).user;
+      const workerId = worker?.id;
+      const allCases = Array.from(localStore.welfareCases.values());
+
+      const workerCases = allCases.filter(c => {
+        const ord = localStore.getOrder(c.order_id);
+        return ord && (ord.assignedWorkerId === workerId || ord.workerId === workerId);
+      }).map(c => {
+        const refund = localStore.getRefundRecordByTicketId(c.id);
+        return {
+          ...c,
+          refundRecord: refund || c.refundRecord || null
+        };
+      }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      return res.json({ success: true, tickets: workerCases, data: workerCases });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { message: e.message } });
+    }
+  },
+
+  // Worker appends internal note
+  addWorkerNote: async (req: Request, res: Response) => {
+    try {
+      const worker = (req as any).user;
+      const ticketId = req.params.id as string;
+      const { note } = req.body;
+
+      if (!note || !note.trim()) {
+        return res.status(400).json({ success: false, error: { message: 'Note content is required.' } });
+      }
+
+      const ticket = localStore.getWelfareCase(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ success: false, error: { message: 'Ticket not found' } });
+      }
+
+      const internalNote = {
+        id: `note_${Date.now()}`,
+        authorId: worker?.id,
+        authorName: worker?.name || 'Worker Operator',
+        role: worker?.role || 'WORKER',
+        note: note.trim(),
+        createdAt: new Date().toISOString()
+      };
+
+      ticket.internal_notes = ticket.internal_notes || [];
+      ticket.internal_notes.push(internalNote);
+      ticket.updated_at = new Date().toISOString();
+      localStore.saveWelfareCase(ticket);
+
+      return res.json({ success: true, message: 'Internal note appended.', ticket });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { message: e.message } });
+    }
+  },
+
+  // Worker escalates ticket to Admin
+  escalateTicket: async (req: Request, res: Response) => {
+    try {
+      const worker = (req as any).user;
+      const ticketId = req.params.id as string;
+      const { reason } = req.body;
+
+      const ticket = localStore.getWelfareCase(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ success: false, error: { message: 'Ticket not found' } });
+      }
+
+      ticket.is_escalated = true;
+      ticket.status = 'in_review';
+      ticket.updated_at = new Date().toISOString();
+
+      if (reason) {
+        ticket.internal_notes = ticket.internal_notes || [];
+        ticket.internal_notes.push({
+          id: `esc_${Date.now()}`,
+          authorId: worker?.id,
+          authorName: worker?.name || 'Worker',
+          role: 'WORKER',
+          note: `[ESCALATED TO ADMIN]: ${reason}`,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      localStore.saveWelfareCase(ticket);
+
+      // Notify admin
+      localStore.notifications.unshift({
+        id: `notif_${Date.now()}_esc`,
+        recipientId: 'admin',
+        recipientRole: 'ADMIN',
+        type: 'TICKET_ESCALATED',
+        title: 'Ticket Escalated by Worker',
+        message: `Worker escalated Case #${ticket.id} on Order #${ticket.order_id}`,
+        orderId: ticket.order_id,
+        isRead: false,
+        createdAt: new Date().toISOString()
+      });
+
+      return res.json({ success: true, message: 'Case successfully escalated to Admin.', ticket });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { message: e.message } });
+    }
+  },
+
+  // Admin gets all welfare tickets
+  getAdminTickets: async (req: Request, res: Response) => {
+    try {
+      const { status, escalated } = req.query;
+      let allCases = Array.from(localStore.welfareCases.values());
+
+      if (status && status !== 'ALL') {
+        allCases = allCases.filter(c => c.status.toLowerCase() === String(status).toLowerCase());
+      }
+      if (escalated === 'true') {
+        allCases = allCases.filter(c => c.is_escalated);
+      }
+
+      const enriched = allCases.map(c => {
+        const refund = localStore.getRefundRecordByTicketId(c.id);
+        return {
+          ...c,
+          refundRecord: refund || c.refundRecord || null
+        };
+      }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      return res.json({ success: true, tickets: enriched, data: enriched });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { message: e.message } });
+    }
+  },
+
+  // Admin reviews ticket
+  reviewAdminTicket: async (req: Request, res: Response) => {
+    try {
+      const ticketId = req.params.id as string;
+      const { status, resolutionNote } = req.body;
+      const ticket = localStore.getWelfareCase(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ success: false, error: { message: 'Ticket not found' } });
+      }
+
+      if (status) {
+        ticket.status = status;
+      }
+      if (resolutionNote) {
+        ticket.internal_notes = ticket.internal_notes || [];
+        ticket.internal_notes.push({
+          id: `admin_rev_${Date.now()}`,
+          authorId: 'admin',
+          authorName: 'Administrator',
+          role: 'ADMIN',
+          note: `[ADMIN DECISION]: ${resolutionNote}`,
+          createdAt: new Date().toISOString()
+        });
+      }
+      ticket.updated_at = new Date().toISOString();
+      localStore.saveWelfareCase(ticket);
+
+      return res.json({ success: true, message: 'Ticket status updated.', ticket });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { message: e.message } });
+    }
+  },
+
+  // Admin approves / processes refund with UTR, receipt, and amount
+  processAdminRefund: async (req: Request, res: Response) => {
+    try {
+      const admin = (req as any).user;
+      const ticketId = req.params.id as string;
+      const { utr_number, utrNumber, receipt_url, receiptUrl, amount, status: refundStatus } = req.body;
+
+      const ticket = localStore.getWelfareCase(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ success: false, error: { message: 'Ticket not found' } });
+      }
+
+      const order = localStore.getOrder(ticket.order_id);
+      const resolvedAmount = Number(amount) || (order ? ((order.pricePaise || 19900) / 100) : 199);
+      const resolvedUtr = utr_number || utrNumber || `UTR${Date.now().toString().slice(-8)}`;
+      
+      let resolvedReceiptUrl = receipt_url || receiptUrl || null;
+      if (req.file) {
+        // Uploaded file directly
+        const fileId = `ref_receipt_${Date.now()}`;
+        fileBufferStore.set(fileId, {
+          buffer: req.file.buffer,
+          mimeType: req.file.mimetype,
+          fileName: req.file.originalname,
+          size: req.file.size,
+          createdAt: Date.now()
+        });
+        resolvedReceiptUrl = `/api/documents/${fileId}/download`;
+      }
+
+      let refundRecord = localStore.getRefundRecordByTicketId(ticketId);
+      const now = new Date().toISOString();
+
+      if (!refundRecord) {
+        refundRecord = {
+          id: `ref_${Date.now()}`,
+          ticket_id: ticketId,
+          order_id: ticket.order_id,
+          amount: resolvedAmount,
+          status: 'processed',
+          utr_number: resolvedUtr,
+          receipt_url: resolvedReceiptUrl,
+          processed_by: admin?.id || 'admin',
+          created_at: now,
+          updated_at: now
+        };
+      } else {
+        refundRecord.status = 'processed';
+        refundRecord.amount = resolvedAmount;
+        refundRecord.utr_number = resolvedUtr;
+        if (resolvedReceiptUrl) refundRecord.receipt_url = resolvedReceiptUrl;
+        refundRecord.processed_by = admin?.id || 'admin';
+        refundRecord.updated_at = now;
+      }
+
+      localStore.saveRefundRecord(refundRecord);
+
+      ticket.status = 'refund_processed';
+      ticket.updated_at = now;
+      ticket.refundRecord = refundRecord;
+      ticket.internal_notes = ticket.internal_notes || [];
+      ticket.internal_notes.push({
+        id: `ref_note_${Date.now()}`,
+        authorId: admin?.id || 'admin',
+        authorName: 'Administrator',
+        role: 'ADMIN',
+        note: `Refund of ₹${resolvedAmount} PROCESSED. UTR: ${resolvedUtr}. Receipt: ${resolvedReceiptUrl || 'None'}`,
+        createdAt: now
+      });
+      localStore.saveWelfareCase(ticket);
+
+      // Update order status if order exists
+      if (order) {
+        order.status = 'REFUNDED';
+        order.refundInfo = {
+          amount: resolvedAmount,
+          utr_number: resolvedUtr,
+          receipt_url: resolvedReceiptUrl,
+          processed_at: now
+        };
+        localStore.saveOrder(order);
+      }
+
+      return res.json({
+        success: true,
+        message: 'Refund successfully processed and receipt recorded.',
+        ticket,
+        refundRecord
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: { message: e.message } });
+    }
   }
 };
 

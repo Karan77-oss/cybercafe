@@ -11,6 +11,7 @@ import {
   Radio
 } from 'lucide-react';
 import { workerApi } from '../../api/worker';
+import AcceptAndScheduleModal from '../../components/AcceptAndScheduleModal';
 
 export default function AvailableRequests() {
   const [requests, setRequests] = useState([]);
@@ -26,6 +27,10 @@ export default function AvailableRequests() {
   const [rejectionNote, setRejectionNote] = useState('');
   const [submittingReject, setSubmittingReject] = useState(false);
   const [acceptingId, setAcceptingId] = useState(null);
+
+  // Accept & Schedule Modal state
+  const [schedulingOrder, setSchedulingOrder] = useState(null);
+  const [submittingSchedule, setSubmittingSchedule] = useState(false);
 
   const navigate = useNavigate();
 
@@ -50,23 +55,40 @@ export default function AvailableRequests() {
     return () => clearInterval(interval);
   }, []);
 
-  // Accept job
-  const handleAccept = async (orderId) => {
+  // Open Accept & Schedule modal
+  const handleOpenAcceptSchedule = (order) => {
     if (!isOnline) {
       alert('You must be Online to accept orders. Please turn Online from the header switch.');
       return;
     }
-    setAcceptingId(orderId);
+    setSchedulingOrder(order);
+  };
+
+  // Submit Accept & Schedule
+  const handleConfirmAcceptAndSchedule = async ({ date, timeSlot }) => {
+    if (!schedulingOrder) return;
+    setSubmittingSchedule(true);
     try {
-      const res = await workerApi.acceptJob(orderId);
+      const res = await workerApi.acceptAndSchedule(schedulingOrder.id, { date, timeSlot });
       if (res?.success) {
-        navigate(`/worker/jobs/${orderId}`);
+        setSchedulingOrder(null);
+        navigate(`/worker/jobs/${schedulingOrder.id}`);
+      } else {
+        alert(res?.error || 'Failed to accept and schedule order.');
       }
     } catch (err) {
-      alert(err.message || 'Failed to accept order. It may have expired or been reassigned.');
+      alert(err.message || 'Failed to accept and schedule order.');
       loadRequests();
     } finally {
-      setAcceptingId(null);
+      setSubmittingSchedule(false);
+    }
+  };
+
+  // Legacy direct accept fallback
+  const handleAccept = async (orderId) => {
+    const order = requests.find(r => r.id === orderId);
+    if (order) {
+      handleOpenAcceptSchedule(order);
     }
   };
 
@@ -299,12 +321,12 @@ export default function AvailableRequests() {
                       Reject
                     </button>
                     <button
-                      onClick={() => handleAccept(req.id)}
-                      disabled={acceptingId === req.id || !isOnline}
+                      onClick={() => handleOpenAcceptSchedule(req)}
+                      disabled={submittingSchedule || !isOnline}
                       className="btn btn-primary"
                       style={{ padding: '8px 18px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      {acceptingId === req.id ? 'Accepting...' : 'Accept Order'}
+                      {submittingSchedule && schedulingOrder?.id === req.id ? 'Scheduling...' : 'Accept Order'}
                     </button>
                   </div>
                 </div>
@@ -428,6 +450,15 @@ export default function AvailableRequests() {
           </div>
         </div>
       )}
+
+      {/* Section: Mandatory Accept & Initial Scheduling Modal */}
+      <AcceptAndScheduleModal
+        isOpen={Boolean(schedulingOrder)}
+        order={schedulingOrder}
+        onClose={() => setSchedulingOrder(null)}
+        onConfirm={handleConfirmAcceptAndSchedule}
+        isLoading={submittingSchedule}
+      />
     </div>
   );
 }

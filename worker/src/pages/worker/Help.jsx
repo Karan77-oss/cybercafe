@@ -9,8 +9,10 @@ import {
   ChevronDown, 
   ChevronUp,
   AlertCircle,
+  AlertTriangle,
   X,
-  Send 
+  Send,
+  HeartHandshake
 } from 'lucide-react';
 import { workerApi } from '../../api/worker';
 
@@ -30,6 +32,12 @@ export default function Help() {
   const [replyText, setReplyText] = useState('');
   const [replying, setReplying] = useState(false);
 
+  // Customer Welfare Complaints on Assigned Orders
+  const [welfareTickets, setWelfareTickets] = useState([]);
+  const [welfareNoteText, setWelfareNoteText] = useState({});
+  const [escalateTicketId, setEscalateTicketId] = useState(null);
+  const [escalateReason, setEscalateReason] = useState('');
+
   const loadTickets = async () => {
     try {
       const res = await workerApi.getSupportTickets();
@@ -43,9 +51,47 @@ export default function Help() {
     }
   };
 
+  const loadWelfareTickets = async () => {
+    try {
+      const res = await workerApi.getWelfareTickets();
+      if (res?.tickets) {
+        setWelfareTickets(res.tickets);
+      }
+    } catch (err) {
+      console.warn('Welfare tickets loading failed:', err);
+    }
+  };
+
   useEffect(() => {
     loadTickets();
+    loadWelfareTickets();
   }, []);
+
+  const handleAddWelfareNote = async (ticketId) => {
+    const note = welfareNoteText[ticketId];
+    if (!note || !note.trim()) return;
+    try {
+      await workerApi.addWelfareNote(ticketId, note.trim());
+      setWelfareNoteText(prev => ({ ...prev, [ticketId]: '' }));
+      loadWelfareTickets();
+      alert('Internal note added.');
+    } catch (err) {
+      alert(err.message || 'Failed to add note');
+    }
+  };
+
+  const handleEscalateWelfare = async (ticketId) => {
+    if (!escalateReason.trim()) return;
+    try {
+      await workerApi.escalateWelfareTicket(ticketId, escalateReason.trim());
+      setEscalateTicketId(null);
+      setEscalateReason('');
+      loadWelfareTickets();
+      alert('Complaint escalated to Administrator.');
+    } catch (err) {
+      alert(err.message || 'Failed to escalate');
+    }
+  };
 
   const handleCreateTicket = async (e) => {
     e.preventDefault();
@@ -213,6 +259,93 @@ export default function Help() {
         {/* Existing Tickets & FAQ */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
+          {/* Customer Welfare Complaints for Assigned Orders */}
+          <div className="form-card" style={{ padding: '24px' }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: '1.15rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <HeartHandshake size={18} color="#ec4899" /> Customer Complaints on Assigned Orders ({welfareTickets.length})
+            </h3>
+
+            {welfareTickets.length === 0 ? (
+              <div style={{ padding: '16px', textAlign: 'center', color: '#10b981', fontSize: '0.85rem', background: '#ecfdf5', borderRadius: '8px' }}>
+                <CheckCircle2 size={16} style={{ display: 'inline', marginRight: '6px' }} />
+                No customer complaints or welfare cases on your assigned orders.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {welfareTickets.map(wt => (
+                  <div key={wt.id} style={{ border: '1px solid #fed7aa', borderRadius: '8px', padding: '14px', background: '#fffaf5' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#c2410c' }}>
+                        Order #{wt.order_id?.slice(0, 8)} • Issue: {wt.issue_type}
+                      </span>
+                      <span style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        textTransform: 'uppercase',
+                        background: wt.status === 'refund_approved' ? '#dcfce7' : '#ffedd5',
+                        color: wt.status === 'refund_approved' ? '#166534' : '#9a3412'
+                      }}>
+                        {wt.status}
+                      </span>
+                    </div>
+
+                    <p style={{ margin: '0 0 10px', fontSize: '0.85rem', color: '#431407', lineHeight: 1.4 }}>
+                      "{wt.description}"
+                    </p>
+
+                    {wt.refund_record && (
+                      <div style={{ fontSize: '0.78rem', color: '#15803d', marginBottom: '8px' }}>
+                        Refund: <strong>₹{wt.refund_record.amount}</strong> ({wt.refund_record.status})
+                        {wt.refund_record.utr_number && ` • UTR: ${wt.refund_record.utr_number}`}
+                      </div>
+                    )}
+
+                    {wt.internal_notes && wt.internal_notes.length > 0 && (
+                      <div style={{ marginBottom: '10px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#78350f', textTransform: 'uppercase' }}>
+                          Internal Notes:
+                        </span>
+                        {wt.internal_notes.map((n, idx) => (
+                          <div key={idx} style={{ fontSize: '0.78rem', color: '#78350f', background: '#fef3c7', padding: '4px 8px', borderRadius: '4px', marginTop: '4px' }}>
+                            {n.note}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      <input
+                        type="text"
+                        placeholder="Append internal note..."
+                        value={welfareNoteText[wt.id] || ''}
+                        onChange={e => setWelfareNoteText(prev => ({ ...prev, [wt.id]: e.target.value }))}
+                        style={{ flex: 1, padding: '6px 10px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #fed7aa' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddWelfareNote(wt.id)}
+                        className="btn btn-outline"
+                        style={{ padding: '6px 10px', fontSize: '0.78rem' }}
+                      >
+                        Add Note
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEscalateTicketId(wt.id)}
+                        className="btn btn-outline"
+                        style={{ color: '#dc2626', borderColor: '#fca5a5', padding: '6px 10px', fontSize: '0.78rem' }}
+                      >
+                        Escalate
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Ticket History */}
           <div className="form-card" style={{ padding: '24px' }}>
             <h3 style={{ margin: '0 0 16px', fontSize: '1.15rem', color: '#1e293b' }}>
@@ -550,6 +683,50 @@ export default function Help() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Escalate to Admin Modal */}
+      {escalateTicketId && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+        }}>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '24px', maxWidth: '440px', width: '100%' }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '1.1rem', color: '#0f172a' }}>
+              Escalate Case to Admin
+            </h3>
+            <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: '#64748b' }}>
+              State the operational reasons for administrator review or refund approval.
+            </p>
+            <textarea
+              required
+              rows={3}
+              placeholder="e.g. Applicant claims official server downtime caused rejection; please review and approve refund..."
+              value={escalateReason}
+              onChange={e => setEscalateReason(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', marginBottom: '14px' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setEscalateTicketId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!escalateReason.trim()}
+                className="btn btn-primary"
+                style={{ background: '#dc2626', borderColor: '#dc2626' }}
+                onClick={() => handleEscalateWelfare(escalateTicketId)}
+              >
+                Confirm Escalation
+              </button>
+            </div>
           </div>
         </div>
       )}
