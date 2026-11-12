@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: cybercafe-backend
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: SUPABASE_STORAGE_BUCKET
+        value: customer-documents
+      - key: JWT_EXPIRES_IN
+        value: 15m
+      - key: ADMIN_ID
+        value: Karan Kumar
+      - key: ADMIN_EMAIL
+        value: rajkaran969355@gmail.com
+      - key: ALLOW_JSON_FALLBACK
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false

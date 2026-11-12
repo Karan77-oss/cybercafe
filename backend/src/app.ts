@@ -21,8 +21,9 @@ const isAllowedOrigin = (origin: string | undefined): boolean => {
   // Allow all Localhost ports for Admin Portal and local developer machines
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
 
-  // Allow all Vercel deployments (*.vercel.app)
+  // Allow all Vercel and Render deployments (*.vercel.app, *.onrender.com)
   if (/^https:\/\/([a-zA-Z0-9_-]+\.)*vercel\.app$/.test(origin)) return true;
+  if (/^https:\/\/([a-zA-Z0-9_-]+\.)*onrender\.com$/.test(origin)) return true;
 
   // Allow explicitly configured custom domains from environment
   if (allowedOriginsEnv.some(allowed => origin === allowed || origin.endsWith(allowed))) return true;
