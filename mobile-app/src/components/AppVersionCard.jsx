@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Smartphone, CheckCircle2, ArrowUpCircle, RefreshCw, Sparkles } from 'lucide-react';
 import { systemApi } from '../api/client';
 
@@ -62,15 +62,15 @@ export default function AppVersionCard({ currentVersion = '1.0.0' }) {
   };
 
   return (
-    <div className="bg-slate-850/90 border border-slate-750 rounded-2xl p-4 shadow-lg space-y-3">
+    <div className="bg-white rounded-3xl p-4 border border-slate-100 shadow-neo-card space-y-3">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
             <Smartphone className="w-4 h-4" />
           </div>
-          <div>
-            <h3 className="text-xs font-bold text-slate-200">App Version & Build</h3>
-            <p className="text-[10px] text-slate-400">
+          <div className="min-w-0">
+            <h3 className="text-xs font-bold text-slate-900">App Version & Build</h3>
+            <p className="text-[10px] text-slate-500">
               Installed: v{versionInfo.current_version}
             </p>
           </div>
@@ -78,32 +78,32 @@ export default function AppVersionCard({ currentVersion = '1.0.0' }) {
 
         <div>
           {hasUpdate ? (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              <Sparkles className="w-3 h-3 text-amber-400" />
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200/70">
+              <Sparkles className="w-3 h-3 text-amber-600" />
               Update Available
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
               Up to date
             </span>
           )}
         </div>
       </div>
 
-      <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800 text-[11px] text-slate-300 flex items-center justify-between">
+      <div className="bg-slate-50 rounded-2xl p-2.5 border border-slate-200/70 text-[11px] text-slate-700 flex items-center justify-between">
         <div>
           <span className="text-slate-500 block text-[10px]">Remote Config Target</span>
-          <span className="font-semibold text-slate-200">Latest: v{versionInfo.latest_version}</span>
+          <span className="font-bold text-slate-900">Latest: v{versionInfo.latest_version}</span>
         </div>
         <div>
           <span className="text-slate-500 block text-[10px]">Min Required</span>
-          <span className="font-semibold text-slate-200">v{versionInfo.min_required_version}</span>
+          <span className="font-bold text-slate-900">v{versionInfo.min_required_version}</span>
         </div>
         <button
           onClick={fetchVersion}
           disabled={loading}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-400 transition-colors"
+          className="p-1.5 rounded-lg text-slate-500 hover:text-sky-600 transition-colors"
           title="Check for updates"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -114,7 +114,7 @@ export default function AppVersionCard({ currentVersion = '1.0.0' }) {
         <button
           onClick={handleUpdate}
           disabled={updating}
-          className="w-full py-2 px-3 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-600 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md active:scale-98 transition-all disabled:opacity-50"
+          className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98] transition-all disabled:opacity-50"
         >
           <ArrowUpCircle className="w-4 h-4" />
           <span>{updating ? 'Updating to Latest...' : `Update to v${versionInfo.latest_version}`}</span>
@@ -122,7 +122,7 @@ export default function AppVersionCard({ currentVersion = '1.0.0' }) {
       )}
 
       {updateSuccess && (
-        <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center text-[11px] text-emerald-400 font-medium">
+        <div className="p-2 bg-emerald-50 border border-emerald-200/70 rounded-xl text-center text-[11px] text-emerald-700 font-semibold">
           App updated to v{versionInfo.latest_version}! You are on the newest build.
         </div>
       )}

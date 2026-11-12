@@ -4,12 +4,12 @@ import { Search } from 'lucide-react';
 import ServiceCard from '../../components/customer/ServiceCard';
 import { servicesApi } from '../../api/services';
 
-import { services as fallbackServices } from '../../mockDataCustomer';
-
 export default function ServicesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [services, setServices] = useState(fallbackServices);
-  const [loading, setLoading] = useState(false);
+  // Live catalog only — the Admin Portal's official service catalog is the
+  // single source of truth. No hardcoded/mock fallback arrays.
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const [activeCat, setActiveCat] = useState('all');
@@ -32,35 +32,28 @@ export default function ServicesPage() {
   };
 
   useEffect(() => {
+    setLoading(true);
+    // The /services endpoint returns only ACTIVE + APPROVED services, so this
+    // list mirrors the Admin Portal catalog exactly. An empty response means an
+    // empty catalog — render it as such, never fall back to hardcoded data.
     servicesApi.getServices()
       .then((res) => {
-        if (res.services && res.services.length > 0) {
-          setServices(res.services);
-        }
+        setServices(Array.isArray(res?.services) ? res.services : []);
       })
       .catch((err) => {
-        console.warn('Using fallback services catalog:', err);
-      });
+        console.warn('Service catalog fetch failed:', err);
+        setServices([]);
+        setError('Unable to load services right now. Please retry.');
+      })
+      .finally(() => setLoading(false));
   }, []);
   
+  // Categories are derived from the LIVE catalog, so any category an admin
+  // adds/renames in /admin/services shows up here automatically.
   const categories = [
     { id: 'all', name: 'All Services' },
-    { id: 'Online form filling', name: 'Online Form Filling' },
-    { id: 'Government forms', name: 'Government Forms' },
-    { id: 'Job applications', name: 'Job Applications' },
-    { id: 'College/university admission forms', name: 'College Admission' },
-    { id: 'Scholarship forms', name: 'Scholarships' },
-    { id: 'PAN-related services', name: 'PAN Services' },
-    { id: 'Passport-related application assistance', name: 'Passport Assistance' },
-    { id: 'Railway/flight/bus booking', name: 'Ticket Booking' },
-    { id: 'Document scanning', name: 'Scanning' },
-    { id: 'PDF creation/editing', name: 'PDF Editing' },
-    { id: 'Printout services', name: 'Printouts' },
-    { id: 'Resume/CV making', name: 'Resume / CV' },
-    { id: 'Photo/signature resizing', name: 'Photo Resizing' },
-    { id: 'Online payment/recharge', name: 'Online Payment' },
-    { id: 'Certificate applications', name: 'Certificates' },
-    { id: 'Income/caste/residence certificate assistance', name: 'Caste / Income / Domicile' }
+    ...Array.from(new Set(services.map(s => s.category).filter(Boolean)))
+      .map((c) => ({ id: c, name: c }))
   ];
 
   const filtered = services.filter(s => {

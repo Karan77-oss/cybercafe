@@ -12,7 +12,7 @@ export default function MyJobs() {
   const loadJobs = async () => {
     try {
       const res = await workerApi.getMyJobs();
-      setJobs(res?.jobs || []);
+      setJobs(res?.jobs || res?.orders || res?.data?.jobs || res?.data?.orders || []);
       setLoading(false);
     } catch (err) {
       console.error(err);
@@ -24,7 +24,22 @@ export default function MyJobs() {
   useEffect(() => {
     loadJobs();
     const interval = setInterval(loadJobs, 15000);
-    return () => clearInterval(interval);
+
+    let es = null;
+    try {
+      const token = localStorage.getItem('cybercafe:token') || localStorage.getItem('token') || '';
+      const streamUrl = `/api/events/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      es = new EventSource(streamUrl, { withCredentials: true });
+
+      es.addEventListener('ORDER_CLAIMED', () => loadJobs());
+      es.addEventListener('ORDER_ACCEPTED', () => loadJobs());
+      es.addEventListener('ORDER_STATUS_UPDATED', () => loadJobs());
+    } catch {}
+
+    return () => {
+      clearInterval(interval);
+      if (es) es.close();
+    };
   }, []);
 
   if (loading) {
@@ -143,7 +158,7 @@ export default function MyJobs() {
           filteredJobs.map(job => {
             const isCompleted = job.status === 'COMPLETED';
             const isCorrection = job.status === 'CORRECTION_REQUIRED';
-            const payout = (job.workerEarningsPaise || Math.round(job.pricePaise * 0.8)) / 100;
+            const payout = (job.workerEarningsPaise || job.workerAmountPaise || job.workerAmount || 0) / 100;
 
             return (
               <div
@@ -194,6 +209,11 @@ export default function MyJobs() {
                         <CheckCircle2 size={14} /> Output Uploaded
                       </span>
                     )}
+                    {(job.rating || job.serviceSnapshot?.review?.rating) && (
+                      <span style={{ color: '#b45309', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        ★ {job.rating || job.serviceSnapshot?.review?.rating}/5 Rating
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -204,7 +224,19 @@ export default function MyJobs() {
                       ₹{payout.toFixed(2)}
                     </div>
                     <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                      {isCompleted ? 'Settled to Wallet' : 'Pending Completion'}
+                      {isCompleted ? (
+                        (() => {
+                          const compTime = job.completedAt ? new Date(job.completedAt).getTime() : Date.now();
+                          const unlockAt = compTime + 3600000;
+                          const isMatured = Date.now() >= unlockAt || job.earningStatus === 'RELEASED';
+                          const mins = Math.max(0, Math.floor((unlockAt - Date.now()) / 60000));
+                          return isMatured ? (
+                            <span style={{ color: '#166534', fontWeight: 600 }}>Settled in Wallet</span>
+                          ) : (
+                            <span style={{ color: '#b45309', fontWeight: 600 }}>Pending Lock ({mins}m left)</span>
+                          );
+                        })()
+                      ) : 'Pending Completion'}
                     </div>
                   </div>
 

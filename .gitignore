@@ -21,6 +21,7 @@ coverage
 
 # Scratch and temporary scripts
 *.py
+*.zip
 test_sec.js
 scaffold_*.js
 cyber cafe/
@@ -36,3 +37,8 @@ cyber-cafe/
 *.njsproj
 *.sln
 *.sw?
+
+# Backend compiled JS artifacts (src/ is TypeScript-only; output goes to dist/)
+backend/src/**/*.js
+backend/src/**/*.js.map
+backend/src/**/*.d.ts

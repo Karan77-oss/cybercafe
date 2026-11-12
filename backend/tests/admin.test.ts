@@ -1,5 +1,7 @@
 import request from 'supertest';
 import app from '../src/app';
+import { prisma } from '../src/db';
+import { localStore } from '../src/catalogData';
 
 describe('Admin Portal End-to-End API Test Suite', () => {
   let adminToken: string;
@@ -59,6 +61,17 @@ describe('Admin Portal End-to-End API Test Suite', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(listRes.status).toBe(200);
     expect(Array.isArray(listRes.body.workers)).toBe(true);
+
+    // Clean up test worker from previous test run if exists
+    try {
+      await prisma.auditLog.deleteMany({ where: { OR: [{ actorUserId: 'WRK-201' }, { entityId: 'WRK-201' }] } });
+      await prisma.user.deleteMany({ where: { OR: [{ id: 'WRK-201' }, { email: 'suresh.sharma@cybercafe.com' }, { phone: '9829012345' }] } });
+      localStore.workers = localStore.workers.filter(w => w.id !== 'WRK-201' && w.workerId !== 'WRK-201' && (w as any).mobile !== '9829012345' && w.phone !== '9829012345');
+      localStore.users.delete('WRK-201');
+      for (const [k, u] of localStore.users.entries()) {
+        if (u.email === 'suresh.sharma@cybercafe.com' || u.workerId === 'WRK-201' || u.phone === '9829012345') localStore.users.delete(k);
+      }
+    } catch { }
 
     // Create worker with 11 required fields
     const createRes = await request(app)

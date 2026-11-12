@@ -11,7 +11,10 @@ import {
   Download, 
   X, 
   Clock, 
-  UserCheck 
+  UserCheck,
+  Tag,
+  ShieldCheck,
+  ListPlus
 } from 'lucide-react';
 import { adminApi } from '../api/admin';
 import StatusBadge from '../components/StatusBadge';
@@ -33,26 +36,36 @@ export default function Services() {
     name: '',
     category: 'Government forms',
     workerAmountPaise: 14000,
-    platformFeePaise: 5900,
+    adminCommissionPaise: 5900,
+    platformFeePaise: 0,
     pricePaise: 19900,
     estimatedTime: '24-48 Hours',
     description: '',
-    requiredDocuments: 'Aadhaar Card, Passport Photo'
+    requiredDocuments: 'Aadhaar Card, Passport Photo',
+    applicationTypes: []
   });
 
-  // Edit & Review Proposal Modal
+  // Edit & Review Proposal Modal (No Quick Approve bypass)
   const [showEditProposalModal, setShowEditProposalModal] = useState(false);
   const [editingProposal, setEditingProposal] = useState(null);
   const [proposalForm, setProposalForm] = useState({
     name: '',
     category: 'Government forms',
     workerAmountPaise: 14000,
-    platformFeePaise: 5900,
-    pricePaise: 19900,
+    adminCommissionPaise: 5000,
+    platformFeePaise: 0,
+    pricePaise: 19000,
     estimatedTime: '24-48 Hours',
     description: '',
-    requiredDocuments: 'Aadhaar Card, Passport Photo'
+    requiredDocuments: 'Aadhaar Card, Passport Photo',
+    applicationTypes: []
   });
+
+  // Temp state for adding a dynamic application type in modals
+  const [newTypeTitle, setNewTypeTitle] = useState('');
+  const [newTypeBadge, setNewTypeBadge] = useState('');
+  const [newTypeSla, setNewTypeSla] = useState('');
+  const [isAddingType, setIsAddingType] = useState(false);
 
   // Reject Proposal Modal
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -88,30 +101,48 @@ export default function Services() {
       name: '',
       category: 'Government forms',
       workerAmountPaise: 14000,
-      platformFeePaise: 5900,
+      adminCommissionPaise: 5900,
+      platformFeePaise: 0,
       pricePaise: 19900,
       estimatedTime: '24-48 Hours',
       description: '',
-      requiredDocuments: 'Aadhaar Card, Passport Photo'
+      requiredDocuments: 'Aadhaar Card, Passport Photo',
+      applicationTypes: [
+        { id: 'new_application', title: 'New Application', badge: 'Standard', estimatedTime: '24-48 Hours' },
+        { id: 'correction_update', title: 'Update / Correction', badge: 'Popular', estimatedTime: '24-48 Hours' }
+      ]
     });
+    setIsAddingType(false);
     setShowServiceModal(true);
   };
 
   const openEditModal = (service) => {
     setIsEditing(true);
     setEditServiceId(service.id);
-    const workerAmt = service.workerAmountPaise ?? Math.round((service.pricePaise || 19900) * 0.7);
-    const platFee = service.platformFeePaise ?? ((service.pricePaise || 19900) - workerAmt);
+    const workerAmt = service.workerAmountPaise ?? (service.pricePaise ? Math.max(0, service.pricePaise - (service.adminCommissionPaise || service.platformFeePaise || 0)) : 14000);
+    const adminComm = service.adminCommissionPaise ?? service.platformFeePaise ?? Math.max(0, (service.pricePaise || 19900) - workerAmt);
+    
+    // Normalize existing applicationTypes
+    let appTypes = [];
+    if (Array.isArray(service.applicationTypes) && service.applicationTypes.length > 0) {
+      appTypes = service.applicationTypes;
+    } else if (service.subCategories && Array.isArray(service.subCategories)) {
+      appTypes = service.subCategories.map((sc, idx) => typeof sc === 'string' ? { id: `type_${idx}`, title: sc } : sc);
+    }
+
     setServiceForm({
-      name: service.name,
-      category: service.category,
+      name: service.name || '',
+      category: service.category || 'Government forms',
       workerAmountPaise: workerAmt,
-      platformFeePaise: platFee,
-      pricePaise: service.pricePaise || (workerAmt + platFee),
+      adminCommissionPaise: adminComm,
+      platformFeePaise: 0, // Strict zero hidden fees
+      pricePaise: workerAmt + adminComm,
       estimatedTime: service.estimatedTime || '24-48 Hours',
       description: service.description || '',
-      requiredDocuments: service.requiredDocuments ? (Array.isArray(service.requiredDocuments) ? service.requiredDocuments.join(', ') : service.requiredDocuments) : ''
+      requiredDocuments: service.requiredDocuments ? (Array.isArray(service.requiredDocuments) ? service.requiredDocuments.join(', ') : service.requiredDocuments) : '',
+      applicationTypes: appTypes
     });
+    setIsAddingType(false);
     setShowServiceModal(true);
   };
 
@@ -124,12 +155,21 @@ export default function Services() {
             : serviceForm.requiredDocuments.split(',').map(s => s.trim()).filter(Boolean))
         : [];
 
+      const workerPaise = Number(serviceForm.workerAmountPaise) || 0;
+      const adminPaise = Number(serviceForm.adminCommissionPaise) || 0;
+      const totalPaise = workerPaise + adminPaise;
+
       const payload = {
-        ...serviceForm,
-        workerAmountPaise: Number(serviceForm.workerAmountPaise),
-        platformFeePaise: Number(serviceForm.platformFeePaise),
-        pricePaise: Number(serviceForm.pricePaise),
-        requiredDocuments: requiredDocsArray
+        name: serviceForm.name,
+        category: serviceForm.category,
+        description: serviceForm.description,
+        workerAmountPaise: workerPaise,
+        adminCommissionPaise: adminPaise,
+        platformFeePaise: 0,
+        pricePaise: totalPaise,
+        estimatedTime: serviceForm.estimatedTime,
+        requiredDocuments: requiredDocsArray,
+        applicationTypes: serviceForm.applicationTypes || []
       };
 
       if (isEditing) {
@@ -163,31 +203,36 @@ export default function Services() {
     }
   };
 
-  const handleApproveProposal = async (id) => {
-    if (!window.confirm('Approve this worker proposal and add it to official services catalog?')) return;
-    try {
-      await adminApi.approveProposal(id);
-      loadAll();
-    } catch (err) {
-      alert(err.message || 'Failed to approve proposal');
-    }
-  };
-
+  // Review & Edit Worker Proposal Modal
   const openEditProposalModal = (prop) => {
     setEditingProposal(prop);
-    const propPrice = prop.pricePaise || 19900;
-    const workerAmt = prop.workerPayoutPaise || prop.workerAmountPaise || Math.round(propPrice * 0.7);
-    const platFee = prop.platformFeePaise || (propPrice - workerAmt);
+    const workerAmt = prop.requestedWorkerAmountPaise || prop.workerPayoutPaise || prop.workerAmountPaise || prop.suggestedPricePaise || 0;
+    // Default admin markup if unset: e.g. 5000 paise (₹50) or existing adminCommissionPaise
+    const adminComm = prop.adminCommissionPaise || prop.platformFeePaise || 5000;
+    const propPrice = workerAmt + adminComm;
+
+    let appTypes = [];
+    if (Array.isArray(prop.applicationTypes) && prop.applicationTypes.length > 0) {
+      appTypes = prop.applicationTypes;
+    } else {
+      appTypes = [
+        { id: 'standard', title: 'Standard Processing', badge: 'Default', estimatedTime: prop.deliveryDays || '24-48 Hours' }
+      ];
+    }
+
     setProposalForm({
       name: prop.title || prop.name || '',
       category: prop.category || 'Government forms',
       workerAmountPaise: workerAmt,
-      platformFeePaise: platFee,
+      adminCommissionPaise: adminComm,
+      platformFeePaise: 0,
       pricePaise: propPrice,
-      estimatedTime: prop.deliveryDays || prop.turnaroundTime || '24-48 Hours',
+      estimatedTime: prop.deliveryDays || prop.turnaroundTime || prop.estimatedTime || '24-48 Hours',
       description: prop.description || '',
-      requiredDocuments: prop.requiredDocuments ? (Array.isArray(prop.requiredDocuments) ? prop.requiredDocuments.join(', ') : prop.requiredDocuments) : 'Aadhaar Card, Passport Photo'
+      requiredDocuments: prop.requiredDocuments ? (Array.isArray(prop.requiredDocuments) ? prop.requiredDocuments.join(', ') : prop.requiredDocuments) : 'Aadhaar Card, Passport Photo',
+      applicationTypes: appTypes
     });
+    setIsAddingType(false);
     setShowEditProposalModal(true);
   };
 
@@ -201,15 +246,21 @@ export default function Services() {
             : proposalForm.requiredDocuments.split(',').map(s => s.trim()).filter(Boolean))
         : [];
 
+      const workerPaise = Number(proposalForm.workerAmountPaise) || 0;
+      const adminPaise = Number(proposalForm.adminCommissionPaise) || 0;
+      const totalPaise = workerPaise + adminPaise;
+
       const payload = {
         name: proposalForm.name,
         category: proposalForm.category,
         description: proposalForm.description,
-        workerAmountPaise: Number(proposalForm.workerAmountPaise),
-        platformFeePaise: Number(proposalForm.platformFeePaise),
-        pricePaise: Number(proposalForm.pricePaise),
+        workerAmountPaise: workerPaise,
+        adminCommissionPaise: adminPaise,
+        platformFeePaise: 0,
+        pricePaise: totalPaise,
         estimatedTime: proposalForm.estimatedTime,
-        requiredDocuments: requiredDocsArray
+        requiredDocuments: requiredDocsArray,
+        applicationTypes: proposalForm.applicationTypes || []
       };
 
       await adminApi.approveProposal(editingProposal.id, payload);
@@ -235,6 +286,47 @@ export default function Services() {
     }
   };
 
+  // Helper for adding dynamic application types in forms
+  const addApplicationType = (isProposal = false) => {
+    if (!newTypeTitle.trim()) return;
+    const item = {
+      id: newTypeTitle.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+      title: newTypeTitle.trim(),
+      badge: newTypeBadge.trim() || undefined,
+      estimatedTime: newTypeSla.trim() || undefined
+    };
+
+    if (isProposal) {
+      setProposalForm(prev => ({
+        ...prev,
+        applicationTypes: [...(prev.applicationTypes || []), item]
+      }));
+    } else {
+      setServiceForm(prev => ({
+        ...prev,
+        applicationTypes: [...(prev.applicationTypes || []), item]
+      }));
+    }
+    setNewTypeTitle('');
+    setNewTypeBadge('');
+    setNewTypeSla('');
+    setIsAddingType(false);
+  };
+
+  const removeApplicationType = (index, isProposal = false) => {
+    if (isProposal) {
+      setProposalForm(prev => ({
+        ...prev,
+        applicationTypes: prev.applicationTypes.filter((_, i) => i !== index)
+      }));
+    } else {
+      setServiceForm(prev => ({
+        ...prev,
+        applicationTypes: prev.applicationTypes.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
   const categories = ['ALL', ...Array.from(new Set(servicesData.map(s => s.category).filter(Boolean)))];
 
   const filteredServices = servicesData.filter(s => {
@@ -244,13 +336,17 @@ export default function Services() {
     return matchesSearch && matchesCategory;
   });
 
+  const pendingProposalsCount = proposalsData.filter(p => p.status === 'PENDING' || p.status === 'PENDING_APPROVAL').length;
+
   const exportCSV = () => {
-    const headers = ['Service ID', 'Name', 'Category', 'Price (Rs)', 'Estimated Time', 'Status'];
+    const headers = ['Service ID', 'Name', 'Category', 'Customer Price (Rs)', 'Worker Base (Rs)', 'Admin Fee (Rs)', 'Estimated Time', 'Status'];
     const rows = filteredServices.map(s => [
       s.id,
       `"${s.name || ''}"`,
       `"${s.category || ''}"`,
       ((s.pricePaise || 0) / 100).toFixed(2),
+      ((s.workerAmountPaise || 0) / 100).toFixed(2),
+      ((s.adminCommissionPaise || 0) / 100).toFixed(2),
       `"${s.estimatedTime || ''}"`,
       s.status
     ]);
@@ -269,7 +365,7 @@ export default function Services() {
       <div className="view-header">
         <div>
           <h1>Services & Proposals</h1>
-          <p className="subtitle">Manage customer-facing service offerings, pricing, and approve worker proposals.</p>
+          <p className="subtitle">Manage dynamic application types, custom proposal markups, and catalog offerings.</p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
           {activeTab === 'CATALOG' && (
@@ -314,7 +410,7 @@ export default function Services() {
             gap: '8px'
           }}
         >
-          Worker Service Proposals ({proposalsData.filter(p => p.status === 'PENDING').length} Pending)
+          Worker Service Proposals ({pendingProposalsCount} Pending)
         </button>
       </div>
 
@@ -350,9 +446,9 @@ export default function Services() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Service ID & Name</th>
+                  <th>Service & Application Types</th>
                   <th>Category</th>
-                  <th>Price</th>
+                  <th>Customer Price Breakdown</th>
                   <th>Turnaround Time</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -363,15 +459,30 @@ export default function Services() {
                   <tr key={service.id}>
                     <td>
                       <div style={{ fontWeight: 600 }}>{service.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--brand-blue)' }}>{service.id.slice(0, 10)}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--brand-blue)', marginBottom: '4px' }}>{service.id.slice(0, 10)}</div>
+                      {/* Dynamic Application Types preview */}
+                      {Array.isArray(service.applicationTypes) && service.applicationTypes.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
+                          {service.applicationTypes.map((t, idx) => (
+                            <span key={idx} style={{ fontSize: '0.7rem', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '1px 6px' }}>
+                              {t.title || t.name || t.id}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <span style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem' }}>
                         {service.category}
                       </span>
                     </td>
-                    <td style={{ fontWeight: 600 }}>
-                      ₹{((service.pricePaise || 0) / 100).toFixed(2)}
+                    <td>
+                      <div style={{ fontWeight: 700, color: 'var(--brand-blue)' }}>
+                        ₹{((service.pricePaise || 0) / 100).toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Worker: ₹{((service.workerAmountPaise || 0) / 100).toFixed(2)} + Admin: ₹{((service.adminCommissionPaise || 0) / 100).toFixed(2)}
+                      </div>
                     </td>
                     <td>
                       <div style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -430,66 +541,77 @@ export default function Services() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Proposed Service</th>
+                  <th>Proposed Service & Types</th>
                   <th>Submitted By</th>
-                  <th>Proposed Price</th>
+                  <th>Worker Base Request</th>
                   <th>Turnaround</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {proposalsData.map(prop => (
-                  <tr key={prop.id}>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{prop.title || prop.name}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{prop.description}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>{prop.worker?.name || 'Worker'}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--brand-blue)' }}>{prop.worker?.workerId || prop.workerId}</div>
-                    </td>
-                    <td style={{ fontWeight: 600 }}>
-                      ₹{((prop.pricePaise || 0) / 100).toFixed(2)}
-                    </td>
-                    <td>{prop.deliveryDays || prop.turnaroundTime || '2 Days'}</td>
-                    <td>
-                      <StatusBadge status={prop.status} />
-                    </td>
-                    <td>
-                      {prop.status === 'PENDING' ? (
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <button 
-                            className="btn btn-outline" 
-                            style={{ padding: '4px 10px', fontSize: '0.8rem', color: 'var(--brand-blue)', borderColor: '#bfdbfe' }}
-                            onClick={() => openEditProposalModal(prop)}
-                            title="Edit & Review proposal before approving"
-                          >
-                            <Edit size={14} /> Edit & Review
-                          </button>
-                          <button 
-                            className="btn btn-primary" 
-                            style={{ background: '#16a34a', fontSize: '0.8rem', padding: '4px 10px' }}
-                            onClick={() => handleApproveProposal(prop.id)}
-                            title="Quick Approve"
-                          >
-                            <CheckCircle size={14} /> Approve
-                          </button>
-                          <button 
-                            className="btn btn-outline" 
-                            style={{ color: '#dc2626', borderColor: '#fca5a5', fontSize: '0.8rem', padding: '4px 10px' }}
-                            onClick={() => { setRejectProposalId(prop.id); setShowRejectModal(true); }}
-                            title="Reject Proposal"
-                          >
-                            <XCircle size={14} /> Reject
-                          </button>
+                {proposalsData.map(prop => {
+                  const isPending = prop.status === 'PENDING' || prop.status === 'PENDING_APPROVAL';
+                  const workerAmt = prop.requestedWorkerAmountPaise || prop.workerPayoutPaise || prop.workerAmountPaise || prop.suggestedPricePaise || 0;
+                  return (
+                    <tr key={prop.id}>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{prop.title || prop.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{prop.description}</div>
+                        {Array.isArray(prop.applicationTypes) && prop.applicationTypes.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            {prop.applicationTypes.map((t, idx) => (
+                              <span key={idx} style={{ fontSize: '0.7rem', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', borderRadius: '4px', padding: '1px 6px' }}>
+                                {t.title || t.name || t.id}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{prop.worker?.name || 'Worker'}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--brand-blue)' }}>{prop.worker?.workerId || prop.workerId}</div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 700, color: '#16a34a' }}>
+                          ₹{(workerAmt / 100).toFixed(2)}
                         </div>
-                      ) : (
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Processed</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          Base Rate Proposed
+                        </div>
+                      </td>
+                      <td>{prop.deliveryDays || prop.turnaroundTime || '2 Days'}</td>
+                      <td>
+                        <StatusBadge status={prop.status} />
+                      </td>
+                      <td>
+                        {isPending ? (
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            {/* NOTE: Quick Approve is completely removed per spec. Every approval must review base rate and set Admin markup explicitly */}
+                            <button 
+                              className="btn btn-primary" 
+                              style={{ padding: '6px 12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                              onClick={() => openEditProposalModal(prop)}
+                              title="Review base rate, set custom Admin markup & publish"
+                            >
+                              <ShieldCheck size={14} /> Review & Set Admin Fee
+                            </button>
+                            <button 
+                              className="btn btn-outline" 
+                              style={{ color: '#dc2626', borderColor: '#fca5a5', fontSize: '0.82rem', padding: '6px 10px' }}
+                              onClick={() => { setRejectProposalId(prop.id); setShowRejectModal(true); }}
+                              title="Reject Proposal"
+                            >
+                              <XCircle size={14} /> Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Processed</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -508,7 +630,7 @@ export default function Services() {
           justifyContent: 'center',
           padding: '20px'
         }}>
-          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '540px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '620px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0 }}>{isEditing ? 'Edit Service' : 'Add New Service'}</h3>
               <button onClick={() => setShowServiceModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20}/></button>
@@ -530,72 +652,129 @@ export default function Services() {
                 </div>
               </div>
 
-              {/* 3 Explicit Pricing Fields */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Worker Payout (₹) *</label>
-                  <input 
-                    required 
-                    type="number" 
-                    step="0.01" 
-                    min="0"
-                    className="search-box" 
-                    style={{ width: '100%' }} 
-                    value={(serviceForm.workerAmountPaise / 100).toFixed(2)} 
-                    onChange={e => {
-                      const workerPaise = Math.round(Number(e.target.value || 0) * 100);
-                      const total = workerPaise + Number(serviceForm.platformFeePaise || 0);
-                      setServiceForm({...serviceForm, workerAmountPaise: workerPaise, pricePaise: total});
-                    }} 
-                    placeholder="140.00" 
-                  />
+              {/* Explicit Pricing Formula: Total Price = Worker Base + Admin Custom Markup (Zero Hidden Platform Fees) */}
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '14px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <ShieldCheck size={14} color="var(--brand-blue)" /> Strict Pricing: Price = Worker Base + Admin Custom Fee (Zero 80/20 split)
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Platform Fee (₹) *</label>
-                  <input 
-                    required 
-                    type="number" 
-                    step="0.01" 
-                    min="0"
-                    className="search-box" 
-                    style={{ width: '100%' }} 
-                    value={(serviceForm.platformFeePaise / 100).toFixed(2)} 
-                    onChange={e => {
-                      const feePaise = Math.round(Number(e.target.value || 0) * 100);
-                      const total = Number(serviceForm.workerAmountPaise || 0) + feePaise;
-                      setServiceForm({...serviceForm, platformFeePaise: feePaise, pricePaise: total});
-                    }} 
-                    placeholder="59.00" 
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#16a34a' }}>Worker Payout (₹) *</label>
+                    <input 
+                      required 
+                      type="number" 
+                      step="0.01" 
+                      min="0"
+                      className="search-box" 
+                      style={{ width: '100%' }} 
+                      value={(serviceForm.workerAmountPaise / 100).toFixed(2)} 
+                      onChange={e => {
+                        const workerPaise = Math.round(Number(e.target.value || 0) * 100);
+                        const total = workerPaise + Number(serviceForm.adminCommissionPaise || 0);
+                        setServiceForm({...serviceForm, workerAmountPaise: workerPaise, pricePaise: total});
+                      }} 
+                      placeholder="140.00" 
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: 'var(--brand-blue)' }}>Admin Fee (₹) *</label>
+                    <input 
+                      required 
+                      type="number" 
+                      step="0.01" 
+                      min="0"
+                      className="search-box" 
+                      style={{ width: '100%' }} 
+                      value={(serviceForm.adminCommissionPaise / 100).toFixed(2)} 
+                      onChange={e => {
+                        const feePaise = Math.round(Number(e.target.value || 0) * 100);
+                        const total = Number(serviceForm.workerAmountPaise || 0) + feePaise;
+                        setServiceForm({...serviceForm, adminCommissionPaise: feePaise, pricePaise: total});
+                      }} 
+                      placeholder="59.00" 
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#1e293b' }}>Customer Price (₹)</label>
+                    <input 
+                      disabled
+                      type="number" 
+                      step="0.01" 
+                      className="search-box" 
+                      style={{ width: '100%', fontWeight: 700, color: 'var(--brand-blue)', background: '#e2e8f0', cursor: 'not-allowed' }} 
+                      value={((serviceForm.workerAmountPaise + serviceForm.adminCommissionPaise) / 100).toFixed(2)} 
+                      placeholder="199.00" 
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Total Price (₹) *</label>
-                  <input 
-                    required 
-                    type="number" 
-                    step="0.01" 
-                    min="0"
-                    className="search-box" 
-                    style={{ width: '100%', fontWeight: 700, color: 'var(--brand-blue)', background: '#f8fafc' }} 
-                    value={(serviceForm.pricePaise / 100).toFixed(2)} 
-                    onChange={e => {
-                      const totalPaise = Math.round(Number(e.target.value || 0) * 100);
-                      const workerPaise = Number(serviceForm.workerAmountPaise || 0);
-                      const feePaise = Math.max(0, totalPaise - workerPaise);
-                      setServiceForm({...serviceForm, pricePaise: totalPaise, platformFeePaise: feePaise});
-                    }} 
-                    placeholder="199.00" 
-                  />
+              </div>
+
+              {/* Dynamic Application Types Builder */}
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', marginBottom: '14px', background: '#ffffff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Tag size={14} /> Universal Application Types
+                  </label>
+                  {!isAddingType && (
+                    <button 
+                      type="button" 
+                      onClick={() => setIsAddingType(true)} 
+                      className="btn btn-outline" 
+                      style={{ padding: '2px 8px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Plus size={12} /> Add Type
+                    </button>
+                  )}
+                </div>
+
+                {isAddingType && (
+                  <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '6px', marginBottom: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input 
+                      type="text" 
+                      placeholder="Type title (e.g. Renewal, Fresh, Tatkaal)" 
+                      value={newTypeTitle} 
+                      onChange={e => setNewTypeTitle(e.target.value)}
+                      style={{ flex: 1, padding: '4px 8px', fontSize: '0.8rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                    />
+                    <input 
+                      type="text" 
+                      placeholder="Badge (Optional, e.g. Urgent)" 
+                      value={newTypeBadge} 
+                      onChange={e => setNewTypeBadge(e.target.value)}
+                      style={{ width: '120px', padding: '4px 8px', fontSize: '0.8rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                    />
+                    <button type="button" className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem' }} onClick={() => addApplicationType(false)}>Save</button>
+                    <button type="button" className="btn btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => setIsAddingType(false)}>Cancel</button>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {(serviceForm.applicationTypes || []).map((type, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f1f5f9', padding: '4px 8px', borderRadius: '6px', fontSize: '0.8rem' }}>
+                      <span style={{ fontWeight: 500 }}>{type.title || type.name || type.id}</span>
+                      {type.badge && <span style={{ fontSize: '0.7rem', background: '#dbeafe', color: '#1e40af', padding: '1px 4px', borderRadius: '3px' }}>{type.badge}</span>}
+                      <button 
+                        type="button" 
+                        onClick={() => removeApplicationType(idx, false)}
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: '0 2px' }}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  {(!serviceForm.applicationTypes || serviceForm.applicationTypes.length === 0) && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No application types defined yet. Click Add Type above.</span>
+                  )}
                 </div>
               </div>
 
               <div style={{ marginBottom: '12px' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Description</label>
-                <textarea style={{ width: '100%', height: '70px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} value={serviceForm.description} onChange={e => setServiceForm({...serviceForm, description: e.target.value})} placeholder="Brief service instructions and details..." />
+                <textarea style={{ width: '100%', height: '65px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} value={serviceForm.description} onChange={e => setServiceForm({...serviceForm, description: e.target.value})} placeholder="Brief service instructions and details..." />
               </div>
 
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Required Customer Documents (comma separated)</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Required Customer Documents (comma separated checklist)</label>
                 <input type="text" className="search-box" style={{ width: '100%' }} value={serviceForm.requiredDocuments} onChange={e => setServiceForm({...serviceForm, requiredDocuments: e.target.value})} placeholder="Aadhaar Card, Passport Photo, Ration Card" />
               </div>
 
@@ -608,7 +787,7 @@ export default function Services() {
         </div>
       )}
 
-      {/* EDIT & REVIEW PROPOSAL MODAL */}
+      {/* EDIT & REVIEW PROPOSAL MODAL (No quick approve bypass) */}
       {showEditProposalModal && editingProposal && (
         <div style={{
           position: 'fixed',
@@ -620,19 +799,19 @@ export default function Services() {
           justifyContent: 'center',
           padding: '20px'
         }}>
-          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '560px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '640px', width: '100%', maxHeight: '92vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <div>
-                <h3 style={{ margin: 0 }}>Edit & Review Worker Proposal</h3>
+                <h3 style={{ margin: 0 }}>Review Proposal & Set Custom Markup</h3>
                 <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Proposed by: <strong>{editingProposal.worker?.name || 'Worker'}</strong> ({editingProposal.worker?.workerId || editingProposal.workerId})
+                  Submitted by: <strong>{editingProposal.worker?.name || 'Worker'}</strong> ({editingProposal.worker?.workerId || editingProposal.workerId})
                 </p>
               </div>
               <button onClick={() => { setShowEditProposalModal(false); setEditingProposal(null); }} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20}/></button>
             </div>
             <form onSubmit={handleApproveModifiedProposal}>
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Service Name *</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Official Service Name *</label>
                 <input required type="text" className="search-box" style={{ width: '100%' }} value={proposalForm.name} onChange={e => setProposalForm({...proposalForm, name: e.target.value})} placeholder="Official service title" />
               </div>
 
@@ -647,68 +826,123 @@ export default function Services() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Worker Payout (₹) *</label>
-                  <input 
-                    required 
-                    type="number" 
-                    step="0.01" 
-                    min="0"
-                    className="search-box" 
-                    style={{ width: '100%' }} 
-                    value={(proposalForm.workerAmountPaise / 100).toFixed(2)} 
-                    onChange={e => {
-                      const workerPaise = Math.round(Number(e.target.value || 0) * 100);
-                      const total = workerPaise + Number(proposalForm.platformFeePaise || 0);
-                      setProposalForm({...proposalForm, workerAmountPaise: workerPaise, pricePaise: total});
-                    }} 
-                  />
+              {/* Strict Proposal Pricing Formula */}
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '14px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <ShieldCheck size={14} color="#16a34a" /> 100% Transparent Pricing: Customer Pays = Worker Base Rate + Custom Admin Markup
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Platform Fee (₹) *</label>
-                  <input 
-                    required 
-                    type="number" 
-                    step="0.01" 
-                    min="0"
-                    className="search-box" 
-                    style={{ width: '100%' }} 
-                    value={(proposalForm.platformFeePaise / 100).toFixed(2)} 
-                    onChange={e => {
-                      const feePaise = Math.round(Number(e.target.value || 0) * 100);
-                      const total = Number(proposalForm.workerAmountPaise || 0) + feePaise;
-                      setProposalForm({...proposalForm, platformFeePaise: feePaise, pricePaise: total});
-                    }} 
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#16a34a' }}>Worker Base Payout (₹) *</label>
+                    <input 
+                      required 
+                      type="number" 
+                      step="0.01" 
+                      min="0"
+                      className="search-box" 
+                      style={{ width: '100%' }} 
+                      value={(proposalForm.workerAmountPaise / 100).toFixed(2)} 
+                      onChange={e => {
+                        const workerPaise = Math.round(Number(e.target.value || 0) * 100);
+                        const total = workerPaise + Number(proposalForm.adminCommissionPaise || 0);
+                        setProposalForm({...proposalForm, workerAmountPaise: workerPaise, pricePaise: total});
+                      }} 
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: 'var(--brand-blue)' }}>Custom Admin Fee (₹) *</label>
+                    <input 
+                      required 
+                      type="number" 
+                      step="0.01" 
+                      min="0"
+                      className="search-box" 
+                      style={{ width: '100%' }} 
+                      value={(proposalForm.adminCommissionPaise / 100).toFixed(2)} 
+                      onChange={e => {
+                        const feePaise = Math.round(Number(e.target.value || 0) * 100);
+                        const total = Number(proposalForm.workerAmountPaise || 0) + feePaise;
+                        setProposalForm({...proposalForm, adminCommissionPaise: feePaise, pricePaise: total});
+                      }} 
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#1e293b' }}>Total Customer Price (₹)</label>
+                    <input 
+                      disabled
+                      type="number" 
+                      step="0.01" 
+                      className="search-box" 
+                      style={{ width: '100%', fontWeight: 700, color: 'var(--brand-blue)', background: '#e2e8f0', cursor: 'not-allowed' }} 
+                      value={((proposalForm.workerAmountPaise + proposalForm.adminCommissionPaise) / 100).toFixed(2)} 
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Total Price (₹) *</label>
-                  <input 
-                    required 
-                    type="number" 
-                    step="0.01" 
-                    min="0"
-                    className="search-box" 
-                    style={{ width: '100%', fontWeight: 700, color: 'var(--brand-blue)', background: '#f8fafc' }} 
-                    value={(proposalForm.pricePaise / 100).toFixed(2)} 
-                    onChange={e => {
-                      const totalPaise = Math.round(Number(e.target.value || 0) * 100);
-                      const workerPaise = Number(proposalForm.workerAmountPaise || 0);
-                      const feePaise = Math.max(0, totalPaise - workerPaise);
-                      setProposalForm({...proposalForm, pricePaise: totalPaise, platformFeePaise: feePaise});
-                    }} 
-                  />
+              </div>
+
+              {/* Dynamic Application Types for Proposal */}
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', marginBottom: '14px', background: '#ffffff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Tag size={14} /> Application Types Included in this Service
+                  </label>
+                  {!isAddingType && (
+                    <button 
+                      type="button" 
+                      onClick={() => setIsAddingType(true)} 
+                      className="btn btn-outline" 
+                      style={{ padding: '2px 8px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Plus size={12} /> Add Type
+                    </button>
+                  )}
+                </div>
+
+                {isAddingType && (
+                  <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '6px', marginBottom: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input 
+                      type="text" 
+                      placeholder="Type title (e.g. Fresh, Correction, Tatkaal)" 
+                      value={newTypeTitle} 
+                      onChange={e => setNewTypeTitle(e.target.value)}
+                      style={{ flex: 1, padding: '4px 8px', fontSize: '0.8rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                    />
+                    <input 
+                      type="text" 
+                      placeholder="Badge (Optional)" 
+                      value={newTypeBadge} 
+                      onChange={e => setNewTypeBadge(e.target.value)}
+                      style={{ width: '120px', padding: '4px 8px', fontSize: '0.8rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                    />
+                    <button type="button" className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem' }} onClick={() => addApplicationType(true)}>Save</button>
+                    <button type="button" className="btn btn-outline" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => setIsAddingType(false)}>Cancel</button>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {(proposalForm.applicationTypes || []).map((type, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f1f5f9', padding: '4px 8px', borderRadius: '6px', fontSize: '0.8rem' }}>
+                      <span style={{ fontWeight: 500 }}>{type.title || type.name || type.id}</span>
+                      {type.badge && <span style={{ fontSize: '0.7rem', background: '#dbeafe', color: '#1e40af', padding: '1px 4px', borderRadius: '3px' }}>{type.badge}</span>}
+                      <button 
+                        type="button" 
+                        onClick={() => removeApplicationType(idx, true)}
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: '0 2px' }}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
 
               <div style={{ marginBottom: '12px' }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Description</label>
-                <textarea style={{ width: '100%', height: '70px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} value={proposalForm.description} onChange={e => setProposalForm({...proposalForm, description: e.target.value})} placeholder="Detailed instructions for applicants..." />
+                <textarea style={{ width: '100%', height: '65px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} value={proposalForm.description} onChange={e => setProposalForm({...proposalForm, description: e.target.value})} placeholder="Detailed instructions for applicants..." />
               </div>
 
               <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Required Customer Documents (comma separated)</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>Required Customer Documents (comma separated checklist)</label>
                 <input type="text" className="search-box" style={{ width: '100%' }} value={proposalForm.requiredDocuments} onChange={e => setProposalForm({...proposalForm, requiredDocuments: e.target.value})} placeholder="e.g. Aadhaar Card, Passport Photo, Land Record Copy" />
               </div>
 
@@ -742,7 +976,7 @@ export default function Services() {
             </p>
             <textarea 
               style={{ width: '100%', height: '80px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', marginBottom: '14px' }}
-              placeholder="Reason for rejection (e.g. Duplicate offering, incorrect pricing format)..."
+              placeholder="Reason for rejection (e.g. Duplicate offering, incomplete document checklist)..."
               value={rejectReason}
               onChange={e => setRejectReason(e.target.value)}
             />
@@ -759,4 +993,3 @@ export default function Services() {
     </div>
   );
 }
-

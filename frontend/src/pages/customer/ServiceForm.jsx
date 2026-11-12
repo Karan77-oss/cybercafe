@@ -1,31 +1,33 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, ShieldCheck, Lock, Upload, User, Zap, Wallet, Star, AlertCircle, CheckCircle2, CreditCard, QrCode, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Check, ShieldCheck, Lock, Upload, User, Zap, Wallet, Star, AlertCircle, CheckCircle2, CreditCard, QrCode, RefreshCw, FileText, X } from 'lucide-react';
 import { servicesApi } from '../../api/services';
 import { documentsApi } from '../../api/documents';
 import { ordersApi } from '../../api/orders';
 import { apiClient } from '../../api/client';
 
-import { services as fallbackServices } from '../../mockDataCustomer';
 import { useAuth } from '../../contexts/AuthContext';
-
-const DEFAULT_FORM_SCHEMA = [
-  { id: 'fullName', label: 'Full Name of Applicant', type: 'text', required: true },
-  { id: 'phone', label: 'Contact Phone / WhatsApp Number', type: 'tel', required: true },
-  { id: 'email', label: 'Email Address', type: 'email', required: true },
-  { id: 'address', label: 'Complete Postal / Communication Address', type: 'textarea', required: true }
-];
+import { resolveServiceFormSchema } from '@cybercafe/shared';
+import { validateDocumentClarity, compressDocument } from '../../utils/documentProcessor';
 
 export default function ServiceForm() {
   const { serviceId } = useParams();
   const navigate = useNavigate();
   const { user, authenticated } = useAuth();
   
-  const [service, setService] = useState(() => fallbackServices.find(s => s.id === serviceId) || null);
-  const [loadingService, setLoadingService] = useState(false);
+  // Live DB only — the selected service must always be the exact `serviceId`
+  // from the Admin-managed "Service" catalog. No mock/fallback service seeding:
+  // a stale slug like 'pan-card' would let a bogus service_id reach order
+  // creation and violate the Order -> Service foreign key.
+  const [service, setService] = useState(null);
+  const [loadingService, setLoadingService] = useState(true);
   const [serviceError, setServiceError] = useState(null);
   const [availableWorkers, setAvailableWorkers] = useState([]);
   const [walletBalance, setWalletBalance] = useState(0);
+
+  const [vaultDocs, setVaultDocs] = useState([]);
+  const [loadingVault, setLoadingVault] = useState(false);
+  const [activeVaultSlot, setActiveVaultSlot] = useState(null);
 
   const cacheKey = `application_${serviceId}`;
   const getInitialState = () => {
@@ -56,19 +58,20 @@ export default function ServiceForm() {
   });
 
   useEffect(() => {
+    setService(null);
+    setServiceError(null);
+    setLoadingService(true);
     servicesApi.getService(serviceId)
       .then(res => {
-        if (res.service) {
+        if (res?.service) {
+          // Exact live DB row keyed by `serviceId` — the single source of truth.
           setService(res.service);
+        } else {
+          setServiceError('This service is no longer available in the catalog.');
         }
       })
       .catch(err => {
-        const fallback = fallbackServices.find(s => s.id === serviceId);
-        if (fallback) {
-          setService(fallback);
-        } else {
-          setServiceError(err.message || 'Service not found');
-        }
+        setServiceError(err?.message || 'Service not found. It may have been disabled or removed.');
       })
       .finally(() => setLoadingService(false));
 
@@ -103,6 +106,21 @@ export default function ServiceForm() {
     }
   }, [user]);
 
+  // Load customer personal vault documents for one-click auto-reuse
+  useEffect(() => {
+    if (authenticated) {
+      setLoadingVault(true);
+      documentsApi.getVaultDocuments()
+        .then(res => {
+          if (res?.documents && Array.isArray(res.documents)) {
+            setVaultDocs(res.documents);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoadingVault(false));
+    }
+  }, [authenticated]);
+
   if (loadingService) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading service...</div>;
   if (serviceError || !service) return (
     <div style={{ padding: '40px', textAlign: 'center', color: 'red' }}>
@@ -111,13 +129,34 @@ export default function ServiceForm() {
     </div>
   );
 
-  const activeSchema = (service?.formSchema && Array.isArray(service.formSchema) && service.formSchema.length > 0)
-    ? service.formSchema 
-    : DEFAULT_FORM_SCHEMA;
+  const activeSchema = resolveServiceFormSchema(service);
 
   const updateDetails = (field, value) => {
     setAppState(prev => ({ ...prev, details: { ...prev.details, [field]: value } }));
     setErrors(prev => ({ ...prev, [field]: null }));
+  };
+
+  const handleSelectFromVault = (docName, vaultDoc) => {
+    setAppState(prev => ({
+      ...prev,
+      documents: {
+        ...prev.documents,
+        [docName]: {
+          id: vaultDoc.id,
+          fileName: vaultDoc.fileName || vaultDoc.name || 'Vault Document',
+          size: vaultDoc.size || 0,
+          isFromVault: true,
+          uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      }
+    }));
+    setActiveVaultSlot(null);
+    setErrors(prev => {
+      const copy = { ...prev };
+      delete copy[docName];
+      delete copy._documents;
+      return copy;
+    });
   };
 
   const handleFileUpload = async (docName, file) => {
@@ -125,17 +164,69 @@ export default function ServiceForm() {
     setUploadingDoc(docName);
     setIsUploading(true);
     try {
-      let docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
-      let fileName = file.name;
-      try {
-        const res = await documentsApi.upload(file);
-        if (res?.document) {
-          docId = res.document.id;
-          fileName = res.document.fileName || file.name;
-        }
-      } catch (apiErr) {
-        console.warn('[DocUpload] Network notice, using resilient document buffer:', apiErr);
+      // 1. Client-side clarity & resolution check (Task 3.1)
+      const clarity = await validateDocumentClarity(file);
+      if (!clarity.valid) {
+        setErrors(prev => ({ ...prev, [docName]: clarity.error }));
+        setUploadingDoc(null);
+        setIsUploading(false);
+        return;
       }
+
+      // 2. Client-side WebP compression (Task 3.1)
+      const processedFile = await compressDocument(file, { maxWidth: 1600, quality: 0.78 });
+
+      let docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+      let fileName = processedFile.name;
+
+      // 3. Direct Presigned Upload (Task 3.2: Bypass Multer RAM)
+      let uploadedDirectly = false;
+      try {
+        const presignRes = await documentsApi.presignUpload({
+          fileName: processedFile.name,
+          mimeType: processedFile.type,
+          docName
+        });
+
+        if (presignRes?.uploadUrl && presignRes?.storageKey) {
+          if (presignRes.uploadUrl.startsWith('http')) {
+            const uploadRes = await fetch(presignRes.uploadUrl, {
+              method: 'PUT',
+              headers: { 'Content-Type': processedFile.type },
+              body: processedFile
+            });
+            if (uploadRes.ok) {
+              const confirmRes = await documentsApi.confirmUpload({
+                storageKey: presignRes.storageKey,
+                fileName: processedFile.name,
+                mimeType: processedFile.type,
+                size: processedFile.size,
+                docName
+              });
+              if (confirmRes?.document) {
+                docId = confirmRes.document.id;
+                fileName = confirmRes.document.fileName || processedFile.name;
+                uploadedDirectly = true;
+              }
+            }
+          }
+        }
+      } catch (presignErr) {
+        console.warn('[DirectUpload] Presigned upload fallback:', presignErr);
+      }
+
+      if (!uploadedDirectly) {
+        try {
+          const res = await documentsApi.upload(processedFile);
+          if (res?.document) {
+            docId = res.document.id;
+            fileName = res.document.fileName || processedFile.name;
+          }
+        } catch (apiErr) {
+          console.warn('[DocUpload] Network notice, using resilient document buffer:', apiErr);
+        }
+      }
+
       setAppState(prev => ({
         ...prev,
         documents: { 
@@ -143,8 +234,9 @@ export default function ServiceForm() {
           [docName]: { 
             id: docId, 
             fileName, 
-            size: file.size, 
-            uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+            size: processedFile.size, 
+            uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            warning: clarity.warning || null
           } 
         }
       }));
@@ -180,15 +272,24 @@ export default function ServiceForm() {
 
   const normalizeRequiredDocuments = (docs) => {
     if (!docs) return [];
-    if (Array.isArray(docs)) return docs.map(d => typeof d === 'string' ? d.trim() : String(d)).filter(Boolean);
-    if (typeof docs === 'string') {
+    let list = [];
+    if (Array.isArray(docs)) {
+      list = docs;
+    } else if (typeof docs === 'string') {
       try {
         const parsed = JSON.parse(docs);
-        if (Array.isArray(parsed)) return parsed.map(d => String(d).trim()).filter(Boolean);
-      } catch {}
-      return docs.split(',').map(d => d.trim()).filter(Boolean);
+        if (Array.isArray(parsed)) list = parsed;
+        else list = docs.split(',').map(d => d.trim());
+      } catch {
+        list = docs.split(',').map(d => d.trim());
+      }
     }
-    return [];
+    return list.map(d => {
+      if (typeof d === 'object' && d !== null) {
+        return d.doc || d.name || d.title || String(d.id || 'Document');
+      }
+      return typeof d === 'string' ? d.trim() : String(d);
+    }).filter(Boolean);
   };
 
   const validateDocuments = () => {
@@ -253,6 +354,7 @@ export default function ServiceForm() {
 
     try {
       const documentIds = Object.values(appState.documents).map(d => d.id).filter(Boolean);
+      const existingDocumentIds = Object.values(appState.documents).filter(d => d.isFromVault).map(d => d.id);
       const documentsList = Object.entries(appState.documents).map(([reqName, d]) => ({
         id: d.id,
         docName: reqName,
@@ -267,6 +369,7 @@ export default function ServiceForm() {
         additionalInfo: appState.additionalInfo || '',
         workerSelection: appState.workerSelection || { mode: 'auto' },
         documentIds,
+        existingDocumentIds,
         documents: documentsList,
         paymentMethod: {
           provider: appState.paymentMethod || 'UPI',
@@ -285,6 +388,64 @@ export default function ServiceForm() {
       }
 
       const order = res.order || res;
+
+      // If Razorpay gateway is loaded, initiate checkout modal
+      if (window.Razorpay && order?.id) {
+        try {
+          const payRes = await ordersApi.createRazorpayPayment(order.id);
+          if (payRes?.razorpayOrderId) {
+            const options = {
+              key: payRes.key || 'rzp_test_TjrbhiZugaYLYJ',
+              amount: payRes.amount,
+              currency: payRes.currency || 'INR',
+              name: 'Cyber Cafe Marketplace',
+              description: `Payment for ${service.name}`,
+              order_id: payRes.razorpayOrderId,
+              handler: async (resp) => {
+                try {
+                  await ordersApi.verifyRazorpayPayment({
+                    orderId: order.id,
+                    razorpay_order_id: resp.razorpay_order_id,
+                    razorpay_payment_id: resp.razorpay_payment_id,
+                    razorpay_signature: resp.razorpay_signature
+                  });
+                  setPaymentStatus('success');
+                  sessionStorage.removeItem(cacheKey);
+                  navigate(`/orders/${order.id}`);
+                } catch (verifyErr) {
+                  console.error('Verification error:', verifyErr);
+                  sessionStorage.removeItem(cacheKey);
+                  navigate(`/orders/${order.id}`);
+                }
+              },
+              modal: {
+                ondismiss: () => {
+                  sessionStorage.removeItem(cacheKey);
+                  navigate(`/orders/${order.id}`);
+                }
+              },
+              prefill: {
+                name: user?.name || '',
+                email: user?.email || '',
+                contact: user?.phone || ''
+              },
+              theme: { color: '#2563eb' }
+            };
+            const rzp = new window.Razorpay(options);
+            rzp.on('payment.failed', (failResp) => {
+              console.warn('Razorpay payment failed:', failResp);
+              sessionStorage.removeItem(cacheKey);
+              navigate(`/orders/${order.id}`);
+            });
+            rzp.open();
+            setIsCreatingOrder(false);
+            return;
+          }
+        } catch (payGatewayErr) {
+          console.warn('Razorpay gateway notice (fallback to order tracking):', payGatewayErr);
+        }
+      }
+
       setPaymentStatus('success');
       sessionStorage.removeItem(cacheKey);
       setTimeout(() => {
@@ -514,14 +675,26 @@ export default function ServiceForm() {
                     </button>
                   </div>
                 ) : (
-                  <label className="btn btn-outline" style={{ padding: '8px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Upload size={16} color="var(--brand-blue)" /> Choose File
-                    <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleFileUpload(doc, e.target.files[0])} />
-                  </label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <label className="btn btn-outline" style={{ padding: '8px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Upload size={16} color="var(--brand-blue)" /> Choose File
+                      <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png" onChange={e => handleFileUpload(doc, e.target.files[0])} />
+                    </label>
+                    {authenticated && (
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(83, 100, 249, 0.05)', color: 'var(--brand-blue, #5364f9)', borderColor: 'rgba(83, 100, 249, 0.3)' }}
+                        onClick={() => setActiveVaultSlot(doc)}
+                      >
+                        <ShieldCheck size={16} /> Select from Vault
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 
-              {/* Upload Success Badge */}
+              {/* Upload / Vault Success Badge */}
               {docData && (
                 <div style={{
                   display: 'flex',
@@ -539,12 +712,25 @@ export default function ServiceForm() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
                     <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
                     <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{docData.fileName}</span>
+                    {docData.isFromVault && (
+                      <span style={{
+                        fontSize: '0.7rem',
+                        padding: '2px 8px',
+                        background: 'rgba(83, 100, 249, 0.15)',
+                        color: 'var(--brand-blue, #5364f9)',
+                        borderRadius: '12px',
+                        fontWeight: 600,
+                        flexShrink: 0
+                      }}>
+                        Vault Linked
+                      </span>
+                    )}
                   </div>
-                  {docData.size && (
+                  {docData.size ? (
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0 }}>
                       {(docData.size / 1024).toFixed(0)} KB
                     </span>
-                  )}
+                  ) : null}
                 </div>
               )}
 
@@ -557,6 +743,142 @@ export default function ServiceForm() {
             </div>
           );
         })}
+
+        {/* Vault Selection Modal */}
+        {activeVaultSlot && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}>
+            <div style={{
+              background: 'white',
+              borderRadius: '16px',
+              maxWidth: '560px',
+              width: '100%',
+              maxHeight: '85vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+            }}>
+              <div style={{
+                padding: '20px 24px',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                    <ShieldCheck size={20} color="var(--brand-blue, #5364f9)" /> Personal Vault Documents
+                  </h3>
+                  <p style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '4px', margin: 0 }}>
+                    Select a previously verified document to attach to <strong>{activeVaultSlot}</strong>
+                  </p>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => setActiveVaultSlot(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#64748b' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+                {loadingVault ? (
+                  <div style={{ textAlign: 'center', padding: '30px', color: '#64748b' }}>
+                    <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: '8px' }} />
+                    <p>Loading your secure vault...</p>
+                  </div>
+                ) : vaultDocs.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px 10px' }}>
+                    <FileText size={40} style={{ color: '#94a3b8', margin: '0 auto 12px' }} />
+                    <h4 style={{ fontWeight: 600, marginBottom: '6px' }}>Your Vault is Empty</h4>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '360px', margin: '0 auto' }}>
+                      Upload your documents directly for this application, and they will automatically be preserved in your encrypted vault for one-click reuse!
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {vaultDocs.map((vDoc) => (
+                      <div 
+                        key={vDoc.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '12px 16px',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '10px',
+                          background: '#f8fafc'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                          <div style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '8px',
+                            background: 'rgba(83, 100, 249, 0.1)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0
+                          }}>
+                            <FileText size={18} color="var(--brand-blue, #5364f9)" />
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <p style={{ fontWeight: 600, fontSize: '0.88rem', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {vDoc.docName || vDoc.fileName || vDoc.name || 'Personal Document'}
+                            </p>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                              {vDoc.fileName} • {vDoc.size ? `${(vDoc.size / 1024).toFixed(0)} KB` : 'Verified'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          style={{ padding: '6px 14px', fontSize: '0.82rem', flexShrink: 0, marginLeft: '12px' }}
+                          onClick={() => handleSelectFromVault(activeVaultSlot, vDoc)}
+                        >
+                          Use Document
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{
+                padding: '14px 24px',
+                borderTop: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                background: '#f8fafc'
+              }}>
+                <button 
+                  type="button" 
+                  className="btn btn-outline" 
+                  style={{ padding: '8px 18px', fontSize: '0.85rem' }} 
+                  onClick={() => setActiveVaultSlot(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: '16px', marginTop: '32px' }}>
           <button className="btn btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={prevStep}>

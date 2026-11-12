@@ -37,8 +37,18 @@ export default function AvailableRequests() {
   const loadRequests = async () => {
     try {
       const res = await workerApi.getAvailableRequests();
-      const rawOrders = res?.orders || [];
-      const uniqueOrders = Array.from(new Map(rawOrders.map(o => [o.id, o])).values());
+      const rawOrders = res?.orders || res?.data?.orders || [];
+      const strictlyAvailable = rawOrders.filter(o => {
+        const hasWorkerAssigned = Boolean(
+          (o.workerId && o.workerId !== '') ||
+          (o.assignedWorkerId && o.assignedWorkerId !== '') ||
+          o.worker?.id ||
+          o.job?.workerId
+        );
+        const isClosed = ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'COMPLETED', 'CANCELLED', 'SUBMITTED', 'REJECTED', 'REFUNDED'].includes(o.status);
+        return !hasWorkerAssigned && !isClosed;
+      });
+      const uniqueOrders = Array.from(new Map(strictlyAvailable.map(o => [o.id, o])).values());
       setRequests(uniqueOrders);
       setIsOnline(res?.isOnline !== false);
       setLoading(false);
@@ -51,8 +61,79 @@ export default function AvailableRequests() {
 
   useEffect(() => {
     loadRequests();
-    const interval = setInterval(loadRequests, 10000);
-    return () => clearInterval(interval);
+    const interval = setInterval(loadRequests, 30000);
+
+    // Real-time Server-Sent Events (SSE) Bus Listener
+    let es = null;
+    try {
+      const token = localStorage.getItem('cybercafe:token') || localStorage.getItem('token') || '';
+      const streamUrl = `/api/events/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      es = new EventSource(streamUrl, { withCredentials: true });
+
+      const removeOrderImmediately = (orderId) => {
+        if (!orderId) return;
+        setRequests(prev => prev.filter(r => r.id !== orderId));
+      };
+
+      // When ANY worker claims or accepts an order, instantly remove it from this worker's screen
+      es.addEventListener('ORDER_CLAIMED', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          const targetId = data?.orderId || data?.id;
+          removeOrderImmediately(targetId);
+        } catch {}
+      });
+
+      es.addEventListener('ORDER_ACCEPTED', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          const targetId = data?.orderId || data?.id;
+          removeOrderImmediately(targetId);
+        } catch {}
+      });
+
+      es.addEventListener('ORDER_STATUS_UPDATED', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          const targetId = data?.orderId || data?.id;
+          const status = data?.status;
+          const isAssigned = Boolean(data?.workerId || data?.assignedWorkerId);
+          if (isAssigned || ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'COMPLETED', 'CANCELLED', 'SUBMITTED', 'REJECTED'].includes(status)) {
+            removeOrderImmediately(targetId);
+          } else {
+            loadRequests();
+          }
+        } catch {
+          loadRequests();
+        }
+      });
+
+      es.addEventListener('ORDER_CREATED', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          const newOrder = data?.order || data;
+          if (newOrder && !newOrder.workerId && !newOrder.assignedWorkerId && ['AVAILABLE', 'PAID', 'CREATED'].includes(newOrder.status)) {
+            setRequests(prev => {
+              if (prev.some(o => o.id === newOrder.id)) return prev;
+              return [newOrder, ...prev];
+            });
+          }
+        } catch {
+          loadRequests();
+        }
+      });
+
+      es.addEventListener('ORDER_AVAILABLE', () => {
+        loadRequests();
+      });
+    } catch (sseErr) {
+      console.warn('[SSE] EventSource listener note:', sseErr);
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (es) es.close();
+    };
   }, []);
 
   // Open Accept & Schedule modal
@@ -67,18 +148,35 @@ export default function AvailableRequests() {
   // Submit Accept & Schedule
   const handleConfirmAcceptAndSchedule = async ({ date, timeSlot }) => {
     if (!schedulingOrder) return;
+    const targetOrderId = schedulingOrder.id;
     setSubmittingSchedule(true);
     try {
-      const res = await workerApi.acceptAndSchedule(schedulingOrder.id, { date, timeSlot });
+      const res = await workerApi.acceptAndSchedule(targetOrderId, { date, timeSlot });
       if (res?.success) {
         setSchedulingOrder(null);
-        navigate(`/worker/jobs/${schedulingOrder.id}`);
+        navigate(`/worker/jobs/${targetOrderId}`);
       } else {
-        alert(res?.error || 'Failed to accept and schedule order.');
+        alert(res?.error?.message || res?.error || 'Failed to accept and schedule order.');
       }
     } catch (err) {
-      alert(err.message || 'Failed to accept and schedule order.');
-      loadRequests();
+      const errMsg = err?.message || String(err || '');
+      if (errMsg.toLowerCase().includes('already accepted by you') || errMsg.toLowerCase().includes('assigned to you')) {
+        setSchedulingOrder(null);
+        navigate(`/worker/jobs/${targetOrderId}`);
+      } else if (
+        errMsg.toLowerCase().includes('already been accepted') ||
+        errMsg.toLowerCase().includes('already accepted by another') ||
+        errMsg.toLowerCase().includes('no longer available') ||
+        err?.code === 'ORDER_ALREADY_ASSIGNED'
+      ) {
+        alert('This order was just accepted by another worker');
+        setSchedulingOrder(null);
+        setRequests(prev => prev.filter(r => r.id !== targetOrderId));
+      } else {
+        alert(errMsg || 'Failed to accept and schedule order.');
+        setSchedulingOrder(null);
+        setRequests(prev => prev.filter(r => r.id !== targetOrderId));
+      }
     } finally {
       setSubmittingSchedule(false);
     }
@@ -132,6 +230,16 @@ export default function AvailableRequests() {
   }
 
   const filteredRequests = requests.filter(r => {
+    // Strict client-side defensive filter: never render an assigned or closed order
+    const hasWorker = Boolean(
+      (r.workerId && r.workerId !== '') ||
+      (r.assignedWorkerId && r.assignedWorkerId !== '') ||
+      r.worker?.id ||
+      r.job?.workerId
+    );
+    const isClosed = ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'COMPLETED', 'CANCELLED', 'SUBMITTED', 'REJECTED'].includes(r.status);
+    if (hasWorker || isClosed) return false;
+
     const nameMatch = (r.serviceName || '').toLowerCase().includes(search.toLowerCase()) || 
                       r.id.toLowerCase().includes(search.toLowerCase());
     const catMatch = filterCategory === 'ALL' || r.category === filterCategory;
@@ -247,7 +355,7 @@ export default function AvailableRequests() {
           </div>
         ) : (
           filteredRequests.map(req => {
-            const workerPayout = (req.workerEarningsPaise || Math.round(req.pricePaise * 0.8)) / 100;
+            const workerPayout = (req.workerEarningsPaise || req.workerAmountPaise || req.workerAmount || 0) / 100;
             const remainingMins = Math.floor((req.remainingSeconds || 600) / 60);
             const remainingSecs = (req.remainingSeconds || 600) % 60;
             const timerFormatted = `${String(remainingMins).padStart(2, '0')}:${String(remainingSecs).padStart(2, '0')}`;

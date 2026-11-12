@@ -3,6 +3,30 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { ShieldCheck, Mail, Lock, User, AlertCircle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
+// Portal URLs are environment-specific:
+// - In development, the admin/worker apps run on their own Vite ports.
+// - In production, they are separate deployments — set VITE_ADMIN_PORTAL_URL /
+//   VITE_WORKER_PORTAL_URL in the frontend .env, otherwise fall back to the
+//   same origin so relative portal paths keep working.
+const getPortalUrl = (path) => {
+  const isAdminPath = path.startsWith('/admin');
+  const envKey = isAdminPath ? 'VITE_ADMIN_PORTAL_URL' : 'VITE_WORKER_PORTAL_URL';
+  const envUrl = import.meta.env[envKey];
+  if (envUrl && envUrl.trim() !== '') {
+    return `${envUrl.replace(/\/+$/, '')}${path}`;
+  }
+  if (import.meta.env.DEV) {
+    return isAdminPath ? `http://localhost:5174${path}` : `http://localhost:5175${path === '/worker' ? '' : path}`;
+  }
+  return `${window.location.origin}${path === '/worker' ? '' : path}`;
+};
+
+const getWorkerPortalLink = () => {
+  const envUrl = import.meta.env.VITE_WORKER_PORTAL_URL;
+  if (envUrl && envUrl.trim() !== '') return `${envUrl.replace(/\/+$/, '')}/login`;
+  return import.meta.env.DEV ? 'http://localhost:5175/login' : `${window.location.origin}/login`;
+};
+
 export default function Login() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -22,11 +46,11 @@ export default function Login() {
       
       // Portal Isolation Routing
       if (user.role === 'ADMIN') {
-        window.location.href = 'http://localhost:5174/admin';
+        window.location.href = getPortalUrl('/admin');
         return;
       }
       if (user.role === 'WORKER') {
-        window.location.href = 'http://localhost:5175/worker';
+        window.location.href = getPortalUrl('/worker');
         return;
       }
       
@@ -158,8 +182,8 @@ export default function Login() {
         justifyContent: 'space-between'
       }}>
         <span style={{ color: '#64748b' }}>Are you a service operator?</span>
-        <a 
-          href="http://localhost:5175/login" 
+        <a
+          href={getWorkerPortalLink()}
           style={{ color: 'var(--brand-blue)', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
         >
           Worker Portal →

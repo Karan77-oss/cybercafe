@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Lock, Mail, User, Phone, ArrowRight, 
-  ShieldCheck, AlertCircle, Loader2, Sparkles 
+import {
+  Lock, Mail, User, Phone, ArrowRight,
+  ShieldCheck, AlertCircle, Loader2, Sparkles
 } from 'lucide-react';
 import { authApi } from '../api/client';
+import BrandLogo from '../components/BrandLogo';
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -28,10 +29,10 @@ export default function Auth() {
       if (isLogin) {
         await authApi.login({ email, password });
       } else {
-        await authApi.register({ 
-          name, 
-          email, 
-          phone, 
+        await authApi.register({
+          name,
+          email,
+          phone,
           password,
           role: 'CUSTOMER'
         });
@@ -55,25 +56,22 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen pb-24 px-4 pt-8 max-w-lg mx-auto flex flex-col justify-center">
+    <div className="px-5 pt-8 pb-24 min-h-screen flex flex-col justify-center">
       {/* Brand Header */}
-      <div className="text-center mb-6">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-white mx-auto shadow-lg glow-indigo mb-3">
-          <ShieldCheck className="w-7 h-7" />
-        </div>
-        <h1 className="text-xl font-black text-slate-100 tracking-tight">Cyber Cafe App</h1>
-        <p className="text-xs text-slate-400 mt-1">
-          Fast Govt Forms, Printouts & Verified Cafe Network
+      <div className="text-center mb-8 flex flex-col items-center">
+        <BrandLogo size="hero" variant="orange" className="mb-2" />
+        <p className="text-xs text-slate-500 max-w-[260px] mx-auto text-center font-medium mt-1">
+          Fast Govt Forms, Online Applications & Verified Operator Network
         </p>
       </div>
 
       {/* Tabs */}
-      <div className="flex bg-slate-800/80 p-1 rounded-2xl border border-slate-700/60 mb-6">
+      <div className="flex bg-white border border-slate-200/80 shadow-neo-sm p-1 rounded-2xl mb-5">
         <button
           type="button"
           onClick={() => { setIsLogin(true); setError(null); }}
           className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
-            isLogin ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+            isLogin ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           Sign In
@@ -82,7 +80,7 @@ export default function Auth() {
           type="button"
           onClick={() => { setIsLogin(false); setError(null); }}
           className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
-            !isLogin ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+            !isLogin ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           Create Account
@@ -91,8 +89,8 @@ export default function Auth() {
 
       {/* Error Message */}
       {error && (
-        <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 mb-4 flex items-center gap-2 text-xs text-rose-300">
-          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+        <div className="bg-rose-50 border border-rose-100 rounded-2xl p-3 mb-4 flex items-center gap-2 text-xs text-rose-600">
+          <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
           <span>{error}</span>
         </div>
       )}
@@ -101,7 +99,7 @@ export default function Auth() {
       <form onSubmit={handleSubmit} className="space-y-3.5">
         {!isLogin && (
           <div>
-            <label className="text-xs font-medium text-slate-300 block mb-1">Full Name</label>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">Full Name</label>
             <div className="relative">
               <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
@@ -110,14 +108,14 @@ export default function Auth() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Rohan Sharma"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-800/90 border border-slate-700/70 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                className="w-full pl-10 pr-4 py-2.5 bg-[#F8FAFC] border border-slate-200/80 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
               />
             </div>
           </div>
         )}
 
         <div>
-          <label className="text-xs font-medium text-slate-300 block mb-1">Email Address</label>
+          <label className="text-xs font-semibold text-slate-700 block mb-1">Email Address</label>
           <div className="relative">
             <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
@@ -126,14 +124,14 @@ export default function Auth() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="customer@cybercafe.com"
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-800/90 border border-slate-700/70 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+              className="w-full pl-10 pr-4 py-2.5 bg-[#F8FAFC] border border-slate-200/80 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
             />
           </div>
         </div>
 
         {!isLogin && (
           <div>
-            <label className="text-xs font-medium text-slate-300 block mb-1">Phone Number</label>
+            <label className="text-xs font-semibold text-slate-700 block mb-1">Phone Number</label>
             <div className="relative">
               <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
@@ -142,14 +140,14 @@ export default function Auth() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="9876543210"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-800/90 border border-slate-700/70 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                className="w-full pl-10 pr-4 py-2.5 bg-[#F8FAFC] border border-slate-200/80 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
               />
             </div>
           </div>
         )}
 
         <div>
-          <label className="text-xs font-medium text-slate-300 block mb-1">Password</label>
+          <label className="text-xs font-semibold text-slate-700 block mb-1">Password</label>
           <div className="relative">
             <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
@@ -158,7 +156,7 @@ export default function Auth() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-800/90 border border-slate-700/70 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+              className="w-full pl-10 pr-4 py-2.5 bg-[#F8FAFC] border border-slate-200/80 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
             />
           </div>
         </div>
@@ -166,7 +164,7 @@ export default function Auth() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full mt-2 py-3 bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xl active:scale-98 transition-all disabled:opacity-50"
+          className="w-full mt-2 py-3 bg-slate-900 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98] transition-all disabled:opacity-50"
         >
           {loading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -181,14 +179,14 @@ export default function Auth() {
 
       {/* Quick Demo Helper */}
       {isLogin && (
-        <div className="mt-6 pt-4 border-t border-slate-800 text-center">
-          <p className="text-[11px] text-slate-400 mb-2">Want to test with a pre-configured account?</p>
+        <div className="mt-6 pt-4 border-t border-slate-200/80 text-center">
+          <p className="text-[11px] text-slate-500 mb-2">Want to test with a pre-configured account?</p>
           <button
             type="button"
             onClick={handleQuickDemoCustomer}
-            className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 font-semibold py-1 px-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 active:scale-95 transition-all"
+            className="inline-flex items-center gap-1.5 text-xs text-sky-700 hover:text-sky-800 font-bold py-1.5 px-3 rounded-full bg-sky-50 border border-sky-200/70 active:scale-95 transition-all"
           >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <Sparkles className="w-3.5 h-3.5 text-sky-600" />
             <span>Fill Demo Credentials</span>
           </button>
         </div>

@@ -513,7 +513,8 @@
     "completedAt": "2026-10-01T20:07:36.315Z",
     "receiptDownloadedAt": "2026-10-01T20:07:36.315Z",
     "rating": 4,
-    "review": "its good"
+    "review": "its good",
+    "receiptViewedAt": "2026-11-12T03:19:17.707Z"
   },
   {
     "id": "ord_1791118413488",
@@ -2732,22 +2733,22 @@
     "contactPhone": "9693553077",
     "customerNotes": "",
     "notes": "",
-    "subCategory": "Male",
+    "application_type": "Male",
     "formData": {
       "contactPhone": "9693553077",
       "customerNotes": "",
-      "subCategory": "Male"
+      "application_type": "Male"
     },
-    "bookingDate": null,
-    "bookingTimeSlot": null,
-    "timeSlot": null,
-    "slotStatus": "UNASSIGNED",
+    "bookingDate": "Today",
+    "bookingTimeSlot": "02:00 PM - 04:00 PM",
+    "timeSlot": "02:00 PM - 04:00 PM",
+    "slotStatus": "CONFIRMED",
     "proposedSlot": null,
     "proposedDate": null,
     "serviceId": "pan-card",
     "serviceName": "PAN Card Application & Correction",
     "category": "PAN-related services",
-    "status": "AVAILABLE",
+    "status": "ASSIGNED",
     "paymentStatus": "PAID",
     "earningStatus": "PENDING",
     "workerAmount": 15920,
@@ -2757,7 +2758,7 @@
     "serviceSnapshot": {
       "name": "PAN Card Application & Correction",
       "category": "PAN-related services",
-      "subCategory": "Male",
+      "application_type": "Male",
       "pricePaise": 19900,
       "formSchema": [
         {
@@ -2826,7 +2827,7 @@
         }
       ],
       "details": {
-        "subCategory": "Male"
+        "application_type": "Male"
       },
       "additionalInfo": "",
       "workerSelection": {
@@ -2834,9 +2835,12 @@
       },
       "expiresAt": "2026-10-08T14:57:43.633Z",
       "scheduling": {
-        "status": "UNSCHEDULED",
-        "timeSlot": null,
-        "rescheduleNote": null
+        "date": "Today",
+        "timeSlot": "02:00 PM - 04:00 PM",
+        "slotStatus": "CONFIRMED",
+        "status": "CONFIRMED",
+        "scheduledAt": "2026-10-21T17:08:47.707Z",
+        "proposedBy": "WORKER"
       },
       "completion": {
         "referenceNumber": null,
@@ -2853,8 +2857,13 @@
       "platformCommissionPaise": 3980,
       "workerPayoutPaise": 15920
     },
-    "assignedWorkerId": null,
-    "worker": null,
+    "assignedWorkerId": "Karan Kumar",
+    "worker": {
+      "id": "Karan Kumar",
+      "name": "Karan Kumar (Supervisor)",
+      "phone": "9876543200",
+      "email": "rajkaran969355@gmail.com"
+    },
     "job": null,
     "offerExpiresAt": null,
     "paidAt": "2026-10-07T14:58:28.322Z",
@@ -2914,6 +2923,2746 @@
     ],
     "deliverables": [],
     "createdAt": "2026-10-07T14:57:43.634Z",
-    "updatedAt": "2026-10-07T14:58:28.322Z"
+    "updatedAt": "2026-10-21T17:08:47.707Z",
+    "workerAcceptedAt": "2026-10-21T17:08:47.707Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-10-21T22:08:47.707Z"
+  },
+  {
+    "id": "ord_1792602338341_261d6ca0",
+    "orderNumber": "ord_1792602338341_261d6ca0",
+    "customerId": "usr_1792602248421",
+    "customerName": "Karan Kumar",
+    "customerPhone": "9693553077",
+    "customerEmail": "kumarkaran762002@gmail.com",
+    "contactPhone": "9693553077",
+    "customerNotes": "",
+    "notes": "",
+    "application_type": "New PAN Card (Form 49A)",
+    "applicationType": "New PAN Card (Form 49A)",
+    "gender": "Male",
+    "formData": {
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "application_type": "New PAN Card (Form 49A)",
+      "applicationType": "New PAN Card (Form 49A)",
+      "gender": "Male"
+    },
+    "bookingDate": "Today",
+    "bookingTimeSlot": "04:00 PM - 06:00 PM",
+    "timeSlot": "04:00 PM - 06:00 PM",
+    "slotStatus": "CONFIRMED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "category": "PAN-related services",
+    "status": "ASSIGNED",
+    "paymentStatus": "PAID",
+    "earningStatus": "PENDING",
+    "workerAmount": 19900,
+    "adminCommission": 0,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "PAN Card Application & Correction",
+      "category": "PAN-related services",
+      "application_type": "New PAN Card (Form 49A)",
+      "applicationType": "New PAN Card (Form 49A)",
+      "gender": "Male",
+      "pricePaise": 19900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile / WhatsApp Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "panType",
+          "label": "Application Type",
+          "type": "select",
+          "options": [
+            "New PAN Card (Form 49A)",
+            "Correction in Existing PAN",
+            "Reprint Lost/Damaged Card"
+          ],
+          "required": true
+        },
+        {
+          "id": "existingPan",
+          "label": "Existing PAN Number (if correction or reprint)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Delivery Address for Physical Card",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "application_type": "New PAN Card (Form 49A)",
+        "applicationType": "New PAN Card (Form 49A)",
+        "gender": "Male"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-22T17:05:38.340Z",
+      "scheduling": {
+        "date": "Today",
+        "timeSlot": "04:00 PM - 06:00 PM",
+        "slotStatus": "CONFIRMED",
+        "status": "CONFIRMED",
+        "scheduledAt": "2026-10-21T17:09:01.085Z",
+        "proposedBy": "WORKER"
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null,
+      "expiry": {
+        "isExpired": true,
+        "expiredAt": "2026-10-31T00:40:01.823Z",
+        "refundCreditedPaise": 19900
+      }
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 19900,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 0,
+      "workerPayoutPaise": 19900
+    },
+    "assignedWorkerId": "Karan Kumar",
+    "worker": {
+      "id": "Karan Kumar",
+      "name": "Karan Kumar (Supervisor)",
+      "phone": "9876543200",
+      "email": "rajkaran969355@gmail.com"
+    },
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-10-21T17:06:12.014Z",
+    "payment": {
+      "status": "PAID",
+      "provider": "RAZORPAY",
+      "providerOrderId": "order_TqdOfUHDJYEpwi",
+      "providerPaymentId": "pay_TqdOwLtyQk0y8v",
+      "amountPaise": 19900,
+      "paidAt": "2026-10-21T17:06:12.014Z"
+    },
+    "documents": [
+      {
+        "id": "doc_1792602312280_e766ee28",
+        "storageKey": "vault/usr_1792602248421/dccb3cc1-f0bd-4ab5-a6a2-4f91af8aa4cd.webp",
+        "docName": "Identity Proof",
+        "name": "Identity Proof (Screenshot 2025-06-29 134612.webp)",
+        "fileName": "Screenshot 2025-06-29 134612.webp",
+        "url": "/api/documents/doc_1792602312280_e766ee28/download",
+        "mimeType": "image/webp",
+        "size": 78322,
+        "type": "UPLOAD",
+        "customerId": "usr_1792602248421",
+        "orderId": "ord_1792602338341_261d6ca0",
+        "isWorkingCopy": true,
+        "createdAt": "2026-10-21T17:05:12.281Z",
+        "orderNumber": "ord_1792602338341_261d6ca0"
+      },
+      {
+        "id": "doc_1792602321783_52a0833b",
+        "storageKey": "vault/usr_1792602248421/02e1d8fb-0e53-450e-9daa-1fe3e7aeb431.webp",
+        "docName": "Passport Size Photo",
+        "name": "Passport Size Photo (Screenshot 2025-06-29 134612.webp)",
+        "fileName": "Screenshot 2025-06-29 134612.webp",
+        "url": "/api/documents/doc_1792602321783_52a0833b/download",
+        "mimeType": "image/webp",
+        "size": 78322,
+        "type": "UPLOAD",
+        "customerId": "usr_1792602248421",
+        "orderId": "ord_1792602338341_261d6ca0",
+        "isWorkingCopy": true,
+        "createdAt": "2026-10-21T17:05:21.784Z",
+        "orderNumber": "ord_1792602338341_261d6ca0"
+      },
+      {
+        "id": "doc_1792602329774_b5ee17ea",
+        "storageKey": "vault/usr_1792602248421/1138f0b0-74b6-41a5-803d-d98991a84ea1.webp",
+        "docName": "Signature Specimen",
+        "name": "Signature Specimen (Screenshot 2025-06-29 140426.webp)",
+        "fileName": "Screenshot 2025-06-29 140426.webp",
+        "url": "/api/documents/doc_1792602329774_b5ee17ea/download",
+        "mimeType": "image/webp",
+        "size": 77912,
+        "type": "UPLOAD",
+        "customerId": "usr_1792602248421",
+        "orderId": "ord_1792602338341_261d6ca0",
+        "isWorkingCopy": true,
+        "createdAt": "2026-10-21T17:05:29.775Z",
+        "orderNumber": "ord_1792602338341_261d6ca0"
+      }
+    ],
+    "deliverables": [],
+    "createdAt": "2026-10-21T17:05:38.342Z",
+    "updatedAt": "2026-10-21T17:09:01.085Z",
+    "workerAcceptedAt": "2026-10-21T17:09:01.084Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-10-21T22:09:01.084Z"
+  },
+  {
+    "id": "ord_1792602658959_02430a6e",
+    "orderNumber": "ord_1792602658959_02430a6e",
+    "customerId": "usr_1792602248421",
+    "customerName": "Karan Kumar",
+    "customerPhone": "9693553077",
+    "customerEmail": "kumarkaran762002@gmail.com",
+    "contactPhone": "9693553077",
+    "customerNotes": "",
+    "notes": "",
+    "application_type": "New Voter Registration (Form 6)",
+    "applicationType": "New Voter Registration (Form 6)",
+    "gender": "Male",
+    "formData": {
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "application_type": "New Voter Registration (Form 6)",
+      "applicationType": "New Voter Registration (Form 6)",
+      "gender": "Male"
+    },
+    "bookingDate": "Tomorrow",
+    "bookingTimeSlot": "10:00 AM - 12:00 PM",
+    "timeSlot": "10:00 AM - 12:00 PM",
+    "slotStatus": "CONFIRMED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "voter-id",
+    "serviceName": "Voter ID Card Registration & Correction",
+    "category": "Government forms",
+    "status": "ASSIGNED",
+    "paymentStatus": "PAID",
+    "earningStatus": "PENDING",
+    "workerAmount": 14900,
+    "adminCommission": 0,
+    "platformFee": 0,
+    "customerPaidAmount": 14900,
+    "serviceSnapshot": {
+      "name": "Voter ID Card Registration & Correction",
+      "category": "Government forms",
+      "application_type": "New Voter Registration (Form 6)",
+      "applicationType": "New Voter Registration (Form 6)",
+      "gender": "Male",
+      "pricePaise": 14900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "relativeName",
+          "label": "Father's / Mother's / Husband's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "gender",
+          "label": "Gender",
+          "type": "select",
+          "options": [
+            "Male",
+            "Female",
+            "Other"
+          ],
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "voterServiceType",
+          "label": "Voter Service",
+          "type": "select",
+          "options": [
+            "New Voter Registration (Form 6)",
+            "Shifting of Residence (Form 8)",
+            "Correction of Entries in Existing Card",
+            "e-EPIC Digital Download"
+          ],
+          "required": true
+        },
+        {
+          "id": "epicNumber",
+          "label": "Existing EPIC / Voter ID Number (if correction)",
+          "type": "text",
+          "required": false
+        },
+        {
+          "id": "address",
+          "label": "Current Residential Address (Assembly Constituency)",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "application_type": "New Voter Registration (Form 6)",
+        "applicationType": "New Voter Registration (Form 6)",
+        "gender": "Male"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-22T17:10:58.959Z",
+      "scheduling": {
+        "date": "Tomorrow",
+        "timeSlot": "10:00 AM - 12:00 PM",
+        "slotStatus": "CONFIRMED",
+        "status": "CONFIRMED",
+        "scheduledAt": "2026-10-21T17:11:40.365Z",
+        "proposedBy": "WORKER"
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null,
+      "expiry": {
+        "isExpired": true,
+        "expiredAt": "2026-10-31T00:40:01.824Z",
+        "refundCreditedPaise": 14900
+      }
+    },
+    "pricePaise": 14900,
+    "workerEarningsPaise": 14900,
+    "pricing": {
+      "pricePaise": 14900,
+      "platformCommissionPaise": 0,
+      "workerPayoutPaise": 14900
+    },
+    "assignedWorkerId": "Karan Kumar",
+    "worker": {
+      "id": "Karan Kumar",
+      "name": "Karan Kumar (Supervisor)",
+      "phone": "9876543200",
+      "email": "rajkaran969355@gmail.com"
+    },
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-10-21T17:11:25.726Z",
+    "payment": {
+      "status": "PAID",
+      "provider": "RAZORPAY",
+      "providerOrderId": "order_TqdUJTLoJCHyoV",
+      "providerPaymentId": "pay_TqdUR1D4cBDeiK",
+      "amountPaise": 14900,
+      "paidAt": "2026-10-21T17:11:25.726Z"
+    },
+    "documents": [
+      {
+        "id": "doc_1792602636312_523f05eb",
+        "storageKey": "vault/usr_1792602248421/9f8ef9b6-1bab-465b-a398-089a4d9499ca.webp",
+        "docName": "Identity Proof",
+        "name": "Identity Proof (Screenshot 2025-06-29 140234.webp)",
+        "fileName": "Screenshot 2025-06-29 140234.webp",
+        "url": "/api/documents/doc_1792602636312_523f05eb/download",
+        "mimeType": "image/webp",
+        "size": 79642,
+        "type": "UPLOAD",
+        "customerId": "usr_1792602248421",
+        "orderId": "ord_1792602658959_02430a6e",
+        "isWorkingCopy": true,
+        "createdAt": "2026-10-21T17:10:36.312Z",
+        "orderNumber": "ord_1792602658959_02430a6e"
+      },
+      {
+        "id": "doc_1792602642025_119a927d",
+        "storageKey": "vault/usr_1792602248421/cfb6779a-d7ba-436e-9a59-553f07c4f9f8.webp",
+        "docName": "Passport Photo",
+        "name": "Passport Photo (Screenshot 2025-06-29 144153.webp)",
+        "fileName": "Screenshot 2025-06-29 144153.webp",
+        "url": "/api/documents/doc_1792602642025_119a927d/download",
+        "mimeType": "image/webp",
+        "size": 77286,
+        "type": "UPLOAD",
+        "customerId": "usr_1792602248421",
+        "orderId": "ord_1792602658959_02430a6e",
+        "isWorkingCopy": true,
+        "createdAt": "2026-10-21T17:10:42.025Z",
+        "orderNumber": "ord_1792602658959_02430a6e"
+      },
+      {
+        "id": "doc_1792602647936_5d33dd08",
+        "storageKey": "vault/usr_1792602248421/667d6219-7c6b-4d72-9b02-23540a4ab174.webp",
+        "docName": "Age Proof / Birth Certificate",
+        "name": "Age Proof / Birth Certificate (Screenshot 2025-06-28 224609.webp)",
+        "fileName": "Screenshot 2025-06-28 224609.webp",
+        "url": "/api/documents/doc_1792602647936_5d33dd08/download",
+        "mimeType": "image/webp",
+        "size": 77800,
+        "type": "UPLOAD",
+        "customerId": "usr_1792602248421",
+        "orderId": "ord_1792602658959_02430a6e",
+        "isWorkingCopy": true,
+        "createdAt": "2026-10-21T17:10:47.936Z",
+        "orderNumber": "ord_1792602658959_02430a6e"
+      }
+    ],
+    "deliverables": [],
+    "createdAt": "2026-10-21T17:10:58.959Z",
+    "updatedAt": "2026-10-21T17:11:40.365Z",
+    "workerAcceptedAt": "2026-10-21T17:11:40.365Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-10-21T22:11:40.365Z"
+  },
+  {
+    "id": "ord_1792746351687_0d50e0ce",
+    "orderNumber": "ord_1792746351687_0d50e0ce",
+    "customerId": "usr_1792746285760",
+    "customerName": "Raj Karan",
+    "customerPhone": "9693553077",
+    "customerEmail": "kumarkaran762002@gmail.com",
+    "contactPhone": "9693553077",
+    "customerNotes": "",
+    "notes": "",
+    "application_type": "Fresh Normal Passport (36 / 60 Pages)",
+    "applicationType": "Fresh Normal Passport (36 / 60 Pages)",
+    "gender": "Male",
+    "formData": {
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "application_type": "Fresh Normal Passport (36 / 60 Pages)",
+      "applicationType": "Fresh Normal Passport (36 / 60 Pages)",
+      "gender": "Male"
+    },
+    "bookingDate": "Today",
+    "bookingTimeSlot": "06:00 PM - 08:00 PM",
+    "timeSlot": "06:00 PM - 08:00 PM",
+    "slotStatus": "CONFIRMED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "passport-assistance",
+    "serviceName": "Passport Application & Appointment Assistance",
+    "category": "Passport-related application assistance",
+    "status": "ASSIGNED",
+    "paymentStatus": "PAID",
+    "earningStatus": "PENDING",
+    "workerAmount": 69900,
+    "adminCommission": 0,
+    "platformFee": 0,
+    "customerPaidAmount": 69900,
+    "serviceSnapshot": {
+      "name": "Passport Application & Appointment Assistance",
+      "category": "Passport-related application assistance",
+      "application_type": "Fresh Normal Passport (36 / 60 Pages)",
+      "applicationType": "Fresh Normal Passport (36 / 60 Pages)",
+      "gender": "Male",
+      "pricePaise": 69900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name (Given Name + Surname as on Marksheet)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's Full Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "motherName",
+          "label": "Mother's Full Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "dateOfBirth",
+          "label": "Date of Birth",
+          "type": "date",
+          "required": true
+        },
+        {
+          "id": "birthPlace",
+          "label": "Place of Birth (Village / Town / State)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "passportScheme",
+          "label": "Application Scheme",
+          "type": "select",
+          "options": [
+            "Normal Scheme (Standard)",
+            "Tatkaal Scheme (Urgent)"
+          ],
+          "required": true
+        },
+        {
+          "id": "educationLevel",
+          "label": "Educational Qualification (ECNR Check)",
+          "type": "select",
+          "options": [
+            "Graduate & Above",
+            "10th Pass (Matriculate)",
+            "Below 10th Pass"
+          ],
+          "required": true
+        },
+        {
+          "id": "address",
+          "label": "Present Residential Address with PIN code",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "application_type": "Fresh Normal Passport (36 / 60 Pages)",
+        "applicationType": "Fresh Normal Passport (36 / 60 Pages)",
+        "gender": "Male"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-24T09:05:51.685Z",
+      "scheduling": {
+        "date": "Today",
+        "timeSlot": "06:00 PM - 08:00 PM",
+        "slotStatus": "CONFIRMED",
+        "status": "CONFIRMED",
+        "scheduledAt": "2026-10-23T09:14:04.400Z",
+        "proposedBy": "WORKER"
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 69900,
+    "workerEarningsPaise": 69900,
+    "pricing": {
+      "pricePaise": 69900,
+      "platformCommissionPaise": 0,
+      "workerPayoutPaise": 69900
+    },
+    "assignedWorkerId": "Karan Kumar",
+    "worker": {
+      "id": "Karan Kumar",
+      "name": "Karan Kumar (Supervisor)",
+      "phone": "9876543200",
+      "email": "rajkaran969355@gmail.com"
+    },
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-10-23T09:06:17.346Z",
+    "payment": {
+      "status": "PAID",
+      "provider": "RAZORPAY",
+      "providerOrderId": "order_TrII5Xc5wJSLps",
+      "providerPaymentId": "pay_TrIIEtZdq9OxrA",
+      "amountPaise": 69900,
+      "paidAt": "2026-10-23T09:06:17.346Z"
+    },
+    "documents": [
+      {
+        "id": "doc_1792746322373_dea76964",
+        "storageKey": "vault/usr_1792746285760/325ea0c5-710b-4b73-88e1-255bb24a86b5.webp",
+        "docName": "Identity Proof",
+        "name": "Identity Proof (dec.webp)",
+        "fileName": "dec.webp",
+        "url": "/api/documents/doc_1792746322373_dea76964/download",
+        "mimeType": "image/webp",
+        "size": 43528,
+        "type": "UPLOAD",
+        "customerId": "usr_1792746285760",
+        "orderId": "ord_1792746351687_0d50e0ce",
+        "isWorkingCopy": true,
+        "createdAt": "2026-10-23T09:05:22.373Z",
+        "orderNumber": "ord_1792746351687_0d50e0ce"
+      },
+      {
+        "id": "doc_1792746326886_c3dba402",
+        "storageKey": "vault/usr_1792746285760/b5799a41-f236-4a01-a775-f064d3b133d1.webp",
+        "docName": "PAN Card",
+        "name": "PAN Card (4th sem.webp)",
+        "fileName": "4th sem.webp",
+        "url": "/api/documents/doc_1792746326886_c3dba402/download",
+        "mimeType": "image/webp",
+        "size": 80000,
+        "type": "UPLOAD",
+        "customerId": "usr_1792746285760",
+        "orderId": "ord_1792746351687_0d50e0ce",
+        "isWorkingCopy": true,
+        "createdAt": "2026-10-23T09:05:26.886Z",
+        "orderNumber": "ord_1792746351687_0d50e0ce"
+      },
+      {
+        "id": "doc_1792746341001_7a37a673",
+        "storageKey": "vault/usr_1792746285760/2e5b6d96-4cb3-45be-aab9-596fc95890a3.webp",
+        "docName": "10th Marksheet / Birth Certificate",
+        "name": "10th Marksheet / Birth Certificate (fee .webp)",
+        "fileName": "fee .webp",
+        "url": "/api/documents/doc_1792746341001_7a37a673/download",
+        "mimeType": "image/webp",
+        "size": 74082,
+        "type": "UPLOAD",
+        "customerId": "usr_1792746285760",
+        "orderId": "ord_1792746351687_0d50e0ce",
+        "isWorkingCopy": true,
+        "createdAt": "2026-10-23T09:05:41.001Z",
+        "orderNumber": "ord_1792746351687_0d50e0ce"
+      },
+      {
+        "id": "doc_1792746346077_8944442e",
+        "storageKey": "vault/usr_1792746285760/5c6226ed-eadf-4763-9d3e-918a81e743f0.webp",
+        "docName": "Passport Photo",
+        "name": "Passport Photo (hindi.webp)",
+        "fileName": "hindi.webp",
+        "url": "/api/documents/doc_1792746346077_8944442e/download",
+        "mimeType": "image/webp",
+        "size": 34348,
+        "type": "UPLOAD",
+        "customerId": "usr_1792746285760",
+        "orderId": "ord_1792746351687_0d50e0ce",
+        "isWorkingCopy": true,
+        "createdAt": "2026-10-23T09:05:46.077Z",
+        "orderNumber": "ord_1792746351687_0d50e0ce"
+      }
+    ],
+    "deliverables": [],
+    "createdAt": "2026-10-23T09:05:51.687Z",
+    "updatedAt": "2026-10-23T09:14:04.400Z",
+    "workerAcceptedAt": "2026-10-23T09:14:04.400Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-10-23T14:14:04.400Z"
+  },
+  {
+    "id": "ord_1792862356353_4ce76536",
+    "orderNumber": "ord_1792862356353_4ce76536",
+    "customerId": "usr_1792602248421",
+    "customerName": "Customer",
+    "customerPhone": "9693553077",
+    "customerEmail": "kumarkaran762002@gmail.com",
+    "contactPhone": "9693553077",
+    "customerNotes": "",
+    "notes": "",
+    "application_type": "New PAN Card (Form 49A)",
+    "applicationType": "New PAN Card (Form 49A)",
+    "gender": "Male",
+    "formData": {
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "application_type": "New PAN Card (Form 49A)",
+      "applicationType": "New PAN Card (Form 49A)",
+      "gender": "Male"
+    },
+    "bookingDate": null,
+    "bookingTimeSlot": null,
+    "timeSlot": null,
+    "slotStatus": "UNASSIGNED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "utility-bill-payment",
+    "serviceName": "Utility Bill Payment & Online Recharges",
+    "category": "Online payment/recharge",
+    "status": "PAYMENT_PENDING",
+    "paymentStatus": "PENDING",
+    "earningStatus": "PENDING",
+    "workerAmount": 2900,
+    "adminCommission": 0,
+    "platformFee": 0,
+    "customerPaidAmount": 2900,
+    "serviceSnapshot": {
+      "name": "Utility Bill Payment & Online Recharges",
+      "category": "Online payment/recharge",
+      "application_type": "New PAN Card (Form 49A)",
+      "applicationType": "New PAN Card (Form 49A)",
+      "gender": "Male",
+      "pricePaise": 2900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Customer / Consumer Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile Number for Payment Confirmation",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email for Official Bill Receipt",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "billType",
+          "label": "Utility Service Type",
+          "type": "select",
+          "options": [
+            "Electricity Bill Settlement",
+            "Piped Gas Bill",
+            "Water Department Bill",
+            "FASTag Instant Recharge",
+            "Municipal Property Tax / Challan"
+          ],
+          "required": true
+        },
+        {
+          "id": "providerName",
+          "label": "Electricity Board / Department Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "consumerNumber",
+          "label": "Consumer Number / CA Number / Account ID",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "billAmount",
+          "label": "Exact Bill Amount Due (in INR)",
+          "type": "text",
+          "required": true
+        }
+      ],
+      "details": {
+        "application_type": "New PAN Card (Form 49A)",
+        "applicationType": "New PAN Card (Form 49A)",
+        "gender": "Male"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-10-25T17:19:16.353Z",
+      "scheduling": {
+        "status": "UNSCHEDULED",
+        "timeSlot": null,
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null,
+      "expiry": {
+        "isExpired": true,
+        "expiredAt": "2026-10-31T00:40:01.824Z",
+        "refundCreditedPaise": 2900
+      }
+    },
+    "pricePaise": 2900,
+    "workerEarningsPaise": 2900,
+    "pricing": {
+      "pricePaise": 2900,
+      "platformCommissionPaise": 0,
+      "workerPayoutPaise": 2900
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": null,
+    "payment": {
+      "provider": "RAZORPAY",
+      "providerOrderId": "order_TrpEPpcGDCCTzU",
+      "status": "PENDING",
+      "amountPaise": 2900
+    },
+    "documents": [
+      {
+        "id": "doc_1792862353985_a908c8c9",
+        "storageKey": "vault/usr_1792602248421/241d9645-5889-4294-8edc-dbe50f5e901e.webp",
+        "docName": "Consumer Number / Bill Copy",
+        "name": "Consumer Number / Bill Copy (IMG-20261024-WA0006.webp)",
+        "fileName": "IMG-20261024-WA0006.webp",
+        "url": "/api/documents/doc_1792862353985_a908c8c9/download",
+        "mimeType": "image/webp",
+        "size": 34394,
+        "type": "UPLOAD",
+        "customerId": "usr_1792602248421",
+        "orderId": "ord_1792862356353_4ce76536",
+        "isWorkingCopy": true,
+        "createdAt": "2026-10-24T17:19:13.985Z",
+        "orderNumber": "ord_1792862356353_4ce76536"
+      }
+    ],
+    "deliverables": [],
+    "createdAt": "2026-10-24T17:19:16.353Z",
+    "updatedAt": "2026-10-24T17:19:16.353Z"
+  },
+  {
+    "id": "ord_1793406662504_3f22b212",
+    "orderNumber": "ord_1793406662504_3f22b212",
+    "customerId": "Karan Kumar",
+    "customerName": "Karan Kumar",
+    "customerPhone": "9693553077",
+    "customerEmail": "rajkaran969355@gmail.com",
+    "contactPhone": "9693553077",
+    "customerNotes": "",
+    "notes": "",
+    "application_type": "New PAN Card (Form 49A)",
+    "applicationType": "New PAN Card (Form 49A)",
+    "gender": "Male",
+    "formData": {
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "application_type": "New PAN Card (Form 49A)",
+      "applicationType": "New PAN Card (Form 49A)",
+      "gender": "Male"
+    },
+    "bookingDate": null,
+    "bookingTimeSlot": null,
+    "timeSlot": null,
+    "slotStatus": "UNASSIGNED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "photo-signature-resizing",
+    "serviceName": "Photo & Signature Resizing for Portals",
+    "category": "Photo/signature resizing",
+    "status": "CANCELLED",
+    "paymentStatus": "PENDING",
+    "earningStatus": "PENDING",
+    "workerAmount": 4900,
+    "adminCommission": 0,
+    "platformFee": 0,
+    "customerPaidAmount": 4900,
+    "serviceSnapshot": {
+      "name": "Photo & Signature Resizing for Portals",
+      "category": "Photo/signature resizing",
+      "application_type": "New PAN Card (Form 49A)",
+      "applicationType": "New PAN Card (Form 49A)",
+      "gender": "Male",
+      "pricePaise": 4900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "type": "text",
+          "label": "Candidate Name",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "WhatsApp / Mobile Number",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email for Resized Files Delivery",
+          "required": true
+        },
+        {
+          "id": "targetPortal",
+          "type": "text",
+          "label": "Target Portal / Exam Board",
+          "required": true
+        },
+        {
+          "id": "photoSpecification",
+          "type": "text",
+          "label": "Photo Specs (e.g. 20KB-50KB, 200x230px, white background)",
+          "required": true
+        },
+        {
+          "id": "signatureSpecification",
+          "type": "text",
+          "label": "Signature Specs (e.g. 10KB-20KB, 140x60px)",
+          "required": true
+        }
+      ],
+      "details": {
+        "application_type": "New PAN Card (Form 49A)",
+        "applicationType": "New PAN Card (Form 49A)",
+        "gender": "Male"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-11-01T00:31:02.503Z",
+      "scheduling": {
+        "status": "UNSCHEDULED",
+        "timeSlot": null,
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 4900,
+    "workerEarningsPaise": 4900,
+    "pricing": {
+      "pricePaise": 4900,
+      "platformCommissionPaise": 0,
+      "workerPayoutPaise": 4900
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": null,
+    "payment": null,
+    "documents": [
+      {
+        "id": "doc_1793406663572_05acbf",
+        "storageKey": "docs/Karan Kumar/1793406663571_12th.webp",
+        "docName": "Passport Photo",
+        "name": "Passport Photo (12th.webp)",
+        "fileName": "12th.webp",
+        "url": "/api/documents/doc_1793406663572_05acbf/download",
+        "mimeType": "image/webp",
+        "size": 71282,
+        "type": "UPLOAD",
+        "customerId": "Karan Kumar",
+        "orderId": "ord_1793406662504_3f22b212",
+        "orderNumber": "ord_1793406662504_3f22b212",
+        "createdAt": "2026-10-31T00:31:03.572Z"
+      },
+      {
+        "id": "doc_1793406663592_2d295c",
+        "storageKey": "docs/Karan Kumar/1793406663592_dec.webp",
+        "docName": "Signature on white paper",
+        "name": "Signature on white paper (dec.webp)",
+        "fileName": "dec.webp",
+        "url": "/api/documents/doc_1793406663592_2d295c/download",
+        "mimeType": "image/webp",
+        "size": 43528,
+        "type": "UPLOAD",
+        "customerId": "Karan Kumar",
+        "orderId": "ord_1793406662504_3f22b212",
+        "orderNumber": "ord_1793406662504_3f22b212",
+        "createdAt": "2026-10-31T00:31:03.592Z"
+      }
+    ],
+    "deliverables": [],
+    "createdAt": "2026-10-31T00:31:02.504Z",
+    "updatedAt": "2026-10-31T00:31:02.504Z"
+  },
+  {
+    "id": "ord_1793406894260_3a946147",
+    "orderNumber": "ord_1793406894260_3a946147",
+    "customerId": "Karan Kumar",
+    "customerName": "Karan Kumar",
+    "customerPhone": "9693553077",
+    "customerEmail": "rajkaran969355@gmail.com",
+    "contactPhone": "9693553077",
+    "customerNotes": "",
+    "notes": "",
+    "application_type": "New PAN Card (Form 49A)",
+    "applicationType": "New PAN Card (Form 49A)",
+    "gender": "Male",
+    "formData": {
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "application_type": "New PAN Card (Form 49A)",
+      "applicationType": "New PAN Card (Form 49A)",
+      "gender": "Male"
+    },
+    "bookingDate": null,
+    "bookingTimeSlot": null,
+    "timeSlot": null,
+    "slotStatus": "UNASSIGNED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "document-scanning",
+    "serviceName": "High-Resolution Document Scanning & Archival",
+    "category": "Document scanning",
+    "status": "CANCELLED",
+    "paymentStatus": "PENDING",
+    "earningStatus": "PENDING",
+    "workerAmount": 4900,
+    "adminCommission": 0,
+    "platformFee": 0,
+    "customerPaidAmount": 4900,
+    "serviceSnapshot": {
+      "name": "High-Resolution Document Scanning & Archival",
+      "category": "Document scanning",
+      "application_type": "New PAN Card (Form 49A)",
+      "applicationType": "New PAN Card (Form 49A)",
+      "gender": "Male",
+      "pricePaise": 4900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "type": "text",
+          "label": "Customer Name",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "Mobile Number",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email Address for Scanned PDF Delivery",
+          "required": true
+        },
+        {
+          "id": "pagesCount",
+          "type": "text",
+          "label": "Total Number of Pages to Scan",
+          "required": true
+        },
+        {
+          "id": "scanQuality",
+          "type": "select",
+          "label": "Desired Scanning Resolution",
+          "options": [
+            "300 DPI High-Res PDF (Standard)",
+            "600 DPI Ultra HD (Certificates/Photos)",
+            "Compressed PDF (< 2MB)"
+          ],
+          "required": true
+        },
+        {
+          "id": "notes",
+          "type": "textarea",
+          "label": "Specific File Naming / Ordering Instructions",
+          "required": false
+        }
+      ],
+      "details": {
+        "application_type": "New PAN Card (Form 49A)",
+        "applicationType": "New PAN Card (Form 49A)",
+        "gender": "Male"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-11-01T00:34:54.260Z",
+      "scheduling": {
+        "status": "UNSCHEDULED",
+        "timeSlot": null,
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 4900,
+    "workerEarningsPaise": 4900,
+    "pricing": {
+      "pricePaise": 4900,
+      "platformCommissionPaise": 0,
+      "workerPayoutPaise": 4900
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": null,
+    "payment": null,
+    "documents": [
+      {
+        "id": "doc_1793406894971_85dd11",
+        "storageKey": "docs/Karan Kumar/1793406894971_bonafied.webp",
+        "docName": "Original Physical Documents",
+        "name": "Original Physical Documents (bonafied.webp)",
+        "fileName": "bonafied.webp",
+        "url": "/api/documents/doc_1793406894971_85dd11/download",
+        "mimeType": "image/webp",
+        "size": 58352,
+        "type": "UPLOAD",
+        "customerId": "Karan Kumar",
+        "orderId": "ord_1793406894260_3a946147",
+        "orderNumber": "ord_1793406894260_3a946147",
+        "createdAt": "2026-10-31T00:34:54.971Z"
+      }
+    ],
+    "deliverables": [],
+    "createdAt": "2026-10-31T00:34:54.261Z",
+    "updatedAt": "2026-10-31T00:34:54.261Z"
+  },
+  {
+    "id": "ord_1793407301831_f2734ae7",
+    "orderNumber": "ord_1793407301831_f2734ae7",
+    "customerId": "Karan Kumar",
+    "customerName": "Karan Kumar",
+    "customerPhone": "9693553077",
+    "customerEmail": "rajkaran969355@gmail.com",
+    "contactPhone": "9693553077",
+    "customerNotes": "",
+    "notes": "",
+    "application_type": "Income Certificate",
+    "applicationType": "Income Certificate",
+    "gender": "Male",
+    "formData": {
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "application_type": "Income Certificate",
+      "applicationType": "Income Certificate",
+      "gender": "Male"
+    },
+    "bookingDate": null,
+    "bookingTimeSlot": null,
+    "timeSlot": null,
+    "slotStatus": "UNASSIGNED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "birth-death-certificates",
+    "serviceName": "Birth, Death & Civil Certificate Applications",
+    "category": "Certificate applications",
+    "status": "CANCELLED",
+    "paymentStatus": "PENDING",
+    "earningStatus": "PENDING",
+    "workerAmount": 24900,
+    "adminCommission": 0,
+    "platformFee": 0,
+    "customerPaidAmount": 24900,
+    "serviceSnapshot": {
+      "name": "Birth, Death & Civil Certificate Applications",
+      "category": "Certificate applications",
+      "application_type": "Income Certificate",
+      "applicationType": "Income Certificate",
+      "gender": "Male",
+      "pricePaise": 24900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "type": "text",
+          "label": "Person / Child Name",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "type": "text",
+          "label": "Father's Full Name",
+          "required": true
+        },
+        {
+          "id": "motherName",
+          "type": "text",
+          "label": "Mother's Full Name",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "Contact Phone Number",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email Address",
+          "required": true
+        },
+        {
+          "id": "civilServiceType",
+          "type": "select",
+          "label": "Certificate Type",
+          "options": [
+            "Birth Certificate Application",
+            "Death Certificate Application",
+            "Marriage Registration Certificate"
+          ],
+          "required": true
+        },
+        {
+          "id": "eventDate",
+          "type": "date",
+          "label": "Date of Event",
+          "required": true
+        },
+        {
+          "id": "eventPlace",
+          "type": "text",
+          "label": "Place of Event (Hospital / Residence / Municipal Area)",
+          "required": true
+        },
+        {
+          "id": "address",
+          "type": "textarea",
+          "label": "Permanent Address of Parents / Applicant",
+          "required": true
+        }
+      ],
+      "details": {
+        "application_type": "Income Certificate",
+        "applicationType": "Income Certificate",
+        "gender": "Male"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-11-01T00:41:41.831Z",
+      "scheduling": {
+        "status": "UNSCHEDULED",
+        "timeSlot": null,
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 24900,
+    "workerEarningsPaise": 24900,
+    "pricing": {
+      "pricePaise": 24900,
+      "platformCommissionPaise": 0,
+      "workerPayoutPaise": 24900
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": null,
+    "payment": null,
+    "documents": [],
+    "deliverables": [],
+    "createdAt": "2026-10-31T00:41:41.831Z",
+    "updatedAt": "2026-10-31T00:41:41.831Z"
+  },
+  {
+    "id": "ord_1793542908302_87a50fa2",
+    "orderNumber": "ord_1793542908302_87a50fa2",
+    "customerId": "Karan Kumar",
+    "customerName": "Karan Kumar",
+    "customerPhone": "9693553077",
+    "customerEmail": "rajkaran969355@gmail.com",
+    "contactPhone": "9693553077",
+    "customerNotes": "",
+    "notes": "",
+    "application_type": "New PAN Card (Form 49A)",
+    "applicationType": "New PAN Card (Form 49A)",
+    "gender": "Male",
+    "formData": {
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "application_type": "New PAN Card (Form 49A)",
+      "applicationType": "New PAN Card (Form 49A)",
+      "gender": "Male"
+    },
+    "bookingDate": null,
+    "bookingTimeSlot": null,
+    "timeSlot": null,
+    "slotStatus": "UNASSIGNED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "document-scanning",
+    "serviceName": "High-Resolution Document Scanning & Archival",
+    "category": "Document scanning",
+    "status": "COMPLETED",
+    "paymentStatus": "PAID",
+    "earningStatus": "PENDING",
+    "workerAmount": 4900,
+    "adminCommission": 0,
+    "platformFee": 0,
+    "customerPaidAmount": 4900,
+    "serviceSnapshot": {
+      "name": "High-Resolution Document Scanning & Archival",
+      "category": "Document scanning",
+      "application_type": "New PAN Card (Form 49A)",
+      "applicationType": "New PAN Card (Form 49A)",
+      "gender": "Male",
+      "pricePaise": 4900,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "type": "text",
+          "label": "Customer Name",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "Mobile Number",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email Address for Scanned PDF Delivery",
+          "required": true
+        },
+        {
+          "id": "pagesCount",
+          "type": "text",
+          "label": "Total Number of Pages to Scan",
+          "required": true
+        },
+        {
+          "id": "scanQuality",
+          "type": "select",
+          "label": "Desired Scanning Resolution",
+          "options": [
+            "300 DPI High-Res PDF (Standard)",
+            "600 DPI Ultra HD (Certificates/Photos)",
+            "Compressed PDF (< 2MB)"
+          ],
+          "required": true
+        },
+        {
+          "id": "notes",
+          "type": "textarea",
+          "label": "Specific File Naming / Ordering Instructions",
+          "required": false
+        }
+      ],
+      "details": {
+        "application_type": "New PAN Card (Form 49A)",
+        "applicationType": "New PAN Card (Form 49A)",
+        "gender": "Male"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-11-02T14:21:48.294Z",
+      "scheduling": {
+        "status": "UNSCHEDULED",
+        "timeSlot": null,
+        "rescheduleNote": null
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 4900,
+    "workerEarningsPaise": 4900,
+    "pricing": {
+      "pricePaise": 4900,
+      "platformCommissionPaise": 0,
+      "workerPayoutPaise": 4900
+    },
+    "assignedWorkerId": null,
+    "worker": null,
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-11-01T14:28:53.376Z",
+    "payment": {
+      "provider": "RAZORPAY",
+      "providerOrderId": "order_Tuwbk5LnMsKiAd",
+      "status": "PENDING",
+      "amountPaise": 4900
+    },
+    "documents": [],
+    "deliverables": [],
+    "createdAt": "2026-11-01T14:21:48.302Z",
+    "updatedAt": "2026-11-01T14:28:53.376Z"
+  },
+  {
+    "id": "ord_1794428349776_1cb0f687",
+    "orderNumber": "ord_1794428349776_1cb0f687",
+    "customerId": "usr_1794428263710",
+    "customerName": "Karan",
+    "customerPhone": "9693553077",
+    "customerEmail": "kumarkaran762002@gmail.com",
+    "contactPhone": "9693553077",
+    "customerNotes": "",
+    "notes": "",
+    "application_type": "Income Certificate",
+    "applicationType": "Income Certificate",
+    "gender": "Male",
+    "formData": {
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "application_type": "Income Certificate",
+      "applicationType": "Income Certificate",
+      "gender": "Male"
+    },
+    "bookingDate": "Tomorrow",
+    "bookingTimeSlot": "10:00 AM - 12:00 PM",
+    "timeSlot": "10:00 AM - 12:00 PM",
+    "slotStatus": "CONFIRMED",
+    "proposedSlot": null,
+    "proposedDate": null,
+    "serviceId": "income-caste-residence",
+    "serviceName": "Income, Caste & Residence Certificates",
+    "category": "Income/caste/residence certificate assistance",
+    "status": "IN_PROGRESS",
+    "paymentStatus": "PAID",
+    "earningStatus": "PENDING",
+    "workerAmount": 19900,
+    "adminCommission": 0,
+    "platformFee": 0,
+    "customerPaidAmount": 19900,
+    "serviceSnapshot": {
+      "name": "Income, Caste & Residence Certificates",
+      "category": "Income/caste/residence certificate assistance",
+      "application_type": "Income Certificate",
+      "applicationType": "Income Certificate",
+      "gender": "Male",
+      "pricePaise": 19900,
+      "workerAmountPaise": 19900,
+      "adminCommissionPaise": 0,
+      "platformFeePaise": 0,
+      "formSchema": [
+        {
+          "id": "fullName",
+          "label": "Full Name of Applicant",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "label": "Father's / Guardian's Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "label": "Mobile Number",
+          "type": "tel",
+          "required": true
+        },
+        {
+          "id": "email",
+          "label": "Email Address",
+          "type": "email",
+          "required": true
+        },
+        {
+          "id": "application_type",
+          "label": "Certificate Required",
+          "type": "select",
+          "options": [
+            "Income Certificate",
+            "OBC Caste Certificate",
+            "SC/ST Caste Certificate",
+            "Domicile / Residence Certificate",
+            "EWS Certificate"
+          ],
+          "required": true
+        },
+        {
+          "id": "annualIncome",
+          "label": "Annual Family Income (in INR)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "tehsilDistrict",
+          "label": "Tehsil & District Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "address",
+          "label": "Permanent Address (as per Ration/Electricity bill)",
+          "type": "textarea",
+          "required": true
+        }
+      ],
+      "details": {
+        "application_type": "Income Certificate",
+        "applicationType": "Income Certificate",
+        "gender": "Male"
+      },
+      "additionalInfo": "",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "expiresAt": "2026-11-12T20:19:09.776Z",
+      "scheduling": {
+        "date": "Tomorrow",
+        "timeSlot": "10:00 AM - 12:00 PM",
+        "slotStatus": "CONFIRMED",
+        "status": "CONFIRMED",
+        "scheduledAt": "2026-11-11T21:14:40.320Z",
+        "proposedBy": "WORKER"
+      },
+      "completion": {
+        "referenceNumber": null,
+        "completionMessage": null,
+        "receiptUrl": null,
+        "deliverableFiles": []
+      },
+      "review": null
+    },
+    "pricePaise": 19900,
+    "workerEarningsPaise": 19900,
+    "pricing": {
+      "pricePaise": 19900,
+      "platformCommissionPaise": 0,
+      "workerPayoutPaise": 19900
+    },
+    "assignedWorkerId": "worker-amit-01",
+    "worker": {
+      "id": "worker-amit-01",
+      "name": "Amit Cyber Cafe & Digital Seva",
+      "phone": "9876543210",
+      "email": "amit.cyber@gmail.com"
+    },
+    "job": null,
+    "offerExpiresAt": null,
+    "paidAt": "2026-11-11T20:20:04.796Z",
+    "payment": {
+      "status": "PAID",
+      "provider": "RAZORPAY",
+      "providerOrderId": "order_Tyzuc3kugKFHZW",
+      "providerPaymentId": "pay_TyzvH0zOKaMagJ",
+      "amountPaise": 19900,
+      "paidAt": "2026-11-11T20:20:04.796Z"
+    },
+    "documents": [
+      {
+        "id": "doc_1794428349777_ae70c7",
+        "storageKey": "docs/usr_1794428263710/1794428349777_Screenshot_2026-10-07_224003.webp",
+        "docName": "Identity Proof",
+        "name": "Identity Proof (Screenshot 2026-10-07 224003.webp)",
+        "fileName": "Screenshot 2026-10-07 224003.webp",
+        "url": "/api/documents/doc_1794428349777_ae70c7/download",
+        "mimeType": "image/webp",
+        "size": 47534,
+        "type": "UPLOAD",
+        "customerId": "usr_1794428263710",
+        "orderId": "ord_1794428349776_1cb0f687",
+        "orderNumber": "ord_1794428349776_1cb0f687",
+        "createdAt": "2026-11-11T20:19:09.777Z"
+      },
+      {
+        "id": "doc_1794428349784_d22efc",
+        "storageKey": "docs/usr_1794428263710/1794428349784_Screenshot_2026-10-06_195412.webp",
+        "docName": "Ration Card / Electricity Bill",
+        "name": "Ration Card / Electricity Bill (Screenshot 2026-10-06 195412.webp)",
+        "fileName": "Screenshot 2026-10-06 195412.webp",
+        "url": "/api/documents/doc_1794428349784_d22efc/download",
+        "mimeType": "image/webp",
+        "size": 28716,
+        "type": "UPLOAD",
+        "customerId": "usr_1794428263710",
+        "orderId": "ord_1794428349776_1cb0f687",
+        "orderNumber": "ord_1794428349776_1cb0f687",
+        "createdAt": "2026-11-11T20:19:09.785Z"
+      },
+      {
+        "id": "doc_1794428349792_9d9fc2",
+        "storageKey": "docs/usr_1794428263710/1794428349792_Screenshot_2026-10-07_103856.webp",
+        "docName": "Self Declaration Affidavit",
+        "name": "Self Declaration Affidavit (Screenshot 2026-10-07 103856.webp)",
+        "fileName": "Screenshot 2026-10-07 103856.webp",
+        "url": "/api/documents/doc_1794428349792_9d9fc2/download",
+        "mimeType": "image/webp",
+        "size": 50132,
+        "type": "UPLOAD",
+        "customerId": "usr_1794428263710",
+        "orderId": "ord_1794428349776_1cb0f687",
+        "orderNumber": "ord_1794428349776_1cb0f687",
+        "createdAt": "2026-11-11T20:19:09.793Z"
+      },
+      {
+        "id": "doc_1794428349798_ddc12a",
+        "storageKey": "docs/usr_1794428263710/1794428349797_Screenshot_2026-10-07_121407.webp",
+        "docName": "Photo",
+        "name": "Photo (Screenshot 2026-10-07 121407.webp)",
+        "fileName": "Screenshot 2026-10-07 121407.webp",
+        "url": "/api/documents/doc_1794428349798_ddc12a/download",
+        "mimeType": "image/webp",
+        "size": 25882,
+        "type": "UPLOAD",
+        "customerId": "usr_1794428263710",
+        "orderId": "ord_1794428349776_1cb0f687",
+        "orderNumber": "ord_1794428349776_1cb0f687",
+        "createdAt": "2026-11-11T20:19:09.798Z"
+      }
+    ],
+    "deliverables": [],
+    "createdAt": "2026-11-11T20:19:09.777Z",
+    "updatedAt": "2026-11-11T21:14:40.320Z",
+    "workerAcceptedAt": "2026-11-11T21:14:40.319Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-11-12T02:14:40.319Z",
+    "workStartedAt": "2026-11-11T21:15:28.774Z"
+  },
+  {
+    "id": "ord_1794431140240_83e5ab82",
+    "customerId": "1e1dff58-b4da-41c2-90de-97eb0896e41f",
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "status": "PAYMENT_PENDING",
+    "pricePaise": 19900,
+    "workerEarningsPaise": 19900,
+    "assignedWorkerId": null,
+    "documents": [],
+    "deliverables": [],
+    "createdAt": "2026-11-11T21:05:40.245Z",
+    "updatedAt": "2026-11-11T21:05:40.245Z"
+  },
+  {
+    "id": "ord_1794431275242_399a3684",
+    "customerId": "d26c4139-ca19-4e88-8b73-473b07af8706",
+    "serviceId": "pan-card",
+    "serviceName": "PAN Card Application & Correction",
+    "status": "COMPLETED",
+    "pricePaise": 19900,
+    "workerEarningsPaise": 19900,
+    "assignedWorkerId": null,
+    "documents": [],
+    "deliverables": [],
+    "createdAt": "2026-11-11T21:07:55.245Z",
+    "updatedAt": "2026-11-11T21:10:17.315Z"
+  },
+  {
+    "id": "ord_1794452468078_f5c9e87b",
+    "customerId": "Karan Kumar",
+    "userId": "Karan Kumar",
+    "serviceId": "income-caste-residence",
+    "serviceSnapshot": {
+      "name": "Income, Caste & Residence Certificates",
+      "gender": "Male",
+      "review": {
+        "rating": 5,
+        "comment": "Super fast service, got my acknowledgment certificate immediately!",
+        "createdAt": "2026-11-12T04:12:43.198Z"
+      },
+      "details": {
+        "gender": "Male",
+        "applicationType": "Income Certificate",
+        "application_type": "Income Certificate"
+      },
+      "category": "Income/caste/residence certificate assistance",
+      "expiresAt": "2026-11-13T03:01:08.077Z",
+      "completion": {
+        "receiptUrl": "https://cybercafe.local/docs/final_slip.pdf",
+        "referenceNumber": "CCM-APP-C9E87B",
+        "deliverableFiles": [
+          {
+            "id": "del_1794456749113_0",
+            "url": "https://cybercafe.local/docs/final_slip.pdf",
+            "name": "Document_1.pdf",
+            "uploadedAt": "2026-11-12T04:12:29.113Z"
+          },
+          {
+            "url": "https://cybercafe.local/docs/final_slip.pdf",
+            "name": "acknowledgment_slip.pdf",
+            "type": "application/pdf"
+          }
+        ],
+        "completionMessage": "Application successfully processed and submitted."
+      },
+      "formSchema": [
+        {
+          "id": "fullName",
+          "type": "text",
+          "label": "Full Name of Applicant",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "type": "text",
+          "label": "Father's / Guardian's Name",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "Mobile Number",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email Address",
+          "required": true
+        },
+        {
+          "id": "certificateType",
+          "type": "select",
+          "label": "Certificate Required",
+          "options": [
+            "Income Certificate",
+            "OBC Caste Certificate",
+            "SC/ST Caste Certificate",
+            "Domicile / Residence Certificate",
+            "EWS Certificate"
+          ],
+          "required": true
+        },
+        {
+          "id": "annualIncome",
+          "type": "text",
+          "label": "Annual Family Income (in INR)",
+          "required": true
+        },
+        {
+          "id": "tehsilDistrict",
+          "type": "text",
+          "label": "Tehsil & District Name",
+          "required": true
+        },
+        {
+          "id": "address",
+          "type": "textarea",
+          "label": "Permanent Address (as per Ration/Electricity bill)",
+          "required": true
+        }
+      ],
+      "pricePaise": 19900,
+      "scheduling": {
+        "status": "UNSCHEDULED",
+        "timeSlot": null,
+        "rescheduleNote": null
+      },
+      "additionalInfo": "",
+      "applicationType": "Income Certificate",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "application_type": "Income Certificate",
+      "platformFeePaise": 0,
+      "workerAmountPaise": 19900,
+      "adminCommissionPaise": 0
+    },
+    "pricing": {
+      "pricePaise": 19900,
+      "workerPayoutPaise": 19900,
+      "platformCommissionPaise": 0
+    },
+    "status": "COMPLETED",
+    "createdAt": "2026-11-12T03:01:09.580Z",
+    "updatedAt": "2026-11-12T04:12:43.198Z",
+    "acceptedAt": "2026-11-12T04:12:26.108Z",
+    "adminCommissionPaise": 0,
+    "assignedWorkerId": "worker-amit-01",
+    "workerId": "worker-amit-01",
+    "bookingDate": null,
+    "cancelledAt": null,
+    "completedAt": "2026-11-12T04:12:29.120Z",
+    "currency": "INR",
+    "customerPaidAmountPaise": 19900,
+    "earningStatus": "PENDING",
+    "formData": {
+      "gender": "Male",
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "applicationType": "Income Certificate",
+      "application_type": "Income Certificate"
+    },
+    "orderNumber": "ord_1794452468078_f5c9e87b",
+    "paymentStatus": "PENDING",
+    "platformFeePaise": 0,
+    "proposedDate": null,
+    "proposedSlot": null,
+    "receiptSubmittedAt": "2026-11-12T04:12:29.120Z",
+    "slotStatus": "UNASSIGNED",
+    "startedAt": null,
+    "timeSlot": null,
+    "workCompletedAt": "2026-11-12T04:12:29.120Z",
+    "workerAmountPaise": 19900,
+    "applicationType": "Income Certificate",
+    "customerNotes": null,
+    "paidAt": null,
+    "rating": 5,
+    "review": "Super fast service, got my acknowledgment certificate immediately!"
+  },
+  {
+    "id": "ord_1794452482802_44899129",
+    "customerId": "Karan Kumar",
+    "userId": "Karan Kumar",
+    "serviceId": "income-caste-residence",
+    "serviceSnapshot": {
+      "name": "Income, Caste & Residence Certificates",
+      "gender": "Male",
+      "review": null,
+      "details": {
+        "gender": "Male",
+        "applicationType": "Income Certificate",
+        "application_type": "Income Certificate"
+      },
+      "category": "Income/caste/residence certificate assistance",
+      "expiresAt": "2026-11-13T03:01:22.801Z",
+      "completion": {
+        "receiptUrl": "/api/orders/ord_1794452482802_44899129/deliverables/deliv_1794452716305_9m3q2/download",
+        "referenceNumber": "CCM-APP-899129",
+        "deliverableFiles": [
+          {
+            "id": "deliv_1794452716305_9m3q2",
+            "url": "/api/orders/ord_1794452482802_44899129/deliverables/deliv_1794452716305_9m3q2/download",
+            "name": "Screenshot 2026 10 07 104935",
+            "size": "128 KB",
+            "fileName": "Screenshot 2026-10-07 104935.png",
+            "mimeType": "image/png",
+            "sizeBytes": 130805,
+            "storageKey": "deliverables/ord_1794452482802_44899129/1794452714496_Screenshot_2026-10-07_104935.png",
+            "uploadedAt": "2026-11-12T03:05:16.305Z",
+            "isMandatory": true
+          }
+        ],
+        "completionMessage": "Application successfully processed and submitted."
+      },
+      "formSchema": [
+        {
+          "id": "fullName",
+          "type": "text",
+          "label": "Full Name of Applicant",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "type": "text",
+          "label": "Father's / Guardian's Name",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "Mobile Number",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email Address",
+          "required": true
+        },
+        {
+          "id": "certificateType",
+          "type": "select",
+          "label": "Certificate Required",
+          "options": [
+            "Income Certificate",
+            "OBC Caste Certificate",
+            "SC/ST Caste Certificate",
+            "Domicile / Residence Certificate",
+            "EWS Certificate"
+          ],
+          "required": true
+        },
+        {
+          "id": "annualIncome",
+          "type": "text",
+          "label": "Annual Family Income (in INR)",
+          "required": true
+        },
+        {
+          "id": "tehsilDistrict",
+          "type": "text",
+          "label": "Tehsil & District Name",
+          "required": true
+        },
+        {
+          "id": "address",
+          "type": "textarea",
+          "label": "Permanent Address (as per Ration/Electricity bill)",
+          "required": true
+        }
+      ],
+      "pricePaise": 19900,
+      "scheduling": {
+        "date": "Tomorrow",
+        "status": "CONFIRMED",
+        "timeSlot": "10:00 AM - 12:00 PM",
+        "proposedBy": "WORKER",
+        "slotStatus": "CONFIRMED",
+        "scheduledAt": "2026-11-12T03:03:28.060Z"
+      },
+      "additionalInfo": "",
+      "applicationType": "Income Certificate",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "application_type": "Income Certificate",
+      "platformFeePaise": 0,
+      "workerAmountPaise": 19900,
+      "adminCommissionPaise": 0
+    },
+    "pricing": {
+      "pricePaise": 19900,
+      "workerPayoutPaise": 19900,
+      "platformCommissionPaise": 0
+    },
+    "status": "COMPLETED",
+    "createdAt": "2026-11-12T03:01:24.304Z",
+    "updatedAt": "2026-11-12T03:05:27.148Z",
+    "acceptedAt": "2026-11-12T03:03:26.382Z",
+    "adminCommissionPaise": 0,
+    "assignedWorkerId": "Karan Kumar",
+    "workerId": "Karan Kumar",
+    "bookingDate": "Tomorrow",
+    "cancelledAt": null,
+    "completedAt": null,
+    "currency": "INR",
+    "customerPaidAmountPaise": 19900,
+    "earningStatus": "PENDING",
+    "formData": {
+      "gender": "Male",
+      "contactPhone": "9693553077",
+      "customerNotes": "",
+      "applicationType": "Income Certificate",
+      "application_type": "Income Certificate"
+    },
+    "orderNumber": "ord_1794452482802_44899129",
+    "paymentStatus": "PAID",
+    "platformFeePaise": 0,
+    "proposedDate": null,
+    "proposedSlot": null,
+    "receiptSubmittedAt": null,
+    "slotStatus": "CONFIRMED",
+    "startedAt": null,
+    "timeSlot": "10:00 AM - 12:00 PM",
+    "workCompletedAt": null,
+    "workerAmountPaise": 19900,
+    "applicationType": "Income Certificate",
+    "customerNotes": null,
+    "paidAt": "2026-11-12T03:02:05.601Z",
+    "customer": {
+      "id": "Karan Kumar",
+      "email": "rajkaran969355@gmail.com",
+      "password": "$2b$10$IKAcx5J/CFYVeEpHc69/muaSAFRl/VjcFokJmcAeblcSZLxql9cJS",
+      "name": "Karan Kumar",
+      "role": "ADMIN",
+      "phone": "9693553077",
+      "createdAt": "2026-09-11T13:06:58.827Z",
+      "updatedAt": "2026-11-12T03:53:46.192Z",
+      "address": null,
+      "bankDetails": null,
+      "businessName": null,
+      "city": null,
+      "isOnline": true,
+      "lastLoginAt": null,
+      "profileImage": null,
+      "status": "ACTIVE",
+      "verificationStatus": "PENDING",
+      "verifiedAt": null,
+      "verifiedBy": null,
+      "activeOrdersCount": 0,
+      "avgCompletionMinutes": 60,
+      "completedOrdersCount": 0,
+      "lastHeartbeatAt": "2026-11-12T03:53:46.187Z"
+    },
+    "user": {
+      "id": "Karan Kumar",
+      "email": "rajkaran969355@gmail.com",
+      "password": "$2b$10$IKAcx5J/CFYVeEpHc69/muaSAFRl/VjcFokJmcAeblcSZLxql9cJS",
+      "name": "Karan Kumar",
+      "role": "ADMIN",
+      "phone": "9693553077",
+      "createdAt": "2026-09-11T13:06:58.827Z",
+      "updatedAt": "2026-11-12T03:53:46.192Z",
+      "address": null,
+      "bankDetails": null,
+      "businessName": null,
+      "city": null,
+      "isOnline": true,
+      "lastLoginAt": null,
+      "profileImage": null,
+      "status": "ACTIVE",
+      "verificationStatus": "PENDING",
+      "verifiedAt": null,
+      "verifiedBy": null,
+      "activeOrdersCount": 0,
+      "avgCompletionMinutes": 60,
+      "completedOrdersCount": 0,
+      "lastHeartbeatAt": "2026-11-12T03:53:46.187Z"
+    },
+    "service": {
+      "id": "income-caste-residence",
+      "name": "Income, Caste & Residence Certificates",
+      "description": "State revenue portal application for OBC/SC/ST caste certificates, annual income certificate, and domicile.",
+      "category": "Income/caste/residence certificate assistance",
+      "pricePaise": 19900,
+      "estimatedTime": "2-4 Working Days",
+      "requiredDocuments": [
+        "Identity Proof",
+        "Ration Card / Electricity Bill",
+        "Self Declaration Affidavit",
+        "Photo"
+      ],
+      "formSchema": [
+        {
+          "id": "fullName",
+          "type": "text",
+          "label": "Full Name of Applicant",
+          "required": true
+        },
+        {
+          "id": "fatherName",
+          "type": "text",
+          "label": "Father's / Guardian's Name",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "Mobile Number",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email Address",
+          "required": true
+        },
+        {
+          "id": "certificateType",
+          "type": "select",
+          "label": "Certificate Required",
+          "options": [
+            "Income Certificate",
+            "OBC Caste Certificate",
+            "SC/ST Caste Certificate",
+            "Domicile / Residence Certificate",
+            "EWS Certificate"
+          ],
+          "required": true
+        },
+        {
+          "id": "annualIncome",
+          "type": "text",
+          "label": "Annual Family Income (in INR)",
+          "required": true
+        },
+        {
+          "id": "tehsilDistrict",
+          "type": "text",
+          "label": "Tehsil & District Name",
+          "required": true
+        },
+        {
+          "id": "address",
+          "type": "textarea",
+          "label": "Permanent Address (as per Ration/Electricity bill)",
+          "required": true
+        }
+      ],
+      "status": "ACTIVE",
+      "approvalStatus": "APPROVED",
+      "createdByWorkerId": null,
+      "approvedByAdminId": null,
+      "approvedAt": null,
+      "createdAt": "2026-10-24T18:09:36.864Z",
+      "updatedAt": "2026-11-01T15:12:20.412Z",
+      "adminCommissionPaise": 0,
+      "currency": "INR",
+      "platformFeePaise": 0,
+      "slug": null,
+      "workerAmountPaise": 0,
+      "is_active": true,
+      "applicationTypes": [
+        {
+          "id": "income-cert",
+          "badge": "Revenue Portal",
+          "title": "Income Certificate",
+          "formType": "Income",
+          "description": "Official state revenue authority annual family income certificate for fee concessions and EWS"
+        },
+        {
+          "id": "caste-cert",
+          "badge": "SDM / Tehsildar",
+          "title": "Caste / Category Certificate (SC / ST / OBC)",
+          "formType": "Caste",
+          "description": "State government caste verification certificate for reservations and competitive exams"
+        },
+        {
+          "id": "domicile-cert",
+          "badge": "Permanent Resident",
+          "title": "Domicile / Residence Certificate",
+          "formType": "Domicile",
+          "description": "Proof of permanent state residency required for state government admissions and jobs"
+        },
+        {
+          "id": "ews-cert",
+          "badge": "EWS",
+          "title": "Economically Weaker Section (EWS) Certificate",
+          "formType": "EWS",
+          "description": "Central or state format income and asset certificate for 10% EWS reservation"
+        }
+      ]
+    },
+    "job": {
+      "id": "a80073eb-4839-41d8-b71c-e23c811bf2b6",
+      "orderId": "ord_1794452482802_44899129",
+      "workerId": "Karan Kumar",
+      "status": "COMPLETED",
+      "acceptedAt": "2026-11-12T03:03:26.993Z",
+      "startedAt": null,
+      "submittedAt": null,
+      "completedAt": "2026-11-12T03:05:28.709Z",
+      "createdAt": "2026-11-12T03:03:18.005Z",
+      "updatedAt": "2026-11-12T03:05:28.711Z",
+      "notes": null
+    },
+    "documents": [
+      {
+        "id": "doc_1794452716305_udxyh",
+        "orderId": "ord_1794452482802_44899129",
+        "jobId": null,
+        "customerId": "Karan Kumar",
+        "workerId": "Karan Kumar",
+        "type": "DELIVERABLE",
+        "fileName": "Screenshot 2026-10-07 104935.png",
+        "mimeType": "image/png",
+        "size": 130805,
+        "storageKey": "deliverables/ord_1794452482802_44899129/1794452714496_Screenshot_2026-10-07_104935.png",
+        "createdAt": "2026-11-12T03:05:16.305Z",
+        "isPurged": false,
+        "isWorkingCopy": true,
+        "purgeEligibleAt": null,
+        "docName": null,
+        "name": null,
+        "url": null
+      }
+    ],
+    "receipts": []
+  },
+  {
+    "id": "ord_1794454044124_53cdc7a2",
+    "customerId": "9c3221c3-a25e-47d2-ab04-a40f59c33b0b",
+    "userId": "9c3221c3-a25e-47d2-ab04-a40f59c33b0b",
+    "serviceId": "utility-bill-payment",
+    "serviceSnapshot": {
+      "name": "Utility Bill Payment & Online Recharges",
+      "gender": null,
+      "review": null,
+      "details": {
+        "gender": null,
+        "applicationType": "New Application",
+        "application_type": "New Application"
+      },
+      "category": "Online payment/recharge",
+      "expiresAt": "2026-11-13T03:27:24.123Z",
+      "completion": {
+        "receiptUrl": null,
+        "referenceNumber": null,
+        "deliverableFiles": [],
+        "completionMessage": null
+      },
+      "formSchema": [
+        {
+          "id": "fullName",
+          "type": "text",
+          "label": "Customer / Consumer Name",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "Mobile Number for Payment Confirmation",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email for Official Bill Receipt",
+          "required": true
+        },
+        {
+          "id": "billType",
+          "type": "select",
+          "label": "Utility Service Type",
+          "options": [
+            "Electricity Bill Settlement",
+            "Piped Gas Bill",
+            "Water Department Bill",
+            "FASTag Instant Recharge",
+            "Municipal Property Tax / Challan"
+          ],
+          "required": true
+        },
+        {
+          "id": "providerName",
+          "type": "text",
+          "label": "Electricity Board / Department Name",
+          "required": true
+        },
+        {
+          "id": "consumerNumber",
+          "type": "text",
+          "label": "Consumer Number / CA Number / Account ID",
+          "required": true
+        },
+        {
+          "id": "billAmount",
+          "type": "text",
+          "label": "Exact Bill Amount Due (in INR)",
+          "required": true
+        }
+      ],
+      "pricePaise": 2900,
+      "scheduling": {
+        "date": null,
+        "status": "UNASSIGNED",
+        "timeSlot": null,
+        "slotStatus": "UNASSIGNED",
+        "rescheduleNote": null
+      },
+      "additionalInfo": "",
+      "applicationType": "New Application",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "application_type": "New Application",
+      "platformFeePaise": 0,
+      "workerAmountPaise": 2900,
+      "adminCommissionPaise": 0
+    },
+    "pricing": {
+      "pricePaise": 2900,
+      "workerPayoutPaise": 2900,
+      "platformCommissionPaise": 0
+    },
+    "status": "IN_PROGRESS",
+    "createdAt": "2026-11-12T03:27:26.108Z",
+    "updatedAt": "2026-11-12T03:27:26.108Z",
+    "acceptedAt": null,
+    "adminCommissionPaise": 0,
+    "assignedWorkerId": "worker-amit-01",
+    "workerId": "worker-amit-01",
+    "bookingDate": null,
+    "cancelledAt": null,
+    "completedAt": null,
+    "currency": "INR",
+    "customerPaidAmountPaise": 2900,
+    "earningStatus": "PENDING",
+    "formData": {
+      "gender": null,
+      "contactPhone": "9876543210",
+      "customerNotes": "Urgent filing please",
+      "applicationType": "New Application",
+      "application_type": "New Application"
+    },
+    "orderNumber": "ord_1794454044124_53cdc7a2",
+    "paymentStatus": "PENDING",
+    "platformFeePaise": 0,
+    "proposedDate": null,
+    "proposedSlot": null,
+    "receiptSubmittedAt": null,
+    "slotStatus": "UNASSIGNED",
+    "startedAt": null,
+    "timeSlot": null,
+    "workCompletedAt": null,
+    "workerAmountPaise": 2900,
+    "applicationType": "New Application",
+    "customerNotes": "Urgent filing please",
+    "paidAt": null,
+    "customer": {
+      "id": "9c3221c3-a25e-47d2-ab04-a40f59c33b0b",
+      "email": "perf_customer_1794454021120@example.com",
+      "password": "$2b$10$37D3LD0EjhX1Xg0jmsSL2Ok90FD6Ige4LCXR.21W9yPWbCHvaBazy",
+      "name": "Performance Test Customer",
+      "role": "CUSTOMER",
+      "phone": "9876543210",
+      "createdAt": "2026-11-12T03:27:07.096Z",
+      "updatedAt": "2026-11-12T03:27:24.127Z",
+      "address": null,
+      "bankDetails": null,
+      "businessName": null,
+      "city": null,
+      "isOnline": false,
+      "lastLoginAt": null,
+      "profileImage": null,
+      "status": "ACTIVE",
+      "verificationStatus": "PENDING",
+      "verifiedAt": null,
+      "verifiedBy": null,
+      "activeOrdersCount": 0,
+      "avgCompletionMinutes": 60,
+      "completedOrdersCount": 0,
+      "lastHeartbeatAt": null
+    },
+    "user": {
+      "id": "9c3221c3-a25e-47d2-ab04-a40f59c33b0b",
+      "email": "perf_customer_1794454021120@example.com",
+      "password": "$2b$10$37D3LD0EjhX1Xg0jmsSL2Ok90FD6Ige4LCXR.21W9yPWbCHvaBazy",
+      "name": "Performance Test Customer",
+      "role": "CUSTOMER",
+      "phone": "9876543210",
+      "createdAt": "2026-11-12T03:27:07.096Z",
+      "updatedAt": "2026-11-12T03:27:24.127Z",
+      "address": null,
+      "bankDetails": null,
+      "businessName": null,
+      "city": null,
+      "isOnline": false,
+      "lastLoginAt": null,
+      "profileImage": null,
+      "status": "ACTIVE",
+      "verificationStatus": "PENDING",
+      "verifiedAt": null,
+      "verifiedBy": null,
+      "activeOrdersCount": 0,
+      "avgCompletionMinutes": 60,
+      "completedOrdersCount": 0,
+      "lastHeartbeatAt": null
+    },
+    "service": {
+      "id": "utility-bill-payment",
+      "name": "Utility Bill Payment & Online Recharges",
+      "description": "Instant settlement of electricity bills, water bills, FASTag recharge, and property tax payments with receipts.",
+      "category": "Online payment/recharge",
+      "pricePaise": 2900,
+      "estimatedTime": "15 Minutes",
+      "requiredDocuments": [
+        "Consumer Number / Bill Copy"
+      ],
+      "formSchema": [
+        {
+          "id": "fullName",
+          "type": "text",
+          "label": "Customer / Consumer Name",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "Mobile Number for Payment Confirmation",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email for Official Bill Receipt",
+          "required": true
+        },
+        {
+          "id": "billType",
+          "type": "select",
+          "label": "Utility Service Type",
+          "options": [
+            "Electricity Bill Settlement",
+            "Piped Gas Bill",
+            "Water Department Bill",
+            "FASTag Instant Recharge",
+            "Municipal Property Tax / Challan"
+          ],
+          "required": true
+        },
+        {
+          "id": "providerName",
+          "type": "text",
+          "label": "Electricity Board / Department Name",
+          "required": true
+        },
+        {
+          "id": "consumerNumber",
+          "type": "text",
+          "label": "Consumer Number / CA Number / Account ID",
+          "required": true
+        },
+        {
+          "id": "billAmount",
+          "type": "text",
+          "label": "Exact Bill Amount Due (in INR)",
+          "required": true
+        }
+      ],
+      "status": "ACTIVE",
+      "approvalStatus": "APPROVED",
+      "createdByWorkerId": null,
+      "approvedByAdminId": null,
+      "approvedAt": null,
+      "createdAt": "2026-10-24T18:09:36.864Z",
+      "updatedAt": "2026-11-01T15:12:23.802Z",
+      "adminCommissionPaise": 0,
+      "currency": "INR",
+      "platformFeePaise": 0,
+      "slug": null,
+      "workerAmountPaise": 0,
+      "is_active": true,
+      "applicationTypes": [
+        {
+          "id": "electricity-water",
+          "badge": "Utility",
+          "title": "Electricity & Water Bill Payment",
+          "formType": "Bill Pay",
+          "description": "State DISCOM bill fetch, instant online payment confirmation, and stamped receipt"
+        },
+        {
+          "id": "fastag-recharge",
+          "badge": "Instant Recharge",
+          "title": "FASTag & DTH / Mobile Recharges",
+          "formType": "Recharge",
+          "description": "Instant recharge with payment transaction ID and balance confirmation"
+        }
+      ]
+    },
+    "job": {
+      "id": "d9181fbe-9e7b-4720-90dd-bb8e997aa76e",
+      "orderId": "ord_1794454044124_53cdc7a2",
+      "workerId": "worker-amit-01",
+      "status": "IN_PROGRESS",
+      "acceptedAt": "2026-11-12T04:09:19.186Z",
+      "startedAt": null,
+      "submittedAt": null,
+      "completedAt": null,
+      "createdAt": "2026-11-12T04:09:19.187Z",
+      "updatedAt": "2026-11-12T04:09:19.187Z",
+      "notes": null
+    }
+  },
+  {
+    "id": "ord_1794454143545_747434f3",
+    "customerId": "56d5d27d-9e69-4930-a6e6-5841947fcc8f",
+    "userId": "56d5d27d-9e69-4930-a6e6-5841947fcc8f",
+    "serviceId": "utility-bill-payment",
+    "serviceSnapshot": {
+      "name": "Utility Bill Payment & Online Recharges",
+      "gender": null,
+      "review": null,
+      "details": {
+        "gender": null,
+        "applicationType": "New Application",
+        "application_type": "New Application"
+      },
+      "category": "Online payment/recharge",
+      "expiresAt": "2026-11-13T03:29:03.545Z",
+      "completion": {
+        "receiptUrl": null,
+        "referenceNumber": null,
+        "deliverableFiles": [],
+        "completionMessage": null
+      },
+      "formSchema": [
+        {
+          "id": "fullName",
+          "type": "text",
+          "label": "Customer / Consumer Name",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "Mobile Number for Payment Confirmation",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email for Official Bill Receipt",
+          "required": true
+        },
+        {
+          "id": "billType",
+          "type": "select",
+          "label": "Utility Service Type",
+          "options": [
+            "Electricity Bill Settlement",
+            "Piped Gas Bill",
+            "Water Department Bill",
+            "FASTag Instant Recharge",
+            "Municipal Property Tax / Challan"
+          ],
+          "required": true
+        },
+        {
+          "id": "providerName",
+          "type": "text",
+          "label": "Electricity Board / Department Name",
+          "required": true
+        },
+        {
+          "id": "consumerNumber",
+          "type": "text",
+          "label": "Consumer Number / CA Number / Account ID",
+          "required": true
+        },
+        {
+          "id": "billAmount",
+          "type": "text",
+          "label": "Exact Bill Amount Due (in INR)",
+          "required": true
+        }
+      ],
+      "pricePaise": 2900,
+      "scheduling": {
+        "date": "Tomorrow",
+        "timeSlot": "10:00 AM - 12:00 PM",
+        "slotStatus": "CONFIRMED",
+        "status": "CONFIRMED",
+        "scheduledAt": "2026-11-12T04:01:00.342Z",
+        "proposedBy": "WORKER"
+      },
+      "additionalInfo": "",
+      "applicationType": "New Application",
+      "workerSelection": {
+        "mode": "auto"
+      },
+      "application_type": "New Application",
+      "platformFeePaise": 0,
+      "workerAmountPaise": 2900,
+      "adminCommissionPaise": 0
+    },
+    "pricing": {
+      "pricePaise": 2900,
+      "workerPayoutPaise": 2900,
+      "platformCommissionPaise": 0
+    },
+    "status": "IN_PROGRESS",
+    "createdAt": "2026-11-12T03:29:05.854Z",
+    "updatedAt": "2026-11-12T04:01:00.342Z",
+    "acceptedAt": null,
+    "adminCommissionPaise": 0,
+    "assignedWorkerId": "Karan Kumar",
+    "workerId": "Karan Kumar",
+    "bookingDate": "Tomorrow",
+    "cancelledAt": null,
+    "completedAt": null,
+    "currency": "INR",
+    "customerPaidAmountPaise": 2900,
+    "earningStatus": "PENDING",
+    "formData": {
+      "gender": null,
+      "contactPhone": "9876543210",
+      "customerNotes": "Urgent filing please",
+      "applicationType": "New Application",
+      "application_type": "New Application"
+    },
+    "orderNumber": "ord_1794454143545_747434f3",
+    "paymentStatus": "PENDING",
+    "platformFeePaise": 0,
+    "proposedDate": null,
+    "proposedSlot": null,
+    "receiptSubmittedAt": null,
+    "slotStatus": "CONFIRMED",
+    "startedAt": null,
+    "timeSlot": "10:00 AM - 12:00 PM",
+    "workCompletedAt": null,
+    "workerAmountPaise": 2900,
+    "applicationType": "New Application",
+    "customerNotes": "Urgent filing please",
+    "paidAt": null,
+    "customer": {
+      "id": "56d5d27d-9e69-4930-a6e6-5841947fcc8f",
+      "email": "perf_customer_1794454115149@example.com",
+      "password": "$2b$10$A/Lf0rsRbVpMaDqAJSIV4epeQ1owPl0vZGbUXutvzlpIiwJ/B/vp6",
+      "name": "Performance Test Customer",
+      "role": "CUSTOMER",
+      "phone": "9876543210",
+      "createdAt": "2026-11-12T03:28:42.394Z",
+      "updatedAt": "2026-11-12T03:29:03.547Z",
+      "address": null,
+      "bankDetails": null,
+      "businessName": null,
+      "city": null,
+      "isOnline": false,
+      "lastLoginAt": null,
+      "profileImage": null,
+      "status": "ACTIVE",
+      "verificationStatus": "PENDING",
+      "verifiedAt": null,
+      "verifiedBy": null,
+      "activeOrdersCount": 0,
+      "avgCompletionMinutes": 60,
+      "completedOrdersCount": 0,
+      "lastHeartbeatAt": null
+    },
+    "user": {
+      "id": "56d5d27d-9e69-4930-a6e6-5841947fcc8f",
+      "email": "perf_customer_1794454115149@example.com",
+      "password": "$2b$10$A/Lf0rsRbVpMaDqAJSIV4epeQ1owPl0vZGbUXutvzlpIiwJ/B/vp6",
+      "name": "Performance Test Customer",
+      "role": "CUSTOMER",
+      "phone": "9876543210",
+      "createdAt": "2026-11-12T03:28:42.394Z",
+      "updatedAt": "2026-11-12T03:29:03.547Z",
+      "address": null,
+      "bankDetails": null,
+      "businessName": null,
+      "city": null,
+      "isOnline": false,
+      "lastLoginAt": null,
+      "profileImage": null,
+      "status": "ACTIVE",
+      "verificationStatus": "PENDING",
+      "verifiedAt": null,
+      "verifiedBy": null,
+      "activeOrdersCount": 0,
+      "avgCompletionMinutes": 60,
+      "completedOrdersCount": 0,
+      "lastHeartbeatAt": null
+    },
+    "service": {
+      "id": "utility-bill-payment",
+      "name": "Utility Bill Payment & Online Recharges",
+      "description": "Instant settlement of electricity bills, water bills, FASTag recharge, and property tax payments with receipts.",
+      "category": "Online payment/recharge",
+      "pricePaise": 2900,
+      "estimatedTime": "15 Minutes",
+      "requiredDocuments": [
+        "Consumer Number / Bill Copy"
+      ],
+      "formSchema": [
+        {
+          "id": "fullName",
+          "type": "text",
+          "label": "Customer / Consumer Name",
+          "required": true
+        },
+        {
+          "id": "phone",
+          "type": "tel",
+          "label": "Mobile Number for Payment Confirmation",
+          "required": true
+        },
+        {
+          "id": "email",
+          "type": "email",
+          "label": "Email for Official Bill Receipt",
+          "required": true
+        },
+        {
+          "id": "billType",
+          "type": "select",
+          "label": "Utility Service Type",
+          "options": [
+            "Electricity Bill Settlement",
+            "Piped Gas Bill",
+            "Water Department Bill",
+            "FASTag Instant Recharge",
+            "Municipal Property Tax / Challan"
+          ],
+          "required": true
+        },
+        {
+          "id": "providerName",
+          "type": "text",
+          "label": "Electricity Board / Department Name",
+          "required": true
+        },
+        {
+          "id": "consumerNumber",
+          "type": "text",
+          "label": "Consumer Number / CA Number / Account ID",
+          "required": true
+        },
+        {
+          "id": "billAmount",
+          "type": "text",
+          "label": "Exact Bill Amount Due (in INR)",
+          "required": true
+        }
+      ],
+      "status": "ACTIVE",
+      "approvalStatus": "APPROVED",
+      "createdByWorkerId": null,
+      "approvedByAdminId": null,
+      "approvedAt": null,
+      "createdAt": "2026-10-24T18:09:36.864Z",
+      "updatedAt": "2026-11-01T15:12:23.802Z",
+      "adminCommissionPaise": 0,
+      "currency": "INR",
+      "platformFeePaise": 0,
+      "slug": null,
+      "workerAmountPaise": 0,
+      "is_active": true,
+      "applicationTypes": [
+        {
+          "id": "electricity-water",
+          "badge": "Utility",
+          "title": "Electricity & Water Bill Payment",
+          "formType": "Bill Pay",
+          "description": "State DISCOM bill fetch, instant online payment confirmation, and stamped receipt"
+        },
+        {
+          "id": "fastag-recharge",
+          "badge": "Instant Recharge",
+          "title": "FASTag & DTH / Mobile Recharges",
+          "formType": "Recharge",
+          "description": "Instant recharge with payment transaction ID and balance confirmation"
+        }
+      ]
+    },
+    "job": null,
+    "worker": {
+      "id": "Karan Kumar",
+      "name": "Karan Kumar (Supervisor)",
+      "phone": "9693553077",
+      "email": "rajkaran969355@gmail.com"
+    },
+    "workerAcceptedAt": "2026-11-12T04:00:56.166Z",
+    "acceptedOrder5HourWindowExpiresAt": "2026-11-12T09:01:00.342Z",
+    "workerEarningsPaise": 2900,
+    "bookingTimeSlot": "10:00 AM - 12:00 PM"
   }
 ]

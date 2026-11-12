@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Check, Clock, FileText, MessageCircle, AlertCircle, 
-  Calendar, Star, Download, Copy, Shield, CheckCircle2 
+  Calendar, Star, Download, Copy, Shield, CheckCircle2,
+  MessageSquare, Paperclip, Send, X, HelpCircle, UploadCloud
 } from 'lucide-react';
 import { ordersApi } from '../../api/orders';
 import { buildUrl } from '../../api/client';
@@ -31,6 +32,15 @@ export default function OrderTracking() {
   // Expiry countdown state
   const [timeLeft, setTimeLeft] = useState('');
 
+  // Chat & Clarification state
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [replacementFile, setReplacementFile] = useState(null);
+  const [sendingChat, setSendingChat] = useState(false);
+  const chatFileRef = useRef(null);
+  const chatBottomRef = useRef(null);
+
   const fetchOrder = async () => {
     try {
       setLoading(true);
@@ -46,19 +56,93 @@ export default function OrderTracking() {
     }
   };
 
+  const loadChat = async () => {
+    try {
+      const res = await ordersApi.getOrderChat(effectiveId);
+      if (res?.messages) {
+        setChatMessages(res.messages);
+      }
+    } catch (e) {
+      console.warn('Failed to load chat:', e);
+    }
+  };
+
+  const handleSendChat = async (e) => {
+    e?.preventDefault();
+    if (!chatInput.trim() && !replacementFile) return;
+    try {
+      setSendingChat(true);
+      const formData = new FormData();
+      if (chatInput.trim()) formData.append('message', chatInput.trim());
+      if (replacementFile) formData.append('file', replacementFile);
+      await ordersApi.sendChatMessage(effectiveId, formData);
+      setChatInput('');
+      setReplacementFile(null);
+      if (chatFileRef.current) chatFileRef.current.value = '';
+      await loadChat();
+      await fetchOrder();
+    } catch (err) {
+      alert(err.message || 'Failed to send message');
+    } finally {
+      setSendingChat(false);
+    }
+  };
+
   useEffect(() => {
     if (effectiveId) {
       fetchOrder();
     }
   }, [effectiveId]);
 
-  // Auto-poll every 10 seconds so customer sees receipt without manual refresh
+  // Real-time Server-Sent Events (SSE) Bus Listener & fallback polling
   useEffect(() => {
     if (!effectiveId) return;
+
+    let es = null;
+    try {
+      const token = localStorage.getItem('cybercafe:token') || localStorage.getItem('token') || '';
+      const streamUrl = `/api/events/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      es = new EventSource(streamUrl, { withCredentials: true });
+
+      es.addEventListener('ORDER_STATUS_UPDATED', (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload?.orderId === effectiveId) {
+            fetchOrder();
+          }
+        } catch {
+          fetchOrder();
+        }
+      });
+
+      es.addEventListener('ORDER_CHAT_MESSAGE', (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload?.orderId === effectiveId && payload?.message) {
+            setChatMessages(prev => {
+              if (prev.some(m => m.id === payload.message.id)) return prev;
+              return [...prev, payload.message];
+            });
+          }
+        } catch {}
+      });
+
+      es.addEventListener('ORDER_CLARIFICATION_REQUESTED', (e) => {
+        fetchOrder();
+        loadChat();
+      });
+    } catch (sseErr) {
+      console.warn('[SSE] EventSource init notice:', sseErr);
+    }
+
     const interval = setInterval(() => {
       fetchOrder();
-    }, 10000);
-    return () => clearInterval(interval);
+    }, 15000);
+
+    return () => {
+      clearInterval(interval);
+      if (es) es.close();
+    };
   }, [effectiveId]);
 
   // 24-Hour Expiry Timer
@@ -199,6 +283,12 @@ export default function OrderTracking() {
     }
   };
 
+  const handleDownloadPlatformReceipt = () => {
+    const token = localStorage.getItem('cybercafe:token') || '';
+    const receiptUrl = buildUrl(`/orders/${order.id}/receipt${token ? `?token=${encodeURIComponent(token)}` : ''}`);
+    window.open(receiptUrl, '_blank');
+  };
+
   return (
     <div>
       <button className="btn icon-btn" style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => navigate('/orders')}>
@@ -244,6 +334,28 @@ export default function OrderTracking() {
 
       <div style={{ display: 'flex', gap: '32px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ flex: 1.6, minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+          {/* Section A0: Waiting for Customer Clarification */}
+          {order.status === 'WAITING_FOR_CUSTOMER' && (
+            <div className="form-card" style={{ margin: 0, border: '2px solid #f59e0b', background: '#fffbeb', borderRadius: '12px', padding: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <AlertCircle size={22} color="#d97706" />
+                <h3 style={{ fontSize: '1.1rem', margin: 0, color: '#92400e', fontWeight: 700 }}>
+                  Action Required: Operator Requested Clarification or Replacement Document
+                </h3>
+              </div>
+              <p style={{ fontSize: '0.88rem', color: '#78350f', margin: '0 0 14px', lineHeight: 1.5 }}>
+                Your operator has requested additional clarification or a clearer document scan. Please reply or upload your document so work can resume.
+              </p>
+              <button
+                className="btn btn-primary"
+                style={{ background: '#d97706', borderColor: '#d97706', display: 'inline-flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}
+                onClick={() => { setShowChatModal(true); loadChat(); }}
+              >
+                <MessageSquare size={16} /> Reply & Upload Document
+              </button>
+            </div>
+          )}
 
           {/* Section A1: Available / Unassigned Order State */}
           {(!order.worker || order.status === 'AVAILABLE') && order.status !== 'COMPLETED' && order.status !== 'CANCELLED' && (
@@ -431,59 +543,96 @@ export default function OrderTracking() {
                 </div>
               </div>
 
-              {/* Deliverable Downloads */}
+              {/* Dual Receipt Section: Platform Payment Invoice + Official Government Acknowledgment */}
               <div>
-                <h4 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>Deliverable Documents & Receipts</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {order.deliverables && order.deliverables.length > 0 ? (
-                    order.deliverables.map((deliv, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'white', borderRadius: '8px', border: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <FileText size={18} color="var(--brand-blue)" />
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{deliv.name || deliv.fileName || `Deliverable Document #${idx + 1}`}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{deliv.size || 'Verified Output'} • {deliv.isMandatory ? '★ Official Final Receipt' : 'Submission Proof'}</div>
+                <h4 style={{ fontSize: '0.95rem', marginBottom: '12px' }}>Official Application Receipts & Deliverables</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+                  
+                  {/* Receipt 1: Platform Payment Receipt */}
+                  <div style={{ padding: '16px', background: 'white', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                        <FileText size={18} color="var(--brand-blue)" />
+                        <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>Platform Payment Receipt</span>
+                      </div>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
+                        Official tax invoice with itemized charges, platform fee breakdown, and verified payment confirmation.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      style={{ marginTop: '14px', width: '100%', justifyContent: 'center', fontSize: '0.82rem', gap: '6px' }}
+                      onClick={handleDownloadPlatformReceipt}
+                    >
+                      <Download size={14} /> Download Platform Invoice
+                    </button>
+                  </div>
+
+                  {/* Receipt 2: Official Government Acknowledgment */}
+                  <div style={{ padding: '16px', background: 'white', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                        <Shield size={18} color="var(--green, #2ecc71)" />
+                        <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>Official Government Acknowledgment</span>
+                      </div>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
+                        Official department submission acknowledgment, registration receipt, or final deliverable certificate.
+                      </p>
+                    </div>
+
+                    {order.deliverables && order.deliverables.length > 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ marginTop: '14px', width: '100%', justifyContent: 'center', fontSize: '0.82rem', gap: '6px' }}
+                        onClick={() => handleDownloadDeliverable(order.deliverables[0])}
+                      >
+                        <Download size={14} /> Download Official Acknowledgment
+                      </button>
+                    ) : (
+                      <div style={{
+                        marginTop: '14px',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        background: 'rgba(230, 126, 34, 0.08)',
+                        border: '1px solid rgba(230, 126, 34, 0.25)',
+                        color: '#d35400',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        textAlign: 'center'
+                      }}>
+                        Operator processing official acknowledgment upload
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Additional Deliverable Attachments if any */}
+                {order.deliverables && order.deliverables.length > 1 && (
+                  <div style={{ marginTop: '10px' }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      Additional Supporting Deliverables:
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {order.deliverables.slice(1).map((deliv, idx) => (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'white', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FileText size={16} color="var(--brand-blue)" />
+                            <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{deliv.name || deliv.fileName || `Attachment #${idx + 2}`}</span>
                           </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <a
-                            href={deliv.url ? (deliv.url.startsWith('http') ? deliv.url : `${buildUrl(deliv.url)}?token=${localStorage.getItem('cybercafe:token') || ''}`) : '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn btn-outline"
-                            style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
-                          >
-                            View
-                          </a>
                           <button
-                            className="btn btn-primary"
-                            style={{ padding: '6px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                            className="btn btn-outline"
+                            style={{ padding: '4px 10px', fontSize: '0.78rem' }}
                             onClick={() => handleDownloadDeliverable(deliv)}
                           >
-                            <Download size={14} /> Download
+                            <Download size={12} /> Download
                           </button>
                         </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'white', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <FileText size={18} color="var(--brand-blue)" />
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Official Final Receipt</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Digitally Verified PDF Receipt & Acknowledgement</div>
-                        </div>
-                      </div>
-                      <button
-                        className="btn btn-primary"
-                        style={{ padding: '6px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                        onClick={() => handleDownloadDeliverable({ name: 'Official_Receipt.pdf', url: buildUrl(`/orders/${order.id}/deliverables/latest/download`) })}
-                      >
-                        <Download size={14} /> Download Receipt
-                      </button>
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -623,10 +772,10 @@ export default function OrderTracking() {
               </div>
               <button 
                 className="btn btn-primary" 
-                style={{ width: '100%', justifyContent: 'center' }}
-                onClick={() => alert(`Direct phone/chat connection: ${order.worker.phone || 'Available during scheduled work time slot'}`)}
+                style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px' }}
+                onClick={() => { setShowChatModal(true); loadChat(); }}
               >
-                 <MessageCircle size={16} /> Contact Worker
+                 <MessageSquare size={16} /> Chat / Clarify with Worker
               </button>
             </div>
           )}
@@ -692,6 +841,143 @@ export default function OrderTracking() {
           </div>
         </div>
       </div>
+
+      {/* Chat & Clarification Modal */}
+      {showChatModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          zIndex: 1200,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{ background: 'white', borderRadius: '12px', maxWidth: '520px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MessageSquare size={18} color="var(--brand-blue)" />
+                <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Operator Chat & Clarifications</h3>
+              </div>
+              <button 
+                onClick={() => setShowChatModal(false)}
+                style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Chat Messages */}
+            <div style={{ flex: 1, padding: '16px', overflowY: 'auto', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '10px', minHeight: '200px', maxHeight: '380px' }}>
+              {chatMessages.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '30px 10px', color: '#94a3b8', fontSize: '0.88rem' }}>
+                  No messages exchanged yet. Send a message or upload any requested replacement document directly to your operator.
+                </div>
+              ) : (
+                chatMessages.map((msg, idx) => {
+                  const isCustomer = msg.senderRole === 'CUSTOMER';
+                  return (
+                    <div 
+                      key={msg.id || idx} 
+                      style={{ 
+                        alignSelf: isCustomer ? 'flex-end' : 'flex-start', 
+                        maxWidth: '85%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: isCustomer ? 'flex-end' : 'flex-start'
+                      }}
+                    >
+                      <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '2px' }}>
+                        {isCustomer ? 'You' : (msg.senderName || 'Certified Operator')}
+                      </span>
+                      <div style={{
+                        background: isCustomer ? 'var(--brand-blue)' : '#ffffff',
+                        color: isCustomer ? '#ffffff' : '#1e293b',
+                        padding: '10px 14px',
+                        borderRadius: '12px',
+                        fontSize: '0.88rem',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                        border: isCustomer ? 'none' : '1px solid #e2e8f0',
+                        wordBreak: 'break-word'
+                      }}>
+                        {msg.message}
+                        {msg.attachmentUrl && (
+                          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: isCustomer ? '1px solid rgba(255,255,255,0.3)' : '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Paperclip size={14} />
+                            <a 
+                              href={buildUrl(msg.attachmentUrl)} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              download={msg.attachmentName || 'document'}
+                              style={{ color: isCustomer ? '#ffffff' : 'var(--brand-blue)', fontSize: '0.8rem', textDecoration: 'underline', fontWeight: 600 }}
+                            >
+                              {msg.attachmentName || 'Download Uploaded File'}
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '2px' }}>
+                        {new Date(msg.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+
+            {/* Input & Upload */}
+            <form onSubmit={handleSendChat} style={{ padding: '12px 16px', borderTop: '1px solid #e2e8f0', background: 'white' }}>
+              {replacementFile && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: '#eff6ff', borderRadius: '6px', marginBottom: '8px', fontSize: '0.8rem', color: '#1e40af' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Paperclip size={14} />
+                    <span style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{replacementFile.name}</span>
+                  </div>
+                  <button type="button" onClick={() => { setReplacementFile(null); if (chatFileRef.current) chatFileRef.current.value = ''; }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input 
+                  type="file" 
+                  ref={chatFileRef}
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    if (e.target.files?.[0]) setReplacementFile(e.target.files[0]);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => chatFileRef.current?.click()}
+                  className="btn btn-outline"
+                  style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="Upload Replacement / Supporting Document"
+                >
+                  <Paperclip size={16} />
+                </button>
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  placeholder="Type reply or explanation..."
+                  style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                />
+                <button
+                  type="submit"
+                  disabled={sendingChat || (!chatInput.trim() && !replacementFile)}
+                  className="btn btn-primary"
+                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Send size={16} />
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

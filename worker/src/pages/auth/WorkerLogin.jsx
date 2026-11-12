@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Briefcase, KeyRound, User, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -146,75 +146,6 @@ export default function WorkerLogin() {
           )}
         </button>
       </form>
-
-      {/* Demo Worker Credentials Helper */}
-      <div style={{
-        marginTop: '20px',
-        padding: '14px',
-        background: '#f8fafc',
-        borderRadius: '10px',
-        border: '1px dashed #cbd5e1',
-        fontSize: '0.8rem'
-      }}>
-        <div style={{ fontWeight: 600, color: '#334155', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span>🔑 Quick Test Logins:</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <button
-            type="button"
-            onClick={() => {
-              setIdentifier('amit.cyber@gmail.com');
-              setPassword('password123');
-            }}
-            style={{
-              padding: '6px 10px',
-              background: '#e0e7ff',
-              color: '#3730a3',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              textAlign: 'left',
-              fontSize: '0.8rem',
-              fontWeight: 500
-            }}
-          >
-            👤 Amit Cyber Cafe (Patna) — <code style={{ fontSize: '0.75rem' }}>password123</code>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIdentifier('neha.cyber@gmail.com');
-              setPassword('password123');
-            }}
-            style={{
-              padding: '6px 10px',
-              background: '#f3e8ff',
-              color: '#6b21a8',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              textAlign: 'left',
-              fontSize: '0.8rem',
-              fontWeight: 500
-            }}
-          >
-            👤 Neha Documentation Hub — <code style={{ fontSize: '0.75rem' }}>password123</code>
-          </button>
-        </div>
-      </div>
-
-      <div style={{
-        textAlign: 'center',
-        marginTop: '20px',
-        paddingTop: '16px',
-        borderTop: '1px solid var(--border-color)',
-        fontSize: '0.875rem'
-      }}>
-        <span className="text-muted">Not a worker? </span>
-        <Link to="/login" style={{ color: 'var(--brand-blue)', fontWeight: 600 }}>
-          Go to Customer / Admin Login
-        </Link>
-      </div>
     </div>
   );
 }

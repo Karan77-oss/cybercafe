@@ -4,8 +4,18 @@
     --bg-darker: #0a1024;
     --text-sidebar: #a0a8cc;
     --text-sidebar-active: #ffffff;
-    --brand-blue: #5364f9;
-    --brand-blue-hover: #4252de;
+    
+    /* Cyber Cafe Brand Orange (#E8771B) Identity */
+    --brand-primary: #e8771b;
+    --brand-primary-hover: #d0630e;
+    --brand-blue: #e8771b;
+    --brand-blue-hover: #d0630e;
+    --brand-orange: #e8771b;
+    --brand-orange-hover: #d0630e;
+    --brand-tint: #fff7ed;
+    --brand-tint-border: #fed7aa;
+    --brand-glow: rgba(232, 119, 27, 0.2);
+
     --bg-main: #f5f6fa;
     --card-bg: #ffffff;
     --text-main: #1a1e35;
@@ -14,7 +24,7 @@
     --purple: #8761f4;
     --blue: #3b82f6;
     --green: #2ecc71;
-    --orange: #f39c12;
+    --orange: #e8771b;
     --red: #e74c3c;
     --yellow: #f1c40f;
     --blue-light: #3498db;

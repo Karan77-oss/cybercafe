@@ -21,11 +21,13 @@ import {
   Paperclip,
   Clock,
   Check,
-  X,
-  HeartHandshake
+  HeartHandshake,
+  Eye,
+  HelpCircle
 } from 'lucide-react';
 import { workerApi } from '../../api/worker';
 import { buildUrl } from '../../api/client';
+import WatermarkedDocumentViewer from '../../components/WatermarkedDocumentViewer';
 
 export default function JobWorkspace() {
   const { jobId } = useParams();
@@ -35,6 +37,11 @@ export default function JobWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Clarification State
+  const [showClarificationModal, setShowClarificationModal] = useState(false);
+  const [clarificationText, setClarificationText] = useState('');
+  const [submittingClarification, setSubmittingClarification] = useState(false);
+
   // Time Slot State
   const [slotDate, setSlotDate] = useState('Today');
   const [slotStart, setSlotStart] = useState('10:00 AM');
@@ -43,6 +50,7 @@ export default function JobWorkspace() {
 
   // Worker Reschedule Modal State
   const [showWorkerRescheduleModal, setShowWorkerRescheduleModal] = useState(false);
+  const [selectedViewingDoc, setSelectedViewingDoc] = useState(null);
   const [workerProposedDate, setWorkerProposedDate] = useState('Tomorrow');
   const [workerProposedSlot, setWorkerProposedSlot] = useState('11:00 AM - 01:00 PM');
   const [submittingWorkerReschedule, setSubmittingWorkerReschedule] = useState(false);
@@ -118,9 +126,11 @@ export default function JobWorkspace() {
   const loadJobData = async () => {
     try {
       const res = await workerApi.getJobDetails(jobId);
-      if (res?.job) {
-        setJob(res.job);
-        setIsChatClosed(res.job.status === 'COMPLETED' || res.job.status === 'CANCELLED');
+      const jobData = res?.job || res?.order || res?.data?.job || res?.data?.order;
+      if (jobData) {
+        setJob(jobData);
+        const isClosed = ['WORK_COMPLETED', 'RECEIPT_SUBMITTED', 'SUBMITTED', 'COMPLETED', 'CANCELLED'].includes(jobData.status);
+        setIsChatClosed(isClosed);
       } else {
         setError('Order not found or unauthorized');
       }
@@ -151,9 +161,83 @@ export default function JobWorkspace() {
     loadChat();
     loadWelfare();
 
+    // SSE Realtime stream for live chat and status updates
+    let eventSource = null;
+    try {
+      const token = localStorage.getItem('cybercafe:token');
+      const sseUrl = `${buildUrl('/events/stream')}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      eventSource = new EventSource(sseUrl);
+
+      eventSource.addEventListener('ORDER_CHAT_MESSAGE', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.orderId === jobId && data.message) {
+            setChatMessages(prev => {
+              if (prev.some(m => m.id === data.message.id)) return prev;
+              return [...prev, data.message];
+            });
+          }
+        } catch (err) {
+          console.error('SSE chat parse error:', err);
+        }
+      });
+
+      eventSource.addEventListener('ORDER_STATUS_UPDATED', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.orderId === jobId) {
+            setJob(prev => prev ? { ...prev, status: data.status } : prev);
+          }
+        } catch (err) {
+          console.error('SSE status error:', err);
+        }
+      });
+
+      eventSource.addEventListener('ORDER_CLARIFICATION_REQUESTED', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.orderId === jobId) {
+            loadChat();
+            loadJobData();
+          }
+        } catch (err) {
+          console.error('SSE clarification error:', err);
+        }
+      });
+    } catch (err) {
+      console.warn('SSE subscription failed, falling back to polling:', err);
+    }
+
     const chatInterval = setInterval(loadChat, 5000);
-    return () => clearInterval(chatInterval);
+    return () => {
+      clearInterval(chatInterval);
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
   }, [jobId]);
+
+  const handleRequestClarification = async (e) => {
+    e?.preventDefault();
+    if (!clarificationText.trim()) return;
+    setSubmittingClarification(true);
+    try {
+      const res = await workerApi.requestClarification(jobId, clarificationText.trim());
+      if (res?.success) {
+        setShowClarificationModal(false);
+        setClarificationText('');
+        await loadJobData();
+        await loadChat();
+        alert('Clarification request sent to customer. Status is now WAITING_FOR_CUSTOMER.');
+      } else {
+        alert(res?.error || 'Failed to request clarification');
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to request clarification');
+    } finally {
+      setSubmittingClarification(false);
+    }
+  };
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -371,7 +455,8 @@ export default function JobWorkspace() {
       if (res?.success) {
         setJob(res.order);
         setIsChatClosed(true);
-        alert('Work successfully finished! Net earnings credited to your wallet.');
+        const earnedRupees = ((res.order?.workerAmountPaise || job.workerAmountPaise || 0) / 100).toFixed(2);
+        alert(`Work successfully finished! Net earning of ₹${earnedRupees} is now in your Pending Balance. It will automatically settle into your Available Wallet Balance in 1 hour.`);
       }
     } catch (err) {
       alert(err.message || 'Failed to complete job');
@@ -422,7 +507,7 @@ export default function JobWorkspace() {
   const isCompleted = job.status === 'COMPLETED';
   const isCorrection = job.status === 'CORRECTION_REQUIRED';
   const isAccepted = job.status === 'ACCEPTED' || job.status === 'ASSIGNED';
-  const payout = (job.workerEarningsPaise || Math.round(job.pricePaise * 0.8)) / 100;
+  const payout = (job.workerEarningsPaise || job.workerAmountPaise || job.workerAmount || 0) / 100;
   const deliverables = job.deliverables || [];
 
   const formatDateDisplay = (dateVal) => {
@@ -518,6 +603,29 @@ export default function JobWorkspace() {
         </div>
       )}
 
+      {/* Waiting for Customer Clarification Banner */}
+      {job.status === 'WAITING_FOR_CUSTOMER' && (
+        <div style={{
+          background: '#eff6ff',
+          border: '2px solid #3b82f6',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px'
+        }}>
+          <Clock size={28} color="#3b82f6" style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontWeight: 800, color: '#1e40af', fontSize: '1rem' }}>
+              WAITING FOR CUSTOMER RESPONSE / CLARIFICATION
+            </div>
+            <div style={{ fontSize: '0.88rem', color: '#1d4ed8', marginTop: 2 }}>
+              You have requested clarification or a replacement document from the customer. Once they reply or submit their updated file, their response will appear live below.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Title & Headline Overview */}
       <div style={{
         background: 'white',
@@ -558,16 +666,29 @@ export default function JobWorkspace() {
             </div>
           </div>
 
-          {/* Start Work Action if still ACCEPTED */}
-          {isAccepted && (
-            <button
-              onClick={handleStartWork}
-              className="btn btn-primary"
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: 700 }}
-            >
-              <Play size={16} fill="white" /> Start Work (Mark In-Progress)
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {/* Start Work Action if still ACCEPTED */}
+            {isAccepted && (
+              <button
+                onClick={handleStartWork}
+                className="btn btn-primary"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontWeight: 700 }}
+              >
+                <Play size={16} fill="white" /> Start Work (Mark In-Progress)
+              </button>
+            )}
+
+            {!isCompleted && job.status !== 'CANCELLED' && (
+              <button
+                onClick={() => setShowClarificationModal(true)}
+                className="btn btn-outline"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', fontWeight: 600, borderColor: '#93c5fd', color: '#1d4ed8', background: '#eff6ff' }}
+                title="Ask customer for missing details or replacement document"
+              >
+                <HelpCircle size={16} /> Request Clarification / Docs
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -790,15 +911,14 @@ export default function JobWorkspace() {
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <a
-                          href={authenticatedViewUrl}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => setSelectedViewingDoc(doc)}
                           className="btn btn-outline"
-                          style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'none' }}
+                          style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
                         >
-                          View <ExternalLink size={12} />
-                        </a>
+                          <Eye size={12} /> View Securely
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleDownloadDoc(doc)}
@@ -1137,9 +1257,66 @@ export default function JobWorkspace() {
                 )}
               </div>
             ) : (
-              <div style={{ padding: '14px', background: '#f0fdf4', borderRadius: '8px', textAlign: 'center', color: '#166534', fontWeight: 700 }}>
-                <CheckCircle2 size={20} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
-                Order Completed & Verified
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ padding: '14px', background: '#f0fdf4', borderRadius: '8px', textAlign: 'center', color: '#166534', fontWeight: 700 }}>
+                  <CheckCircle2 size={20} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
+                  Order Completed & Verified
+                </div>
+
+                {/* 1-Hour Settlement Status */}
+                <div style={{ padding: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ color: '#64748b' }}>Payout Settlement:</span>
+                    <span style={{ fontWeight: 700, color: '#0284c7' }}>
+                      ₹{(((job.workerAmountPaise || job.workerAmount || 0) / 100).toFixed(2))}
+                    </span>
+                  </div>
+                  {(() => {
+                    const compTime = job.completedAt ? new Date(job.completedAt).getTime() : (job.workCompletedAt ? new Date(job.workCompletedAt).getTime() : Date.now());
+                    const unlockAt = compTime + 3600000;
+                    const isMatured = Date.now() >= unlockAt || job.earningStatus === 'RELEASED';
+                    const diffMs = Math.max(0, unlockAt - Date.now());
+                    const mins = Math.floor(diffMs / 60000);
+                    const secs = Math.floor((diffMs % 60000) / 1000);
+
+                    return isMatured ? (
+                      <div style={{ color: '#166534', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <CheckCircle2 size={14} /> Settled into Available Wallet Balance
+                      </div>
+                    ) : (
+                      <div style={{ color: '#b45309', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Clock size={14} /> Pending Balance — Unlocks in {mins}m {secs < 10 ? '0' : ''}{secs}s
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Customer Rating & Feedback (if submitted) */}
+                {(job.rating || job.serviceSnapshot?.review?.rating || job.review?.rating) && (
+                  <div style={{ padding: '12px', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#92400e', marginBottom: '4px' }}>
+                      Customer Rating & Feedback
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                      {[1, 2, 3, 4, 5].map(star => {
+                        const r = job.rating || job.serviceSnapshot?.review?.rating || job.review?.rating || 5;
+                        return (
+                          <span key={star} style={{ color: star <= r ? '#f59e0b' : '#d1d5db', fontSize: '1rem' }}>
+                            ★
+                          </span>
+                        );
+                      })}
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#78350f', marginLeft: '4px' }}>
+                        ({job.rating || job.serviceSnapshot?.review?.rating || job.review?.rating}/5)
+                      </span>
+                    </div>
+                    {(job.review || job.serviceSnapshot?.review?.comment || job.serviceSnapshot?.review?.review) && (
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: '#78350f', fontStyle: 'italic' }}>
+                        "{job.review || job.serviceSnapshot?.review?.comment || job.serviceSnapshot?.review?.review}"
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1209,6 +1386,20 @@ export default function JobWorkspace() {
                         }}
                       >
                         {msg.message}
+                        {msg.attachmentUrl && (
+                          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: isMe ? '1px solid rgba(255,255,255,0.25)' : '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Paperclip size={14} />
+                            <a 
+                              href={buildUrl(msg.attachmentUrl)} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              download={msg.attachmentName || 'document'}
+                              style={{ color: isMe ? '#ffffff' : '#2563eb', fontSize: '0.8rem', textDecoration: 'underline', fontWeight: 600 }}
+                            >
+                              {msg.attachmentName || 'Download Uploaded File'}
+                            </a>
+                          </div>
+                        )}
                       </div>
                       <span style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: 2 }}>
                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1449,6 +1640,58 @@ export default function JobWorkspace() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Clarification Request Modal */}
+      {showClarificationModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+        }}>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '24px', maxWidth: '480px', width: '100%', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.15rem', color: '#0f172a' }}>
+              Request Clarification from Customer
+            </h3>
+            <p style={{ margin: '0 0 14px', fontSize: '0.84rem', color: '#64748b' }}>
+              Need a clearer photo, missing identity proof, or confirmation of application details? Describe what the customer should provide or upload.
+            </p>
+            <textarea
+              required
+              rows={4}
+              placeholder="e.g. The uploaded Aadhaar card scan is blurry. Please upload a clear photo of both front and back sides so we can proceed..."
+              value={clarificationText}
+              onChange={e => setClarificationText(e.target.value)}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', marginBottom: '16px' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setShowClarificationModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={submittingClarification || !clarificationText.trim()}
+                className="btn btn-primary"
+                onClick={handleRequestClarification}
+              >
+                {submittingClarification ? 'Sending...' : 'Send Clarification Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedViewingDoc && (
+        <WatermarkedDocumentViewer
+          doc={selectedViewingDoc}
+          order={job}
+          worker={job?.worker || (localStorage.getItem('cybercafe:user') ? JSON.parse(localStorage.getItem('cybercafe:user') || '{}') : null)}
+          onClose={() => setSelectedViewingDoc(null)}
+        />
       )}
     </div>
   );

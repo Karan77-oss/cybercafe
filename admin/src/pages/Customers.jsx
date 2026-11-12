@@ -48,7 +48,7 @@ export default function Customers() {
       search: searchTerm || undefined 
     })
       .then(res => {
-        setCustomers(res.customers || []);
+        setCustomers(res.customers || res.data || []);
         setLoading(false);
       })
       .catch(err => {

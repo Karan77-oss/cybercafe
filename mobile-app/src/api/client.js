@@ -1,29 +1,33 @@
 import axios from 'axios';
-import { Capacitor } from '@capacitor/core';
+import { env } from '../config/env';
+import { swrCache } from '../utils/swrCache';
 
 const getBaseUrl = () => {
-  // If explicitly provided via .env, respect it
-  if (import.meta.env.VITE_API_URL) {
-    // If running in native shell and env has localhost, map to 10.0.2.2 for Android emulator
-    if (Capacitor.isNativePlatform() && (import.meta.env.VITE_API_URL.includes('localhost') || import.meta.env.VITE_API_URL.includes('127.0.0.1'))) {
-      return import.meta.env.VITE_API_URL.replace(/localhost|127\.0\.0\.1/, '10.0.2.2');
-    }
-    return import.meta.env.VITE_API_URL;
-  }
-  // If running inside native Android/iOS shell
-  if (Capacitor.isNativePlatform()) {
-    // For standard Android Emulator: 10.0.2.2 maps to the host PC's localhost
-    // For real devices connected via Wi-Fi, replace with machine's LAN IP e.g. 'http://192.168.1.X:4000/api'
-    return 'http://10.0.2.2:4000/api';
-  }
-  // Browser development
-  return 'http://localhost:4000/api';
+  return env.getApiBaseUrl();
 };
 
+// Generous 45-second timeout for mobile networks & large document uploads
 const api = axios.create({
   baseURL: getBaseUrl(),
-  timeout: 10000,
+  timeout: 45000,
 });
+
+// Resolves the backend host root (base URL with the trailing /api stripped) so
+// relative asset/document URLs (e.g. /api/uploads/... or /uploads/...) can be
+// turned into absolute URLs without hardcoding a localhost origin.
+export const getApiHostRoot = () => {
+  const base = getBaseUrl().replace(/\/+$/, '');
+  return base.replace(/\/api$/i, '');
+};
+
+// Build an absolute URL for a backend-relative path, falling back to same-origin
+// when the value is already absolute.
+export const resolveBackendUrl = (url) => {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  const root = getApiHostRoot();
+  return `${root}${url.startsWith('/') ? url : `/${url}`}`;
+};
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
@@ -36,14 +40,51 @@ api.interceptors.request.use((config) => {
 export const apiClient = api;
 export { api };
 
-// Response interceptor to handle common errors
+// Smart retry with exponential backoff for transient network issues (500ms, 1000ms, 2000ms)
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Optional: Handle token expiration
-      // localStorage.removeItem('token');
+  async (error) => {
+    const config = error.config;
+    if (config) {
+      config.retry = config.retry ?? 3;
+      config.retryCount = config.retryCount || 0;
+
+      const isNetworkOrTimeout =
+        !error.response ||
+        error.code === 'ECONNABORTED' ||
+        (error.response?.status >= 502 && error.response?.status <= 504);
+
+      if (isNetworkOrTimeout && config.retryCount < config.retry) {
+        config.retryCount += 1;
+        const backoffMs = Math.min(500 * Math.pow(2, config.retryCount - 1), 3000);
+        console.warn(`[Network Retry] Attempt ${config.retryCount}/${config.retry} for ${config.url} after ${backoffMs}ms`);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        return apiClient(config);
+      }
     }
+
+    if (error.response?.status === 401) {
+      // Token expiration / invalid credentials
+      swrCache.clear();
+    }
+
+    // Detailed error message parsing
+    let friendly = 'An unexpected error occurred. Please try again.';
+    if (!error.response) {
+      friendly = error.code === 'ECONNABORTED'
+        ? 'Connection timed out. Please check your network connection.'
+        : 'Network connection error. Server is unreachable.';
+    } else if (error.response.data?.error?.message) {
+      friendly = error.response.data.error.message;
+    } else if (typeof error.response.data?.error === 'string') {
+      friendly = error.response.data.error;
+    } else if (error.response.data?.message) {
+      friendly = error.response.data.message;
+    } else if (error.message) {
+      friendly = error.message;
+    }
+    error.friendlyMessage = friendly;
+
     return Promise.reject(error);
   }
 );
@@ -72,11 +113,15 @@ export const authApi = {
   },
   me: async () => {
     const res = await apiClient.get('/auth/me');
+    if (res.data?.user) {
+      localStorage.setItem('user', JSON.stringify(res.data.user));
+    }
     return res.data;
   },
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    swrCache.clear();
   },
   getCurrentUser: () => {
     try {
@@ -106,12 +151,16 @@ export const servicesApi = {
 // 3. Order Lifecycle
 export const ordersApi = {
   createOrder: async (orderData) => {
-    // Check if orderData is FormData or regular object
-    const isFormData = orderData instanceof FormData;
-    const config = isFormData
-      ? { headers: {} }
-      : {};
-    const res = await apiClient.post('/orders', orderData, config);
+    const res = await apiClient.post('/orders', orderData);
+    const createdOrder = res.data?.order || res.data?.data?.order || res.data;
+
+    // Optimistically update cached orders list immediately
+    if (createdOrder && (createdOrder.id || createdOrder.orderId)) {
+      const currentOrders = swrCache.get('my_orders') || [];
+      const updated = [createdOrder, ...currentOrders.filter((o) => (o.id || o.orderId) !== (createdOrder.id || createdOrder.orderId))];
+      swrCache.set('my_orders', updated);
+    }
+
     return res.data;
   },
   getMyOrders: async () => {
@@ -120,6 +169,14 @@ export const ordersApi = {
   },
   getOrder: async (id) => {
     const res = await apiClient.get(`/orders/${id}`);
+    return res.data;
+  },
+  submitFeedback: async (id, { rating, feedback_comment, comment }) => {
+    const res = await apiClient.post(`/orders/${id}/feedback`, {
+      rating,
+      comment: feedback_comment || comment,
+      feedback_comment: feedback_comment || comment
+    });
     return res.data;
   },
   payOrder: async (id, paymentData = {}) => {
@@ -140,6 +197,20 @@ export const ordersApi = {
   },
   respondReschedule: async (id, data) => {
     const res = await apiClient.post(`/orders/${id}/respond-reschedule`, data);
+    return res.data;
+  },
+  getOrderChat: async (id) => {
+    const res = await apiClient.get(`/orders/${id}/chat`);
+    return res.data;
+  },
+  sendChatMessage: async (id, formDataOrMessage) => {
+    if (formDataOrMessage instanceof FormData) {
+      const res = await apiClient.post(`/orders/${id}/chat`, formDataOrMessage, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      return res.data;
+    }
+    const res = await apiClient.post(`/orders/${id}/chat`, { message: formDataOrMessage });
     return res.data;
   }
 };
@@ -163,6 +234,26 @@ export const vaultApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+    });
+    return res.data;
+  }
+};
+
+// 4.1 Documents Direct & Presigned Upload
+export const documentsApi = {
+  presignUpload: async (data) => {
+    const res = await apiClient.post('/documents/presign-upload', data);
+    return res.data;
+  },
+  confirmUpload: async (data) => {
+    const res = await apiClient.post('/documents/confirm-upload', data);
+    return res.data;
+  },
+  upload: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await apiClient.post('/documents/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
     });
     return res.data;
   }

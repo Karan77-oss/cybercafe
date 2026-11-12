@@ -58,11 +58,12 @@ describe('Business Logic Tests (A-Q)', () => {
       expect(order.id).toBe('order-1');
     });
 
-    it('H. Customer cannot set arbitrary price', () => {
-      // Logic would fetch from DB, not from payload
-      const mockService = { pricePaise: 19900 };
-      const calculatedPayout = mockService.pricePaise * 0.8;
-      expect(calculatedPayout).toBe(15920);
+    it('H. Customer cannot set arbitrary price and additive pricing holds', () => {
+      // Logic fetches authoritative service pricing from DB
+      const mockService = { pricePaise: 19900, workerAmountPaise: 15000, adminCommissionPaise: 4900 };
+      const calculatedPayout = mockService.workerAmountPaise;
+      expect(calculatedPayout).toBe(15000);
+      expect(mockService.pricePaise).toBe(mockService.workerAmountPaise + mockService.adminCommissionPaise);
     });
   });
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { 
   Box, 
   Search, 
@@ -22,12 +23,16 @@ import { adminApi } from '../api/admin';
 import { buildUrl } from '../api/client';
 
 export default function Orders() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawParamStatus = (searchParams.get('status') || '').toUpperCase();
+  const initialStatus = (rawParamStatus === 'AVAILABLE' || rawParamStatus === 'PENDING') ? 'PENDING' : (rawParamStatus || 'ALL');
+
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   // Filters & Search
-  const [statusTab, setStatusTab] = useState('ALL');
+  const [statusTab, setStatusTab] = useState(initialStatus);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Order Details Drawer
@@ -52,8 +57,8 @@ export default function Orders() {
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [refundReason, setRefundReason] = useState('');
 
-  const loadOrders = () => {
-    setLoading(true);
+  const loadOrders = (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     adminApi.getOrders({
       status: (statusTab === 'ALL' || statusTab === 'All Orders') ? undefined : statusTab,
       search: searchTerm || undefined,
@@ -61,17 +66,61 @@ export default function Orders() {
     })
       .then(res => {
         setOrders(res.orders || []);
-        setLoading(false);
+        if (!isSilent) setLoading(false);
       })
       .catch(err => {
         console.error(err);
-        setError('Failed to load orders');
-        setLoading(false);
+        if (!isSilent) {
+          setError('Failed to load orders');
+          setLoading(false);
+        }
       });
   };
 
+  // Synchronize statusTab when URL query parameter changes
+  useEffect(() => {
+    const param = (searchParams.get('status') || '').toUpperCase();
+    if (param === 'AVAILABLE' || param === 'PENDING') {
+      if (statusTab !== 'PENDING') setStatusTab('PENDING');
+    } else if (param && statusTab !== param) {
+      setStatusTab(param);
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     loadOrders();
+
+    // 10-second polling fallback to guarantee fresh orders even if network or SSE drops
+    const pollInterval = setInterval(() => {
+      loadOrders(true);
+    }, 10000);
+
+    let es = null;
+    try {
+      const token = localStorage.getItem('cybercafe:token') || localStorage.getItem('token') || localStorage.getItem('cybercafe_admin_token') || '';
+      const streamUrl = `/api/events/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      es = new EventSource(streamUrl, { withCredentials: true });
+
+      const onEvent = () => {
+        loadOrders(true);
+      };
+
+      es.onmessage = onEvent;
+      es.addEventListener('message', onEvent);
+      es.addEventListener('ORDER_CREATED', onEvent);
+      es.addEventListener('ORDER_CLAIMED', onEvent);
+      es.addEventListener('ORDER_STATUS_UPDATED', onEvent);
+      es.addEventListener('ORDER_AVAILABLE', onEvent);
+      es.addEventListener('ORDER_CLARIFICATION_REQUESTED', onEvent);
+      es.addEventListener('ORDER_CHAT_MESSAGE', onEvent);
+    } catch (sseErr) {
+      console.warn('[Admin SSE notice]:', sseErr);
+    }
+
+    return () => {
+      clearInterval(pollInterval);
+      if (es) es.close();
+    };
   }, [statusTab]);
 
   const handleSearch = (e) => {
@@ -192,9 +241,24 @@ export default function Orders() {
 
   // Stats calculation
   const totalCount = orders.length;
-  const inProgressCount = orders.filter(o => o.status === 'IN_PROGRESS' || o.status === 'ACCEPTED').length;
-  const completedCount = orders.filter(o => o.status === 'COMPLETED').length;
-  const disputeHoldCount = orders.filter(o => o.status === 'CORRECTION_REQUESTED' || o.status === 'ON_HOLD' || o.earningsHold).length;
+  const pendingCount = orders.filter(o => 
+    ['CREATED', 'AVAILABLE', 'PAYMENT_PENDING', 'PENDING', 'OFFERED', 'NEW', 'UNASSIGNED'].includes((o.status || '').toUpperCase()) || 
+    ((!o.workerId && !o.assignedWorkerId && !o.worker) && !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes((o.status || '').toUpperCase()))
+  ).length;
+  const inProgressCount = orders.filter(o => ['IN_PROGRESS', 'ACCEPTED', 'ASSIGNED', 'WAITING_FOR_CUSTOMER', 'RECEIPT_SUBMITTED', 'PROCESSING'].includes((o.status || '').toUpperCase())).length;
+  const completedCount = orders.filter(o => ['COMPLETED', 'DELIVERED', 'WORK_COMPLETED'].includes((o.status || '').toUpperCase())).length;
+  const disputeHoldCount = orders.filter(o => ['CORRECTION_REQUESTED', 'ON_HOLD', 'DISPUTED', 'REVISION_REQUIRED'].includes((o.status || '').toUpperCase()) || o.earningsHold).length;
+
+  const handleTabClick = (key) => {
+    setStatusTab(key);
+    const newParams = new URLSearchParams(searchParams);
+    if (key === 'ALL') {
+      newParams.delete('status');
+    } else {
+      newParams.set('status', key);
+    }
+    setSearchParams(newParams, { replace: true });
+  };
 
   return (
     <div className="view-content">
@@ -210,9 +274,10 @@ export default function Orders() {
         </div>
       </div>
 
-      <div className="stats-grid compact">
+      <div className="stats-grid compact" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
         <StatCard title="Total Orders" value={totalCount} icon={Box} color="purple" />
-        <StatCard title="In Progress" value={inProgressCount} icon={Clock} color="blue" />
+        <StatCard title="Pending / Available" value={pendingCount} icon={Clock} color="orange" />
+        <StatCard title="In Progress" value={inProgressCount} icon={PlayCircle} color="blue" />
         <StatCard title="Completed" value={completedCount} icon={CheckCircle} color="green" />
         <StatCard title="Dispute / On Hold" value={disputeHoldCount} icon={AlertCircle} color="red" />
       </div>
@@ -221,7 +286,7 @@ export default function Orders() {
       <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid var(--border-color)', marginBottom: '20px', overflowX: 'auto' }}>
         {[
           { key: 'ALL', label: 'All Orders' },
-          { key: 'PENDING', label: 'Pending' },
+          { key: 'PENDING', label: 'Pending / Available' },
           { key: 'IN_PROGRESS', label: 'In Progress' },
           { key: 'COMPLETED', label: 'Completed' },
           { key: 'CORRECTION_REQUESTED', label: 'Correction Requested' },
@@ -231,7 +296,7 @@ export default function Orders() {
         ].map(tab => (
           <button
             key={tab.key}
-            onClick={() => setStatusTab(tab.key)}
+            onClick={() => handleTabClick(tab.key)}
             style={{
               padding: '10px 14px',
               background: 'none',
@@ -284,64 +349,74 @@ export default function Orders() {
               </tr>
             </thead>
             <tbody>
-              {orders.map((o) => (
-                <tr key={o.id}>
-                  <td>
-                    <span style={{ fontWeight: 600, color: 'var(--brand-blue)', fontSize: '0.85rem' }}>
-                      {o.orderNumber || o.id}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{o.serviceSnapshot?.name || 'Cyber Cafe Service'}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{o.serviceSnapshot?.category || 'Service'}</div>
-                  </td>
-                  <td>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{o.customer?.name || 'Customer'}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{o.customer?.email}</div>
-                  </td>
-                  <td>
-                    {o.job?.worker ? (
-                      <div className="user-cell">
-                        <img 
-                          src={`https://ui-avatars.com/api/?name=${encodeURIComponent(o.job.worker.name || 'W')}&background=6366f1&color=fff`} 
-                          alt="" 
-                          style={{ width: '26px', height: '26px' }}
-                        />
-                        <div>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{o.job.worker.name}</div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--brand-blue)' }}>{o.job.worker.workerId || 'Worker'}</div>
-                        </div>
-                      </div>
-                    ) : (
-                      <span style={{ color: '#ea580c', fontSize: '0.8rem', background: '#fff7ed', padding: '2px 8px', borderRadius: '12px' }}>
-                        Auto-matching
+              {orders.map((o) => {
+                const assignedWorker = o.worker || (o.job && o.job.worker) || o.assignedWorker;
+                const serviceName = o.serviceSnapshot?.name || o.service?.name || o.serviceName || (o.formData && (o.formData.serviceName || o.formData.applicationType)) || 'Cyber Cafe Service';
+                const serviceCategory = o.serviceSnapshot?.category || o.service?.category || o.category || 'Service';
+                const customerName = o.customer?.name || o.user?.name || (o.formData && (o.formData.fullName || o.formData.name)) || 'Customer';
+                const customerEmail = o.customer?.email || o.user?.email || (o.formData && o.formData.email) || 'N/A';
+                const pricePaise = o.pricing?.pricePaise || o.customerPaidAmountPaise || o.customerPaidAmount || o.pricePaise || 0;
+                const workerEarningPaise = o.pricing?.workerEarningPaise || (o.pricing?.workerPayoutPaise) || o.workerEarningsPaise || (pricePaise - (o.adminCommissionPaise || 0));
+
+                return (
+                  <tr key={o.id}>
+                    <td>
+                      <span style={{ fontWeight: 600, color: 'var(--brand-blue)', fontSize: '0.85rem' }}>
+                        {o.orderNumber || o.id}
                       </span>
-                    )}
-                  </td>
-                  <td>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>₹{((o.pricing?.pricePaise || 0) / 100).toFixed(2)}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Worker: ₹{((o.pricing?.workerEarningPaise || 0) / 100).toFixed(2)}
-                      {o.earningsHold && <span style={{ color: '#dc2626', marginLeft: '4px' }}>(HELD)</span>}
-                    </div>
-                  </td>
-                  <td>
-                    <StatusBadge status={o.status} />
-                  </td>
-                  <td>
-                    <div style={{ fontSize: '0.85rem' }}>{new Date(o.createdAt).toLocaleDateString()}</div>
-                  </td>
-                  <td>
-                    <button 
-                      className="btn btn-outline" 
-                      style={{ padding: '4px 10px', fontSize: '0.8rem' }}
-                      onClick={() => openOrderDetail(o.id)}
-                    >
-                      Inspect
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{serviceName}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{serviceCategory}</div>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{customerName}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{customerEmail}</div>
+                    </td>
+                    <td>
+                      {assignedWorker ? (
+                        <div className="user-cell">
+                          <img 
+                            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(assignedWorker.name || 'W')}&background=6366f1&color=fff`} 
+                            alt="" 
+                            style={{ width: '26px', height: '26px' }}
+                          />
+                          <div>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{assignedWorker.name}</div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--brand-blue)' }}>{assignedWorker.workerId || assignedWorker.id || 'Worker'}</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#ea580c', fontSize: '0.8rem', background: '#fff7ed', padding: '3px 8px', borderRadius: '12px', border: '1px solid #fed7aa', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <Clock size={12} /> Available / Pending
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>₹{(pricePaise / 100).toFixed(2)}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Worker: ₹{(workerEarningPaise / 100).toFixed(2)}
+                        {o.earningsHold && <span style={{ color: '#dc2626', marginLeft: '4px' }}>(HELD)</span>}
+                      </div>
+                    </td>
+                    <td>
+                      <StatusBadge status={o.status} />
+                    </td>
+                    <td>
+                      <div style={{ fontSize: '0.85rem' }}>{o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'N/A'}</div>
+                    </td>
+                    <td>
+                      <button 
+                        className="btn btn-outline" 
+                        style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                        onClick={() => openOrderDetail(o.id)}
+                      >
+                        Inspect
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               {orders.length === 0 && (
                 <tr>
                   <td colSpan="8" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
@@ -469,24 +544,93 @@ export default function Orders() {
 
                 {/* Customer and Worker Cards */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px', fontSize: '0.85rem' }}>
-                  <div style={{ padding: '14px', background: '#f8fafc', borderRadius: '8px' }}>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, marginBottom: '6px' }}>CUSTOMER</div>
-                    <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{orderDetail.customer?.name}</div>
-                    <div>{orderDetail.customer?.email}</div>
-                    <div>{orderDetail.customer?.phone || 'No phone'}</div>
+                  {/* Customer Details Card */}
+                  <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.5px' }}>CUSTOMER DETAILS</div>
+                      {orderDetail.applicationType && (
+                        <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', fontWeight: 600 }}>
+                          {orderDetail.applicationType}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: '1rem', color: '#0f172a' }}>
+                      {orderDetail.customer?.name || orderDetail.user?.name || (orderDetail.formData?.fullName) || 'Customer'}
+                    </div>
+                    <div style={{ color: '#475569', marginTop: '2px' }}>
+                      {orderDetail.customer?.email || orderDetail.user?.email || 'No email provided'}
+                    </div>
+                    <div style={{ color: '#475569', marginTop: '2px' }}>
+                      📞 {orderDetail.customer?.phone || orderDetail.user?.phone || orderDetail.formData?.phone || orderDetail.formData?.mobile || 'No phone'}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                      Customer ID: <code style={{ fontSize: '0.72rem' }}>{orderDetail.customer?.id || orderDetail.userId || orderDetail.customerId}</code>
+                    </div>
+                    {orderDetail.formData && Object.keys(orderDetail.formData).length > 0 && (
+                      <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>FORM FIELDS:</div>
+                        <div style={{ maxHeight: '90px', overflowY: 'auto', fontSize: '0.75rem', background: '#ffffff', padding: '6px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                          {Object.entries(orderDetail.formData)
+                            .filter(([k]) => !['application_type', 'applicationType', 'contactPhone', 'customerNotes'].includes(k))
+                            .slice(0, 5)
+                            .map(([k, v]) => (
+                              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                                <span style={{ color: '#64748b' }}>{k}:</span>
+                                <span style={{ fontWeight: 600, textAlign: 'right' }}>{String(v)}</span>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  <div style={{ padding: '14px', background: '#f8fafc', borderRadius: '8px' }}>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, marginBottom: '6px' }}>ASSIGNED WORKER</div>
-                    {orderDetail.job?.worker ? (
+                  {/* Assigned Worker Card */}
+                  <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.5px' }}>ASSIGNED WORKER</div>
+                      {orderDetail.worker || orderDetail.assignedWorker || orderDetail.job?.worker ? (
+                        <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontWeight: 600 }}>
+                          {orderDetail.status}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', fontWeight: 600 }}>
+                          Unassigned
+                        </span>
+                      )}
+                    </div>
+                    {orderDetail.worker || orderDetail.assignedWorker || orderDetail.job?.worker ? (
                       <>
-                        <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{orderDetail.job.worker.name}</div>
-                        <div>ID: {orderDetail.job.worker.workerId || orderDetail.job.worker.id}</div>
-                        <div>{orderDetail.job.worker.phone || orderDetail.job.worker.email}</div>
+                        <div style={{ fontWeight: 700, fontSize: '1rem', color: '#0f172a' }}>
+                          {(orderDetail.worker?.name || orderDetail.assignedWorker?.name || orderDetail.job?.worker?.name)}
+                        </div>
+                        <div style={{ color: '#475569', marginTop: '2px' }}>
+                          {(orderDetail.worker?.email || orderDetail.assignedWorker?.email || orderDetail.job?.worker?.email)}
+                        </div>
+                        <div style={{ color: '#475569', marginTop: '2px' }}>
+                          📞 {(orderDetail.worker?.phone || orderDetail.assignedWorker?.phone || orderDetail.job?.worker?.phone || 'N/A')}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                          Worker ID: <code style={{ fontSize: '0.72rem' }}>{(orderDetail.worker?.id || orderDetail.assignedWorker?.id || orderDetail.job?.worker?.id)}</code>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#0369a1', marginTop: '2px' }}>
+                          Specialization: {(orderDetail.worker?.specialization || 'Cyber Cafe Operator')}
+                        </div>
                       </>
                     ) : (
-                      <div style={{ color: '#ea580c', fontStyle: 'italic' }}>
-                        No worker assigned yet (system auto-assignment pending).
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                        <div style={{ color: '#d97706', fontSize: '0.82rem', fontWeight: 600 }}>
+                          Unassigned — Waiting for Worker to Accept
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: '#64748b', margin: 0 }}>
+                          Order is published to live operator network pool. Admin can also assign manually.
+                        </p>
+                        <button
+                          className="btn btn-outline"
+                          style={{ alignSelf: 'flex-start', fontSize: '0.75rem', padding: '4px 10px', marginTop: '4px' }}
+                          onClick={openManualAssign}
+                        >
+                          <UserCheck size={13} /> Assign Worker Now
+                        </button>
                       </div>
                     )}
                   </div>
@@ -503,13 +647,13 @@ export default function Orders() {
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>Platform Commission (20%)</div>
+                      <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>Platform Commission (Markup)</div>
                       <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--brand-blue)' }}>
                         ₹{((orderDetail.pricing?.commissionPaise || 0) / 100).toFixed(2)}
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>Worker Earning (80%)</div>
+                      <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>Worker Payout</div>
                       <div style={{ fontSize: '1.1rem', fontWeight: 700, color: orderDetail.earningsHold ? '#dc2626' : '#15803d' }}>
                         ₹{((orderDetail.pricing?.workerEarningPaise || 0) / 100).toFixed(2)}
                         {orderDetail.earningsHold && ' (Held)'}
@@ -517,6 +661,36 @@ export default function Orders() {
                     </div>
                   </div>
                 </div>
+
+                {/* Customer Rating & Feedback */}
+                {(orderDetail.rating || orderDetail.serviceSnapshot?.review || orderDetail.review) && (() => {
+                  const review = orderDetail.serviceSnapshot?.review || (typeof orderDetail.review === 'object' ? orderDetail.review : null) || {
+                    rating: orderDetail.rating,
+                    comment: typeof orderDetail.review === 'string' ? orderDetail.review : ''
+                  };
+                  return (
+                    <div style={{ padding: '16px', background: '#fffbeb', borderRadius: '8px', marginBottom: '24px', border: '1px solid #fde68a' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#92400e' }}>
+                          CUSTOMER RATING & FEEDBACK
+                        </div>
+                        <div style={{ display: 'flex', gap: '2px', color: '#f59e0b', fontSize: '1.1rem' }}>
+                          {[1, 2, 3, 4, 5].map(s => (
+                            <span key={s} style={{ color: s <= (review.rating || 5) ? '#f59e0b' : '#d1d5db' }}>★</span>
+                          ))}
+                          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#92400e', marginLeft: '6px' }}>
+                            ({review.rating || 5}/5)
+                          </span>
+                        </div>
+                      </div>
+                      {review.comment && (
+                        <p style={{ margin: 0, fontSize: '0.84rem', color: '#78350f', fontStyle: 'italic' }}>
+                          "{review.comment}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Documents & Files */}
                 <div style={{ marginBottom: '24px' }}>

@@ -55,6 +55,7 @@ export const apiClient = async (endpoint, { method = 'GET', body, ...customConfi
   const config = {
     method,
     headers: mergedHeaders,
+    credentials: 'include',
     ...customConfig,
   };
 

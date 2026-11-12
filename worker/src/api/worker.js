@@ -6,6 +6,7 @@ export const workerApi = {
   acceptJob: (orderId) => apiClient(`/worker/jobs/${orderId}/accept`, { method: 'POST' }),
   acceptAndSchedule: (orderId, { date, timeSlot }) => apiClient(`/worker/orders/${orderId}/accept-and-schedule`, { method: 'POST', body: { date, timeSlot } }),
   rejectJob: (orderId, reason, note) => apiClient(`/worker/requests/${orderId}/reject`, { method: 'POST', body: { reason, note } }),
+  requestClarification: (orderId, note) => apiClient(`/worker/orders/${orderId}/request-clarification`, { method: 'POST', body: { note } }),
 
   // Active / Completed Jobs
   getMyJobs: (status) => apiClient(`/worker/jobs${status ? `?status=${status}` : ''}`),
@@ -28,10 +29,12 @@ export const workerApi = {
   // Availability & Inactivity
   toggleAvailability: (isOnline) => apiClient('/worker/availability/toggle', { method: 'POST', body: { isOnline } }),
   recordActivity: () => apiClient('/worker/activity', { method: 'POST' }),
+  heartbeat: () => apiClient('/worker/heartbeat', { method: 'POST' }),
 
   // Stats, Earnings, & Withdrawals
   getStats: () => apiClient('/worker/stats'),
   getEarnings: () => apiClient('/worker/earnings'),
+  syncWalletBalances: () => apiClient('/worker/wallet/sync', { method: 'POST' }),
   getWithdrawals: () => apiClient('/worker/withdrawals'),
   requestWithdrawal: (amountPaise, method, payoutDetails) => apiClient('/worker/withdrawals', { method: 'POST', body: { amountPaise, method, payoutDetails } }),
 

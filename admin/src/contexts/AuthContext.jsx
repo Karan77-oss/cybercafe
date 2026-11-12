@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { authApi } from '../api/auth';
+import { swrCache } from '../utils/swrCache';
 
 const AuthContext = createContext({
   loading: true,
@@ -11,12 +12,25 @@ const AuthContext = createContext({
   logout: () => {}
 });
 
+const getInitialUser = () => {
+  try {
+    const raw = localStorage.getItem('cybercafe:user') || localStorage.getItem('user');
+    const token = localStorage.getItem('cybercafe:token') || localStorage.getItem('token');
+    if (raw && token) {
+      return JSON.parse(raw);
+    }
+  } catch { }
+  return null;
+};
+
 export const AuthProvider = ({ children }) => {
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  const cachedUser = getInitialUser();
+  // Instant Session Restore: 0ms boot if token & profile exist in local storage
+  const [user, setUser] = useState(cachedUser);
+  const [loading, setLoading] = useState(() => !cachedUser && !!localStorage.getItem('cybercafe:token'));
 
   const fetchUser = async () => {
-    const token = localStorage.getItem('cybercafe:token');
+    const token = localStorage.getItem('cybercafe:token') || localStorage.getItem('token');
     if (!token) {
       setUser(null);
       setLoading(false);
@@ -25,11 +39,17 @@ export const AuthProvider = ({ children }) => {
     
     try {
       const res = await authApi.me();
-      setUser(res.user);
+      if (res && res.user) {
+        setUser(res.user);
+        localStorage.setItem('cybercafe:user', JSON.stringify(res.user));
+        localStorage.setItem('cybercafe:auth_role', res.user.role || 'ADMIN');
+      }
     } catch (err) {
       // If token is invalid or expired, clear it
       localStorage.removeItem('cybercafe:token');
       localStorage.removeItem('cybercafe:auth_role');
+      localStorage.removeItem('cybercafe:user');
+      swrCache.clear();
       setUser(null);
     } finally {
       setLoading(false);
@@ -47,7 +67,10 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const data = await authApi.login(email, password);
-    setUser(data);
+    const loggedUser = data.user || data;
+    setUser(loggedUser);
+    localStorage.setItem('cybercafe:user', JSON.stringify(loggedUser));
+    localStorage.setItem('cybercafe:auth_role', loggedUser.role || 'ADMIN');
     window.dispatchEvent(new Event('auth_change'));
     return data;
   };
@@ -56,6 +79,8 @@ export const AuthProvider = ({ children }) => {
     const data = await authApi.register(email, password, name, phone, address);
     if (data.user) {
       setUser(data.user);
+      localStorage.setItem('cybercafe:user', JSON.stringify(data.user));
+      localStorage.setItem('cybercafe:auth_role', data.user.role || 'ADMIN');
       window.dispatchEvent(new Event('auth_change'));
     }
     return data;
@@ -63,6 +88,9 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     authApi.logout();
+    localStorage.removeItem('cybercafe:user');
+    localStorage.removeItem('user');
+    swrCache.clear();
     setUser(null);
     window.dispatchEvent(new Event('auth_change'));
   };
@@ -75,7 +103,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
-    refresh: fetchUser // useful if we want to force re-fetch
+    refresh: fetchUser
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

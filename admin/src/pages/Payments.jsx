@@ -159,13 +159,13 @@ export default function Payments() {
           color="purple" 
         />
         <StatCard 
-          title="Platform Commission (20%)" 
+          title="Platform Commission (Markup)" 
           value={`₹${((summary.totalCommissionPaise || 0) / 100).toFixed(2)}`} 
           icon={TrendingUp} 
           color="blue" 
         />
         <StatCard 
-          title="Worker Earnings (80%)" 
+          title="Worker Payouts" 
           value={`₹${((summary.totalWorkerEarningsPaise || 0) / 100).toFixed(2)}`} 
           icon={CheckCircle} 
           color="green" 

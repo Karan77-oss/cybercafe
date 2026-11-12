@@ -74,13 +74,13 @@ export default function WorkerLayout() {
       }
     }, 30000);
 
-    // Heartbeat every 5 minutes if worker is active
+    // Heartbeat every 10 minutes if worker is active (Task 4.2: zero compute waste)
     const heartbeatInterval = setInterval(() => {
       const inactiveMinutes = (Date.now() - lastActivityRef.current) / (1000 * 60);
-      if (inactiveMinutes < 5 && isOnline) {
-        workerApi.recordActivity().catch(() => {});
+      if (inactiveMinutes < 10 && isOnline) {
+        workerApi.heartbeat().catch(() => workerApi.recordActivity().catch(() => {}));
       }
-    }, 5 * 60 * 1000);
+    }, 10 * 60 * 1000);
 
     return () => {
       events.forEach(event => window.removeEventListener(event, handleUserActivity));

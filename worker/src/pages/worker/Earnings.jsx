@@ -9,32 +9,92 @@ import {
   ArrowUpRight, 
   ArrowDownLeft,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { workerApi } from '../../api/worker';
 
 export default function Earnings() {
   const [earningsData, setEarningsData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
+  const [now, setNow] = useState(Date.now());
 
-  const loadEarnings = async () => {
+  // 1-second interval to update live countdown timers smoothly
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const loadEarnings = async (silent = false) => {
     try {
+      if (!silent) setLoading(true);
       const res = await workerApi.getEarnings();
       if (res?.earnings) {
         setEarningsData(res.earnings);
       }
-      setLoading(false);
+      if (!silent) setLoading(false);
     } catch (err) {
       console.error(err);
-      setError('Failed to load earnings ledger');
-      setLoading(false);
+      if (!silent) {
+        setError('Failed to load earnings ledger');
+        setLoading(false);
+      }
     }
   };
 
+  const handleSyncBalances = async () => {
+    setSyncing(true);
+    try {
+      const res = await workerApi.syncWalletBalances();
+      if (res?.earnings || res?.summary) {
+        setEarningsData(res.earnings || res.summary);
+      } else {
+        await loadEarnings(true);
+      }
+    } catch (err) {
+      console.warn('Sync failed:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Self-healing settlement: poll every 15s and auto-sync when any pending order crosses 1-hour
   useEffect(() => {
     loadEarnings();
-  }, []);
+
+    const interval = setInterval(async () => {
+      // Check if any pending transaction has matured
+      if (earningsData?.transactions) {
+        const hasMatured = earningsData.transactions.some(tx => 
+          tx.type === 'CREDIT' && 
+          tx.unlockAt && 
+          new Date(tx.unlockAt).getTime() <= Date.now() && 
+          tx.status === 'PENDING'
+        );
+        if (hasMatured) {
+          await handleSyncBalances();
+          return;
+        }
+      }
+      loadEarnings(true);
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [earningsData]);
+
+  const formatCountdown = (unlockAt) => {
+    if (!unlockAt) return '1 hour';
+    const diffMs = Math.max(0, new Date(unlockAt).getTime() - now);
+    if (diffMs <= 0) return 'Unlocking now...';
+    const totalSec = Math.floor(diffMs / 1000);
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    return `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
+  };
 
   if (loading) {
     return (
@@ -50,7 +110,7 @@ export default function Earnings() {
       <div style={{ padding: '32px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', color: '#991b1b', textAlign: 'center' }}>
         <AlertCircle size={24} style={{ marginBottom: 8 }} />
         <div>{error || 'Unable to load earnings data'}</div>
-        <button onClick={loadEarnings} className="btn btn-outline" style={{ marginTop: 12 }}>Retry</button>
+        <button onClick={() => loadEarnings()} className="btn btn-outline" style={{ marginTop: 12 }}>Retry</button>
       </div>
     );
   }
@@ -71,14 +131,25 @@ export default function Earnings() {
             Earnings & Financial Ledger
           </h1>
           <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
-            Section 17: Transparent payout records, daily summaries, and earnings breakdown.
+            Section 17: Transparent payout records, daily summaries, and 1-hour automated balance settlements.
           </p>
         </div>
 
-        <Link to="/worker/withdrawals" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Wallet size={18} />
-          Go to Withdrawals
-        </Link>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            onClick={handleSyncBalances} 
+            disabled={syncing}
+            className="btn btn-outline" 
+            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing...' : 'Sync Balances'}
+          </button>
+          <Link to="/worker/withdrawals" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Wallet size={18} />
+            Go to Withdrawals
+          </Link>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -92,7 +163,7 @@ export default function Earnings() {
             ₹{(walletPaise / 100).toFixed(2)}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px' }}>
-            Ready for instant withdrawal
+            Ready for instant bank/UPI withdrawal
           </div>
         </div>
 
@@ -111,14 +182,14 @@ export default function Earnings() {
 
         <div className="stat-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span className="stat-card-title">Pending Earnings</span>
+            <span className="stat-card-title">Pending Balance</span>
             <Clock size={20} color="#8b5cf6" />
           </div>
           <div className="stat-card-value" style={{ color: '#8b5cf6' }}>
             ₹{(pendingPaise / 100).toFixed(2)}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px' }}>
-            In active queue / uncompleted
+            Unlocks to Available 1 hour after completion
           </div>
         </div>
 
@@ -163,10 +234,10 @@ export default function Earnings() {
       }}>
         <div>
           <h4 style={{ margin: '0 0 4px', fontSize: '0.98rem', color: '#1e293b' }}>
-            Transparent 80/20 Payout Structure
+            Guaranteed Fixed Service Payouts & 1-Hour Settlement Rule
           </h4>
           <p style={{ margin: 0, fontSize: '0.84rem', color: '#64748b' }}>
-            You receive ~80% of the customer order price as direct worker earnings. Platform fee (20%) covers payment gateway charges, escrow protection, and customer acquisition.
+            You receive 100% of your agreed service worker payout. Upon order completion and receiving submission, your payout enters <strong>Pending Balance</strong> and automatically settles into your <strong>Available Balance</strong> exactly 1 hour later.
           </p>
         </div>
         <Link to="/worker/help" style={{ color: '#3b82f6', fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none' }}>
@@ -192,13 +263,15 @@ export default function Earnings() {
                   <th style={{ padding: '12px 0' }}>DATE & TIME</th>
                   <th style={{ padding: '12px 0' }}>TRANSACTION / ORDER</th>
                   <th style={{ padding: '12px 0' }}>TYPE</th>
-                  <th style={{ padding: '12px 0' }}>STATUS</th>
+                  <th style={{ padding: '12px 0' }}>SETTLEMENT STATUS</th>
                   <th style={{ padding: '12px 0', textAlign: 'right' }}>AMOUNT</th>
                 </tr>
               </thead>
               <tbody>
                 {transactions.map(tx => {
                   const isCredit = tx.type === 'CREDIT';
+                  const isPending = isCredit && (tx.isPendingSettlement || (tx.unlockAt && new Date(tx.unlockAt).getTime() > now));
+
                   return (
                     <tr key={tx.id} style={{ borderBottom: '1px solid #f1f5f9', fontSize: '0.9rem' }}>
                       <td style={{ padding: '14px 0', color: '#64748b', fontSize: '0.83rem' }}>
@@ -227,16 +300,33 @@ export default function Earnings() {
                         </span>
                       </td>
                       <td style={{ padding: '14px 0' }}>
-                        <span style={{
-                          fontSize: '0.78rem',
-                          color: tx.status === 'SETTLED' || tx.status === 'COMPLETED' ? '#166534' : '#854d0e',
-                          background: tx.status === 'SETTLED' || tx.status === 'COMPLETED' ? '#f0fdf4' : '#fefce8',
-                          padding: '3px 8px',
-                          borderRadius: '4px',
-                          fontWeight: 600
-                        }}>
-                          {tx.status}
-                        </span>
+                        {isPending ? (
+                          <span style={{
+                            fontSize: '0.76rem',
+                            color: '#b45309',
+                            background: '#fef3c7',
+                            border: '1px solid #fde68a',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            fontWeight: 700,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            <Clock size={12} /> Pending Settlement — Unlocks in {formatCountdown(tx.unlockAt)}
+                          </span>
+                        ) : (
+                          <span style={{
+                            fontSize: '0.78rem',
+                            color: tx.status === 'SETTLED' || tx.status === 'COMPLETED' ? '#166534' : '#854d0e',
+                            background: tx.status === 'SETTLED' || tx.status === 'COMPLETED' ? '#f0fdf4' : '#fefce8',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontWeight: 600
+                          }}>
+                            {tx.status === 'SETTLED' ? 'Settled in Wallet' : (tx.status || 'Completed')}
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: '14px 0', textAlign: 'right', fontWeight: 800, fontSize: '1rem', color: isCredit ? '#059669' : '#dc2626' }}>
                         {isCredit ? '+' : '-'}₹{(tx.amountPaise / 100).toFixed(2)}

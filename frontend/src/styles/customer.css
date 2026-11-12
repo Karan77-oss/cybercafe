@@ -118,7 +118,7 @@
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: rgba(83, 100, 249, 0.1);
+  background: rgba(232, 119, 27, 0.1);
   color: var(--brand-blue);
   display: flex;
   align-items: center;
@@ -268,7 +268,7 @@
 }
 .timeline-item.active .timeline-icon {
   background: var(--brand-blue);
-  box-shadow: 0 0 0 4px rgba(83, 100, 249, 0.2);
+  box-shadow: 0 0 0 4px rgba(232, 119, 27, 0.2);
 }
 
 @media (max-width: 768px) {

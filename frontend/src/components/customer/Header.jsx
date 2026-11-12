@@ -1,31 +1,33 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Search, User, LogOut, Box, FileText, ChevronRight, Bell, Wallet } from 'lucide-react';
+import { Search, User, LogOut, FileText, ChevronRight, Bell, Wallet } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { servicesApi } from '../../api/services';
-import { services as fallbackServices } from '../../mockDataCustomer';
+import BrandLogo from '../BrandLogo';
 
 export default function Header() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [servicesList, setServicesList] = useState(fallbackServices);
-  
+  // Live catalog only — no hardcoded/mock fallback.
+  const [servicesList, setServicesList] = useState([]);
+
   const { user, logout } = useAuth();
 
   const searchRef = useRef();
   const dropdownRef = useRef();
   const navigate = useNavigate();
 
-  // Load real services catalog for search
+  // Load the live services catalog (ACTIVE + APPROVED, exactly what the Admin
+  // Portal manages) for in-header search.
   useEffect(() => {
     servicesApi.getServices()
       .then(res => {
-        if (res.services && res.services.length > 0) {
-          setServicesList(res.services);
-        }
+        setServicesList(Array.isArray(res?.services) ? res.services : []);
       })
-      .catch(() => {});
+      .catch(() => {
+        setServicesList([]);
+      });
   }, []);
 
   // Close dropdowns when clicking outside
@@ -48,12 +50,8 @@ export default function Header() {
 
   return (
     <header className="customer-header">
-      <Link to="/" className="brand" style={{ display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none', color: 'var(--brand-blue)' }}>
-        <Box size={28} />
-        <div>
-          <h2 style={{ fontSize: '1.2rem', margin: 0 }}>Cyber Cafe</h2>
-          <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Your Online Service Partner</p>
-        </div>
+      <Link to="/" className="brand" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+        <BrandLogo size="md" variant="orange" />
       </Link>
       
       <nav className="customer-nav">

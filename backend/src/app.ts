@@ -1,89 +1,120 @@
-import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import path from 'path';
 import routes from './routes';
-import { initDatabase } from './db';
 
 const app = express();
 
-const allowedOrigins = [
-  'http://localhost:5173', // Web customer frontend
-  'http://localhost:5174', // Admin portal
-  'http://localhost:5175', // Worker portal
-  'http://localhost:5176', // Mobile dev server
-  'capacitor://localhost', // iOS / Native Capacitor origin
-  'http://localhost',      // Android WebView origin
-];
+// 1. CORS Configuration (Seamlessly allow Vercel, Custom Domains, Capacitor, and Localhost Admin)
+const allowedOriginsEnv = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
 
-const corsOptions: cors.CorsOptions = {
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile native apps or curl) or matching origins
-    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://192.168.')) {
-      return callback(null, true);
-    }
-    return callback(null, true); // Permissive during local development & testing
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  // Allow non-browser requests (e.g. mobile native app Capacitor HTTP, Postman, Railway/Docker health checks)
+  if (!origin) return true;
+
+  // Allow Capacitor & Ionic mobile app webview origins
+  if (origin === 'capacitor://localhost' || origin === 'ionic://localhost') return true;
+
+  // Allow all Localhost ports for Admin Portal and local developer machines
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+
+  // Allow all Vercel deployments (*.vercel.app)
+  if (/^https:\/\/([a-zA-Z0-9_-]+\.)*vercel\.app$/.test(origin)) return true;
+
+  // Allow explicitly configured custom domains from environment
+  if (allowedOriginsEnv.some(allowed => origin === allowed || origin.endsWith(allowed))) return true;
+
+  return false;
 };
 
-// 1. CORS & Preflight handling
-app.use(cors(corsOptions));
-app.options(/(.*)/, cors(corsOptions));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`[CORS Warning] Request from unauthorized origin: ${origin}`);
+        callback(null, false);
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-access-token', 'Accept', 'X-Requested-With'],
+    exposedHeaders: ['set-cookie']
+  })
+);
 
-// 2. Request body parsers
-// Capture raw body for webhook signature verification
-app.use(express.json({
-  limit: '15mb',
-  verify: (req: any, res, buf) => {
-    req.rawBody = buf.toString();
-  }
-}));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+// 2. Body Parsers (Preserve rawBody for Razorpay Webhook signature verification)
+app.use(
+  express.json({
+    limit: '50mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf.toString();
+    },
+  })
+);
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// 3. Serverless cold-start DB initialization
-let dbInitStarted = false;
-app.use((req, res, next) => {
-  if (!dbInitStarted) {
-    dbInitStarted = true;
-    initDatabase().catch(err => {
-      console.error('[Database] Serverless startup sync error:', err?.message || err);
-    });
+// Cookie Parser (Extract cookies including cc_access_token)
+app.use((req: any, _res: Response, next: NextFunction) => {
+  if (!req.cookies) {
+    req.cookies = {};
+    const cookieHeader = req.headers.cookie;
+    if (cookieHeader) {
+      cookieHeader.split(';').forEach((cookie: string) => {
+        const parts = cookie.split('=');
+        const key = parts[0]?.trim();
+        if (key) {
+          req.cookies[key] = decodeURIComponent(parts.slice(1).join('=').trim());
+        }
+      });
+    }
   }
   next();
 });
 
-// 4. Base health routes
-app.get('/', (req, res) => res.json({ name: 'Cyber Cafe Marketplace API', status: 'ok', version: '1.0.0' }));
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+// 3. Static Files for Local Document/Receipt Fallback
+const uploadsPath = path.resolve(process.cwd(), 'uploads');
+app.use('/uploads', express.static(uploadsPath));
+app.use('/api/uploads', express.static(uploadsPath));
 
-// 5. API Routes mounting
-app.use('/api', routes);
+// 4. Health Check & Root Welcome Endpoints
+app.get(['/health', '/api/health'], (_req: Request, res: Response) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
-// 6. JSON 404 Fallback Handler
-app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    error: `Route ${req.method} ${req.originalUrl} not found`,
-    code: 'NOT_FOUND'
+app.get('/', (_req: Request, res: Response) => {
+  res.status(200).json({
+    message: 'Cyber Cafe Marketplace API is running',
+    status: 'online',
+    version: '1.0.0',
+    health: '/health',
+    portals: {
+      customer: 'http://localhost:5173',
+      admin: 'http://localhost:5174',
+      worker: 'http://localhost:5175',
+      mobilePreview: 'http://localhost:5176'
+    }
   });
 });
 
-// 7. Centralized JSON Error Handling Middleware
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error(`[Unhandled Error] ${req.method} ${req.originalUrl}:`, err);
-  if (res.headersSent) {
-    return next(err);
-  }
-  const statusCode = err.status || err.statusCode || 500;
+// 5. Mount All API Routes (Supports both /api/... and direct /... calls)
+app.use('/api', routes);
+app.use('/', routes);
+
+// 6. Global Error Handler
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[App Error]:', err);
+  const statusCode = err.statusCode || err.status || 500;
   res.status(statusCode).json({
     success: false,
-    error: err.message || 'Internal server error',
-    code: err.code || 'INTERNAL_SERVER_ERROR'
+    error: err.message || 'Internal Server Error',
+    code: err.code || 'INTERNAL_ERROR',
   });
 });
 
+export { app };
 export default app;
-
-

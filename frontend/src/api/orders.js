@@ -16,6 +16,19 @@ export const ordersApi = {
     return await apiClient(`/orders/${id}`);
   },
 
+  createRazorpayPayment: async (orderId) => {
+    return await apiClient(`/orders/${orderId}/create-payment`, {
+      method: 'POST'
+    });
+  },
+
+  verifyRazorpayPayment: async (data) => {
+    return await apiClient('/orders/verify-payment', {
+      method: 'POST',
+      body: data
+    });
+  },
+
   acceptTimeSlot: async (id) => {
     return await apiClient(`/orders/${id}/timeslot/accept`, { method: 'POST' });
   },
@@ -51,6 +64,17 @@ export const ordersApi = {
 
   getWelfareTicketDetails: async (id) => {
     return await apiClient(`/welfare/tickets/${id}`);
+  },
+
+  getOrderChat: async (id) => {
+    return await apiClient(`/orders/${id}/chat`);
+  },
+
+  sendChatMessage: async (id, data) => {
+    return await apiClient(`/orders/${id}/chat`, {
+      method: 'POST',
+      body: data
+    });
   },
 
   getAppVersion: async () => {

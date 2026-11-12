@@ -4,14 +4,14 @@ import { Shield, Users, Star, CheckCircle } from 'lucide-react';
 import ServiceCard from '../../components/customer/ServiceCard';
 import { servicesApi } from '../../api/services';
 
-import { services as fallbackServices } from '../../mockDataCustomer';
-
 export default function Home() {
-  const [services, setServices] = useState(fallbackServices);
-  const [loading, setLoading] = useState(false);
+  // Live catalog only — the Admin Portal's official service catalog is the
+  // single source of truth. No hardcoded/mock fallback arrays.
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState('');
-  
+
   const navigate = useNavigate();
 
   const handleSearch = (e) => {
@@ -24,15 +24,17 @@ export default function Home() {
   };
 
   useEffect(() => {
+    setLoading(true);
     servicesApi.getServices()
       .then((res) => {
-        if (res.services && res.services.length > 0) {
-          setServices(res.services);
-        }
+        setServices(Array.isArray(res?.services) ? res.services : []);
       })
       .catch((err) => {
-        console.warn('Home page fallback services used:', err);
-      });
+        console.warn('Home page service catalog fetch failed:', err);
+        setServices([]);
+        setError('Unable to load services right now. Please retry.');
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   return (

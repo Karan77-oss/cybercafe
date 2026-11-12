@@ -1,10 +1,7 @@
+import { env } from '../config/env';
+
 const resolveBaseUrl = () => {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
-    return envUrl.trim().replace(/\/+$/, '');
-  }
-  // Graceful fallback to /api (handled by Vite dev proxy in development or same-origin)
-  return '/api';
+  return env.getApiBaseUrl();
 };
 
 export const BASE_URL = resolveBaseUrl();
@@ -54,6 +51,7 @@ export const apiClient = async (endpoint, { method = 'GET', body, ...customConfi
   const config = {
     method,
     headers: mergedHeaders,
+    credentials: 'include',
     ...customConfig,
   };
 

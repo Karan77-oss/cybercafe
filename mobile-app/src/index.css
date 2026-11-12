@@ -3,41 +3,23 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+}
+
+html, body {
+  background-color: #F8FAFC;
 }
 
 body {
   margin: 0;
   padding: 0;
-  background-color: #0F172A;
-  color: #F8FAFC;
+  background-color: #F8FAFC;
+  color: #0F172A;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  padding-bottom: env(safe-area-inset-bottom, 24px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-top: env(safe-area-inset-top, 0px);
-}
-
-/* Glassmorphism helpers */
-.glass-panel {
-  background: rgba(30, 41, 59, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.glass-nav {
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.glass-card {
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.6) 100%);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* Hide scrollbar for tabs */
@@ -49,11 +31,13 @@ body {
   scrollbar-width: none;
 }
 
-/* Pulse / glow effects */
-.glow-cyan {
-  box-shadow: 0 0 20px -3px rgba(6, 182, 212, 0.4);
+/* Soft Neomorphic accents */
+.glow-sky,
+.glow-brand {
+  box-shadow: 0 0 0 3px rgba(232, 119, 27, 0.22);
 }
 
-.glow-indigo {
-  box-shadow: 0 0 20px -3px rgba(79, 70, 229, 0.4);
+/* Safe-area aware bottom padding for fixed elements (iOS home indicator) */
+.pb-safe {
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
 }

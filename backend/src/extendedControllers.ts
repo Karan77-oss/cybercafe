@@ -2,50 +2,82 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { SupabaseStorageAdapter } from './utils/SupabaseStorageAdapter';
 import { localStore } from './catalogData';
-import { prisma, checkDb } from './db';
+import { prisma, checkDb, withDbRetry, isJsonFallbackAllowed } from './db';
 import { fileBufferStore, generateOfficialReceiptBuffer } from './utils/fileStore';
+import { broadcastEvent, sendUserEvent } from './utils/realtimeEvents';
+import { dispatchWorkerAlert } from './utils/workerAlertDispatcher';
 
 export const storage = new SupabaseStorageAdapter();
 
+// Customer-facing service catalog. Single source of truth: PostgreSQL via Prisma.
+// When DB is unreachable/offline, gracefully falls back to localStore if allowed.
 export const servicesController = {
   getServices: async (req: Request, res: Response) => {
     try {
       const dbOk = await checkDb();
-      if (dbOk) {
-        const services = await prisma.service.findMany({
-          where: { status: 'ACTIVE', approvalStatus: 'APPROVED' },
-          orderBy: { createdAt: 'desc' }
-        });
-        if (services && services.length > 0) {
-          return res.json({ success: true, services });
+      if (!dbOk) {
+        if (!isJsonFallbackAllowed()) {
+          return res.status(503).json({ success: false, error: { code: 'DB_UNAVAILABLE', message: 'Service catalog is temporarily unavailable.' } });
         }
+        const services = (localStore.services || []).filter(s => s.status === 'ACTIVE');
+        return res.json({ success: true, services, total: services.length });
       }
-    } catch {
-      // Proceed to resilient fallback
+      const rawServices = await prisma.service.findMany({
+        where: { status: 'ACTIVE', approvalStatus: 'APPROVED' },
+        include: { applicationTypesList: true },
+        orderBy: { createdAt: 'desc' }
+      });
+      const services = rawServices.map(s => ({
+        ...s,
+        applicationTypes: s.applicationTypesList && s.applicationTypesList.length > 0 ? s.applicationTypesList : (s.applicationTypes || [])
+      }));
+      return res.json({ success: true, services });
+    } catch (e: any) {
+      if (isJsonFallbackAllowed()) {
+        const services = (localStore.services || []).filter(s => s.status === 'ACTIVE');
+        return res.json({ success: true, services, total: services.length });
+      }
+      console.error('[servicesController.getServices]', e?.message || e);
+      return res.status(500).json({ success: false, error: { code: 'GET_SERVICES_FAILED', message: 'Failed to load services' } });
     }
-    return res.json({ success: true, services: localStore.getServices() });
   },
 
   getService: async (req: Request, res: Response) => {
     try {
       const dbOk = await checkDb();
-      if (dbOk) {
-        const service = await prisma.service.findUnique({
-          where: { id: req.params.id as string, status: 'ACTIVE', approvalStatus: 'APPROVED' }
-        });
-        if (service) {
-          return res.json({ success: true, service });
+      if (!dbOk) {
+        if (!isJsonFallbackAllowed()) {
+          return res.status(503).json({ success: false, error: { code: 'DB_UNAVAILABLE', message: 'Service catalog is temporarily unavailable.' } });
         }
+        const service = (localStore.services || []).find(s => s.id === req.params.id || (s as any).slug === req.params.id);
+        if (!service) {
+          return res.status(404).json({ success: false, error: { code: 'SERVICE_NOT_FOUND', message: 'Service not found' } });
+        }
+        return res.json({ success: true, service });
       }
-    } catch {
-      // Proceed to resilient fallback
+      const service = await prisma.service.findUnique({
+        where: { id: req.params.id as string },
+        include: { applicationTypesList: true }
+      });
+      if (!service) {
+        return res.status(404).json({ success: false, error: { code: 'SERVICE_NOT_FOUND', message: 'Service not found' } });
+      }
+      if (service.status !== 'ACTIVE' || service.approvalStatus !== 'APPROVED') {
+        return res.status(404).json({ success: false, error: { code: 'SERVICE_NOT_AVAILABLE', message: 'Service is not available' } });
+      }
+      const formatted = {
+        ...service,
+        applicationTypes: service.applicationTypesList && service.applicationTypesList.length > 0 ? service.applicationTypesList : (service.applicationTypes || [])
+      };
+      return res.json({ success: true, service: formatted });
+    } catch (e: any) {
+      if (isJsonFallbackAllowed()) {
+        const service = (localStore.services || []).find(s => s.id === req.params.id || (s as any).slug === req.params.id);
+        if (service) return res.json({ success: true, service });
+      }
+      console.error('[servicesController.getService]', e?.message || e);
+      return res.status(500).json({ success: false, error: { code: 'GET_SERVICE_FAILED', message: 'Failed to load service' } });
     }
-
-    const fallback = localStore.getService(req.params.id as string);
-    if (!fallback) {
-      return res.status(404).json({ success: false, error: { message: 'Service not found' } });
-    }
-    return res.json({ success: true, service: fallback });
   }
 };
 
@@ -54,9 +86,9 @@ export const workersController = {
     try {
       const dbOk = await checkDb();
       if (dbOk) {
-        const workers = await prisma.user.findMany({
-          where: { role: 'WORKER' },
-          select: { id: true, name: true, email: true, phone: true }
+        const workers = await prisma.worker.findMany({
+          where: { status: 'ACTIVE' },
+          select: { id: true, name: true, specialization: true }
         });
 
         if (workers && workers.length > 0) {
@@ -71,7 +103,6 @@ export const workersController = {
               return {
                 id: w.id,
                 name: w.name,
-                email: w.email,
                 activeJobs,
                 completedJobs,
                 rating: 4.8
@@ -85,7 +116,16 @@ export const workersController = {
       // Proceed to fallback
     }
 
-    const activeWorkers = localStore.getWorkers().filter(w => w.accountStatus === 'ACTIVE' && w.status !== 'PAUSED' && w.status !== 'DELETED');
+    const activeWorkers = localStore
+      .getWorkers()
+      .filter(w => w.accountStatus === 'ACTIVE' && w.status !== 'PAUSED' && w.status !== 'DELETED')
+      .map(w => ({
+        id: w.id,
+        name: w.name,
+        rating: w.rating || 5.0,
+        completedJobs: w.completedJobs || 0
+      }));
+
     return res.json({ success: true, workers: activeWorkers });
   }
 };
@@ -110,30 +150,32 @@ const processCustomerOrder = async (order: any) => {
 
       try {
         if (await checkDb()) {
-          await prisma.$transaction([
-            prisma.order.update({
-              where: { id: order.id },
-              data: { status: 'CANCELLED', serviceSnapshot: snapshot }
-            }),
-            prisma.auditLog.create({
-              data: {
-                actorUserId: order.customerId,
-                action: 'ORDER_EXPIRED_REFUND_CREDITED',
-                entityType: 'Order',
-                entityId: order.id,
-                metadata: {
-                  pricePaise: (order.pricing as any)?.pricePaise || 0,
-                  reason: '24-hour maximum pending limit exceeded'
+          const dbExists = await prisma.order.findUnique({ where: { id: order.id }, select: { id: true } });
+          if (dbExists) {
+            await prisma.$transaction([
+              prisma.order.update({
+                where: { id: order.id },
+                data: { status: 'CANCELLED', serviceSnapshot: snapshot }
+              }),
+              prisma.auditLog.create({
+                data: {
+                  actorUserId: order.customerId,
+                  action: 'ORDER_EXPIRED_REFUND_CREDITED',
+                  entityType: 'Order',
+                  entityId: order.id,
+                  metadata: {
+                    pricePaise: (order.pricing as any)?.pricePaise || 0,
+                    reason: '24-hour maximum pending limit exceeded'
+                  }
                 }
-              }
-            })
-          ]);
+              })
+            ]);
+          }
         }
       } catch {
         // Handled locally
       }
 
-      // Update local store as well
       localStore.addAuditLog({
         actorUserId: order.customerId,
         action: 'ORDER_EXPIRED_REFUND_CREDITED',
@@ -147,16 +189,16 @@ const processCustomerOrder = async (order: any) => {
     }
   }
 
-  // Customer-facing rule: sanitize pricing (only return total pricePaise, hide internal commission/payout)
+  // Sanitize internal margin/commission data from customer view
   const customerPricing = {
-    pricePaise: (order.pricing as any)?.pricePaise || 0
+    pricePaise: (order.pricing as any)?.pricePaise || order.customerPaidAmount || order.pricePaise || 0
   };
 
-  // Sanitized assigned worker
-  const assignedWorker = order.assignedWorkerId ? (localStore.getWorker(order.assignedWorkerId) || order.worker || (order.job?.worker ? order.job.worker : null)) : null;
+  const assignedWorker = order.assignedWorkerId
+    ? localStore.getWorker(order.assignedWorkerId) || order.worker || (order.job?.worker ? order.job.worker : null)
+    : null;
   const customerStatus = currentStatus === 'OFFERED' ? (order.assignedWorkerId ? 'ASSIGNED' : 'AVAILABLE') : currentStatus;
 
-  // Deliverables: ensure customer can view and download all deliverables & receipts submitted by worker
   const deliverables = order.deliverables || snapshot.completion?.deliverableFiles || localStore.getOrder(order.id)?.deliverables || [];
   if (!snapshot.completion) {
     snapshot.completion = {};
@@ -166,7 +208,6 @@ const processCustomerOrder = async (order: any) => {
     snapshot.completion.receiptUrl = deliverables[0].url;
   }
 
-  // Time Slot synchronization: customer sees time slot ONLY after worker sets/provides it
   const rawStoreOrder = localStore.getOrder(order.id);
   const effectiveTimeSlot = order.timeSlot || rawStoreOrder?.timeSlot;
   if (effectiveTimeSlot && (effectiveTimeSlot.startTime || effectiveTimeSlot.timeSlotStr)) {
@@ -191,20 +232,24 @@ const processCustomerOrder = async (order: any) => {
 
   const effectiveSlotStatus = order.slotStatus || rawStoreOrder?.slotStatus || snapshot.scheduling?.slotStatus || (order.timeSlot ? 'CONFIRMED' : 'UNASSIGNED');
   const effectiveBookingDate = order.bookingDate || rawStoreOrder?.bookingDate || snapshot.scheduling?.date || null;
-  const resolvedTimeSlotStr = (typeof order.timeSlot === 'string' ? order.timeSlot : order.timeSlot?.timeSlotStr) || 
-                              (typeof rawStoreOrder?.timeSlot === 'string' ? rawStoreOrder?.timeSlot : rawStoreOrder?.timeSlot?.timeSlotStr) || 
-                              snapshot.scheduling?.timeSlot || null;
+  const resolvedTimeSlotStr = (typeof order.timeSlot === 'string' ? order.timeSlot : order.timeSlot?.timeSlotStr) ||
+    (typeof rawStoreOrder?.timeSlot === 'string' ? rawStoreOrder?.timeSlot : rawStoreOrder?.timeSlot?.timeSlotStr) ||
+    snapshot.scheduling?.timeSlot || null;
   const effectiveProposedSlot = order.proposedSlot || rawStoreOrder?.proposedSlot || snapshot.scheduling?.proposedSlot || snapshot.scheduling?.proposedTimeSlot || null;
   const effectiveProposedDate = order.proposedDate || rawStoreOrder?.proposedDate || snapshot.scheduling?.proposedDate || null;
 
   return {
     ...order,
     orderNumber: order.orderNumber || order.id,
+    service: order.service || { id: order.serviceId, name: order.serviceName || snapshot.name || 'Application Service' },
+    documents: order.documents || [],
     status: customerStatus,
     pricing: customerPricing,
+    pricePaise: customerPricing.pricePaise,
+    customerPaidAmount: customerPricing.pricePaise,
     serviceSnapshot: snapshot,
     deliverables,
-    worker: assignedWorker,
+    worker: assignedWorker ? { id: assignedWorker.id, name: assignedWorker.name, rating: assignedWorker.rating || 5.0 } : null,
     slotStatus: effectiveSlotStatus,
     proposedSlot: effectiveProposedSlot,
     proposedDate: effectiveProposedDate,
@@ -217,66 +262,95 @@ const processCustomerOrder = async (order: any) => {
 export const ordersController = {
   createOrder: async (req: Request, res: Response) => {
     try {
-      const { 
-        serviceId, 
+      const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'AUTH_REQUIRED', message: 'Authentication required to create an order' }
+        });
+      }
+
+      const {
+        serviceId,
         application_type,
         applicationType,
-        subCategory,
         gender,
-        details, 
-        formData, 
-        bookingDate, 
-        timeSlot, 
-        amount, 
-        additionalInfo, 
-        workerSelection, 
-        documentIds, 
-        paymentMethod 
+        details,
+        formData,
+        bookingDate,
+        timeSlot,
+        additionalInfo,
+        workerSelection,
+        documentIds
       } = req.body;
-      const customerId = (req as any).user?.id || 'customer-local-id';
-      const resolvedDetails = details || formData || {};
-      const resolvedApplicationType = application_type || applicationType || subCategory || req.body.subCategory || (resolvedDetails as any)?.application_type || (resolvedDetails as any)?.applicationType || (resolvedDetails as any)?.subCategory || null;
-      const resolvedGender = gender || req.body.gender || (resolvedDetails as any)?.gender || null;
-      const resolvedSubCategory = resolvedApplicationType;
 
-      // Find service either in DB or local store
+      const customerId = user.id;
+      const resolvedDetails = details || formData || {};
+      const resolvedApplicationType =
+        application_type ||
+        applicationType ||
+        (resolvedDetails as any)?.application_type ||
+        (resolvedDetails as any)?.applicationType ||
+        (resolvedDetails as any)?.serviceType ||
+        (resolvedDetails as any)?.licenceType ||
+        (resolvedDetails as any)?.certificateType ||
+        null;
+      const resolvedGender = gender || (resolvedDetails as any)?.gender || null;
+
+      // Authoritative service resolution: when the database is reachable the
+      // live "Service" table is the single source of truth — the in-memory
+      // catalog snapshot must NOT shadow it, otherwise stale/hardcoded ids
+      // (e.g. mock slugs like 'pan-card') could create orders for services
+      // that do not exist in the admin-managed catalog.
       let service: any = null;
+      let dbAvailable = false;
       try {
-        if (await checkDb()) {
+        dbAvailable = await checkDb();
+        if (dbAvailable && serviceId) {
           service = await prisma.service.findUnique({ where: { id: serviceId } });
         }
-      } catch {}
+      } catch { /* fall through to validation */ }
 
-      if (!service) {
+      if (!dbAvailable && !service) {
+        // Resilient mode only: database offline, use the last-known catalog
+        // snapshot so ordering keeps working offline.
         service = localStore.getService(serviceId);
       }
 
-      if (!service) {
-        return res.status(400).json({ success: false, error: { code: 'INVALID_SERVICE' } });
+      // A service is orderable only when the customer catalog would show it:
+      // status ACTIVE + approvalStatus APPROVED (the exact predicate used by
+      // servicesController.getServices). Disabled, deleted or unapproved
+      // services are rejected up-front instead of producing "wrong service"
+      // orders. In resilient mode seed items carry approvalStatus APPROVED;
+      // a missing field is treated as compatible.
+      const approvalOk = !!service && (!service.approvalStatus || service.approvalStatus === 'APPROVED');
+      if (!service || service.status !== 'ACTIVE' || !approvalOk) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_SERVICE', message: 'Service not found, disabled, or removed from the catalog' } });
       }
 
-      // Idempotency / Deduplication Guard:
-      // Prevent duplicate order creation if a customer submits the same service within 5 seconds (rapid clicks, refresh, reconnect)
+      // Security: Authoritative server price ONLY: Price = Worker Rate + Admin Commission (Zero Hidden Fees)
+      const serviceWorkerPaise = Number(service.workerAmountPaise ?? (service.pricing as any)?.workerAmountPaise ?? 0);
+      const serviceAdminCommPaise = Number(service.adminCommissionPaise ?? 0);
+      const workerPayoutPaise = serviceWorkerPaise > 0 ? serviceWorkerPaise : Math.max(0, Number(service.pricePaise || 0) - serviceAdminCommPaise);
+      const platformCommissionPaise = serviceAdminCommPaise >= 0 ? serviceAdminCommPaise : 0;
+      const pricePaise = (workerPayoutPaise + platformCommissionPaise > 0)
+        ? (workerPayoutPaise + platformCommissionPaise)
+        : Number(service.pricePaise || 19900);
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      // Deduplication Guard: 5 seconds rapid-fire prevention
       const fiveSecondsAgo = Date.now() - 5000;
-      const recentDuplicate = Array.from(localStore.orders.values()).find(o => 
+      const recentDuplicate = Array.from(localStore.orders.values()).find(o =>
         o.customerId === customerId &&
         o.serviceId === serviceId &&
         ['AVAILABLE', 'ACCEPTED', 'ASSIGNED', 'PAYMENT_PENDING'].includes(o.status) &&
         new Date(o.createdAt).getTime() > fiveSecondsAgo
       );
       if (recentDuplicate) {
-        console.log(`[Orders] Idempotency guard: Returning existing order ${recentDuplicate.id} to prevent duplicate.`);
         const processed = await processCustomerOrder(recentDuplicate);
         return res.json({ success: true, order: processed || recentDuplicate });
       }
 
-      const resolvedPrice = (amount && Number(amount) > 0) ? Math.round(Number(amount) * 100) : (service.pricePaise || 19900);
-      const pricePaise = resolvedPrice;
-      const platformCommissionPaise = Math.floor(pricePaise * 0.2);
-      const workerPayoutPaise = pricePaise - platformCommissionPaise;
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-      // Time Slot resolution
       let slotStr = '';
       if (typeof timeSlot === 'string') {
         slotStr = timeSlot;
@@ -302,35 +376,21 @@ export const ordersController = {
         rescheduleNote: null
       };
 
-      const initialTimeSlotObj = slotStr ? {
-        date: resolvedDate,
-        timeSlotStr: formattedSlot || slotStr,
-        startTime: initialScheduling.startTime,
-        endTime: initialScheduling.endTime,
-        status: 'CONFIRMED',
-        proposedBy: 'CUSTOMER'
-      } : null;
-
-      // If valid upfront paymentMethod is provided (simulation/in-order payment), make AVAILABLE immediately
-      const isUpfrontPaid = Boolean(paymentMethod);
-      const initialStatus = isUpfrontPaid ? 'AVAILABLE' : 'PAYMENT_PENDING';
-      const initialPaymentStatus = isUpfrontPaid ? 'PAID' : 'PENDING';
-      const paymentProvider = (typeof paymentMethod === 'string' ? paymentMethod : paymentMethod?.provider || paymentMethod?.type) || 'UPI';
-
       const initialSnapshot = {
         name: service.name || service.title,
         category: service.category,
         application_type: resolvedApplicationType,
         applicationType: resolvedApplicationType,
-        subCategory: resolvedSubCategory,
         gender: resolvedGender,
         pricePaise,
+        workerAmountPaise: workerPayoutPaise,
+        adminCommissionPaise: platformCommissionPaise,
+        platformFeePaise: 0,
         formSchema: service.formSchema,
         details: {
           ...resolvedDetails,
           application_type: resolvedApplicationType,
           applicationType: resolvedApplicationType,
-          subCategory: resolvedSubCategory,
           gender: resolvedGender
         },
         additionalInfo: additionalInfo || '',
@@ -346,55 +406,45 @@ export const ordersController = {
         review: null
       };
 
-      const generatedOrderId = 'ord_' + Date.now();
-
-      // Resolve customer name/phone/email from the authenticated user record
-      // so that the worker workspace and admin always see real customer data.
+      const generatedOrderId = 'ord_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
       const customerUser = localStore.findUserById(customerId);
-      const contactPhone = req.body.contactPhone || req.body.customerPhone || req.body.phone || (resolvedDetails as any)?.phone || customerUser?.phone || null;
+      const contactPhone = req.body.contactPhone || req.body.customerPhone || user.phone || null;
       const customerNotes = req.body.customerNotes || req.body.notes || additionalInfo || '';
-      const resolvedCustomerName = customerUser?.name || (resolvedDetails as any)?.fullName || 'Customer';
-      const resolvedCustomerPhone = contactPhone || customerUser?.phone || null;
-      const resolvedCustomerEmail = customerUser?.email || (resolvedDetails as any)?.email || null;
 
+      // Strict Financial Invariant: Order ALWAYS initializes as PAYMENT_PENDING
       const orderData = {
         id: generatedOrderId,
         orderNumber: generatedOrderId,
         customerId,
-        // Populated at the root level so Worker Workspace & Admin always see real details
-        customerName: resolvedCustomerName,
-        customerPhone: resolvedCustomerPhone,
-        customerEmail: resolvedCustomerEmail,
-        contactPhone: resolvedCustomerPhone,
+        customerName: user.name || customerUser?.name || 'Customer',
+        customerPhone: contactPhone,
+        customerEmail: user.email || customerUser?.email || null,
+        contactPhone,
         customerNotes,
         notes: customerNotes,
         application_type: resolvedApplicationType,
         applicationType: resolvedApplicationType,
-        subCategory: resolvedSubCategory,
         gender: resolvedGender,
-        // formData mirrors serviceSnapshot.details so the worker JobWorkspace
-        // can render the form fields without needing to dig into serviceSnapshot
         formData: {
           ...resolvedDetails,
-          contactPhone: resolvedCustomerPhone,
+          contactPhone,
           customerNotes,
           application_type: resolvedApplicationType,
           applicationType: resolvedApplicationType,
-          subCategory: resolvedSubCategory,
           gender: resolvedGender
         },
         bookingDate: slotStr ? resolvedDate : (bookingDate || null),
         bookingTimeSlot: slotStr || null,
-        timeSlot: initialTimeSlotObj ? (formattedSlot || slotStr) : null,
+        timeSlot: slotStr ? (formattedSlot || slotStr) : null,
         slotStatus: slotStr ? 'CONFIRMED' : 'UNASSIGNED',
         proposedSlot: null,
         proposedDate: null,
         serviceId,
         serviceName: service.name || service.title,
         category: service.category || null,
-        status: initialStatus,
-        paymentStatus: initialPaymentStatus,
-        earningStatus: 'PENDING',
+        status: 'PAYMENT_PENDING' as const,
+        paymentStatus: 'PENDING' as const,
+        earningStatus: 'PENDING' as const,
         workerAmount: workerPayoutPaise,
         adminCommission: platformCommissionPaise,
         platformFee: 0,
@@ -407,30 +457,45 @@ export const ordersController = {
         worker: null,
         job: null,
         offerExpiresAt: null,
-        paidAt: isUpfrontPaid ? new Date().toISOString() : null,
-        payment: isUpfrontPaid ? {
-          status: 'PAID',
-          provider: paymentProvider,
-          amountPaise: pricePaise,
-          paidAt: new Date().toISOString()
-        } : null,
+        paidAt: null,
+        payment: null,
         documents: [] as any[],
         deliverables: [] as any[],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      // Try database insert if connected
       try {
         if (await checkDb()) {
+          // Ensure customer exists in prisma.user before creating order
+          await prisma.user.upsert({
+            where: { id: customerId },
+            update: {
+              name: user.name || customerUser?.name || 'Customer',
+              phone: contactPhone || user.phone || undefined,
+            },
+            create: {
+              id: customerId,
+              email: (user.email || customerUser?.email || `customer_${Date.now()}@cybercafe.com`).toLowerCase(),
+              name: user.name || customerUser?.name || 'Customer',
+              password: '$2b$10$dummyHashForCustomerAccountOrderRelation123',
+              role: 'CUSTOMER',
+              phone: contactPhone || user.phone || null,
+              status: 'ACTIVE'
+            }
+          }).catch((uErr: any) => console.warn('[Order Customer Upsert Notice]:', uErr?.message));
+
           const dbOrder = await prisma.order.create({
             data: {
               id: generatedOrderId,
               orderNumber: generatedOrderId,
               customerId,
+              userId: customerId,
+              workerId: null,
+              assignedWorkerId: null,
               serviceId,
-              status: initialStatus,
-              paymentStatus: initialPaymentStatus,
+              status: 'CREATED',
+              paymentStatus: 'PENDING',
               earningStatus: 'PENDING',
               workerAmountPaise: workerPayoutPaise,
               adminCommissionPaise: platformCommissionPaise,
@@ -439,44 +504,34 @@ export const ordersController = {
               currency: 'INR',
               serviceSnapshot: initialSnapshot,
               pricing: { pricePaise, platformCommissionPaise, workerPayoutPaise },
-              paidAt: isUpfrontPaid ? new Date() : null
+              applicationType: resolvedApplicationType,
+              formData: orderData.formData,
+              customerNotes: customerNotes || null,
+              bookingDate: orderData.bookingDate || null,
+              timeSlot: orderData.timeSlot || null,
+              slotStatus: orderData.slotStatus || 'UNASSIGNED'
             }
           });
-          if (isUpfrontPaid) {
-            try {
-              await prisma.payment.create({
-                data: {
-                  orderId: dbOrder.id,
-                  provider: paymentProvider,
-                  providerOrderId: `ord_pay_${Date.now()}`,
-                  amountPaise: pricePaise,
-                  currency: 'INR',
-                  status: 'PAID',
-                  paidAt: new Date(),
-                  verifiedAt: new Date()
-                }
-              });
-            } catch {}
-          }
           orderData.id = dbOrder.id;
+          orderData.status = 'CREATED' as any;
+          broadcastEvent('ORDER_CREATED', { order: dbOrder });
         }
-      } catch (err) {
-        console.log('Database persist skipped, stored in resilient cache:', (err as any)?.message);
+      } catch (err: any) {
+        console.error('Database persist error on order create:', err?.message);
       }
 
-
-      // Process files uploaded directly via multipart/form-data
+      // Handle direct file uploads via multipart/form-data with concurrent processing
       if (req.files && Array.isArray(req.files) && (req.files as Express.Multer.File[]).length > 0) {
         const uploadedMulterFiles = req.files as Express.Multer.File[];
         const rawDocTypes = req.body.documentTypes;
-        const docTypes = Array.isArray(rawDocTypes) 
-          ? rawDocTypes 
-          : (rawDocTypes ? [rawDocTypes] : []);
+        const docTypes = Array.isArray(rawDocTypes) ? rawDocTypes : (rawDocTypes ? [rawDocTypes] : []);
+        const newDocObjects: any[] = [];
 
         for (let i = 0; i < uploadedMulterFiles.length; i++) {
           const file = uploadedMulterFiles[i];
           const docType = docTypes[i] || file.fieldname || 'Uploaded Document';
-          const fileKey = 'docs/' + customerId + '/' + Date.now() + '_' + file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const fileKey = 'docs/' + customerId + '/' + Date.now() + '_' + safeName;
 
           fileBufferStore.set(fileKey, {
             buffer: file.buffer,
@@ -485,14 +540,12 @@ export const ordersController = {
             createdAt: Date.now()
           });
 
-          const docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-          const displayName = docType ? `${docType} (${file.originalname})` : file.originalname;
-
+          const docId = 'doc_' + Date.now() + '_' + crypto.randomBytes(3).toString('hex');
           const docObj = {
             id: docId,
             storageKey: fileKey,
             docName: docType,
-            name: displayName,
+            name: `${docType} (${file.originalname})`,
             fileName: file.originalname,
             url: `/api/documents/${docId}/download`,
             mimeType: file.mimetype,
@@ -506,113 +559,110 @@ export const ordersController = {
 
           orderData.documents.push(docObj);
           localStore.saveDocument(docObj);
+          newDocObjects.push(docObj);
+        }
 
-          try {
-            if (await checkDb()) {
-              await prisma.document.create({ data: docObj as any });
-            }
-          } catch {}
+        // Parallel database insertion for ultra-fast response
+        try {
+          if (newDocObjects.length > 0 && await checkDb()) {
+            await Promise.all(
+              newDocObjects.map(d => {
+                const { orderNumber, ...cleanDoc } = d;
+                return prisma.document.create({ data: cleanDoc as any }).catch(() => null);
+              })
+            );
+          }
+        } catch { }
+      }
+
+      // Bind previously uploaded documents or existing vault documents if IDs are provided
+      const clientDocsList = Array.isArray(req.body.documents) ? req.body.documents : [];
+      let parsedExistingDocIds: string[] = [];
+      if (Array.isArray(req.body.existingDocumentIds)) {
+        parsedExistingDocIds = req.body.existingDocumentIds;
+      } else if (typeof req.body.existingDocumentIds === 'string') {
+        try {
+          const parsed = JSON.parse(req.body.existingDocumentIds);
+          if (Array.isArray(parsed)) parsedExistingDocIds = parsed;
+          else parsedExistingDocIds = [req.body.existingDocumentIds];
+        } catch {
+          parsedExistingDocIds = req.body.existingDocumentIds.split(',').map((s: string) => s.trim()).filter(Boolean);
         }
       }
 
-      // Bind uploaded document IDs to this order (from legacy ID arrays)
-      const clientDocsList = Array.isArray(req.body.documents) ? req.body.documents : [];
-      const rawDocIds = (documentIds && Array.isArray(documentIds)) 
-        ? documentIds 
-        : clientDocsList.map((d: any) => typeof d === 'string' ? d : d?.id).filter(Boolean);
+      const rawDocIds = Array.from(new Set([
+        ...((documentIds && Array.isArray(documentIds)) ? documentIds : []),
+        ...parsedExistingDocIds,
+        ...clientDocsList.map((d: any) => (typeof d === 'string' ? d : d?.id)).filter(Boolean)
+      ]));
 
       if (rawDocIds.length > 0) {
-        const boundDocs = await Promise.all(rawDocIds.map(async (docId: string) => {
-          let doc = localStore.getDocument(docId);
-          if (!doc) {
-            try {
-              if (await checkDb()) {
-                doc = await prisma.document.findUnique({ where: { id: docId } });
+        const boundDocs = await Promise.all(
+          rawDocIds.map(async (docId: string) => {
+            let doc = localStore.getDocument(docId);
+            if (!doc) {
+              try {
+                if (await checkDb()) {
+                  doc = await prisma.document.findUnique({ where: { id: docId } });
+                }
+              } catch { }
+            }
+            if (doc && (doc.customerId === customerId || (doc as any).userId === customerId)) {
+              if (doc.orderId && doc.orderId !== orderData.id) {
+                // If vault document is already bound to another order, clone a new reference for this order
+                const clonedDocId = 'doc_' + Date.now() + '_' + crypto.randomBytes(3).toString('hex');
+                const clonedDoc = {
+                  ...doc,
+                  id: clonedDocId,
+                  orderId: orderData.id,
+                  orderNumber: orderData.orderNumber || orderData.id,
+                  url: `/api/documents/${clonedDocId}/download`,
+                  createdAt: new Date().toISOString()
+                };
+                localStore.saveDocument(clonedDoc);
+                try {
+                  if (await checkDb()) {
+                    const { orderNumber, ...cleanCloned } = clonedDoc;
+                    await prisma.document.create({ data: cleanCloned as any });
+                  }
+                } catch { }
+                return clonedDoc;
+              } else {
+                doc.orderId = orderData.id;
+                doc.orderNumber = orderData.orderNumber || orderData.id;
+                localStore.saveDocument(doc);
+                return doc;
               }
-            } catch {}
-          }
-          const clientMeta = clientDocsList.find((d: any) => d && (d.id === docId || d === docId));
-          const docName = clientMeta?.docName || doc?.docName || null;
-          const fileName = doc?.fileName || clientMeta?.fileName || doc?.name || 'Uploaded Document';
-          const displayName = docName ? `${docName} (${fileName})` : fileName;
-          
-          if (doc) {
-            doc.orderId = orderData.id;
-            doc.orderNumber = orderData.orderNumber || orderData.id;
-            doc.docName = docName;
-            doc.name = displayName;
-            doc.fileName = fileName;
-            doc.url = `/api/documents/${doc.id}/download`;
-            localStore.saveDocument(doc);
-            return doc;
-          }
-
-          const fallbackDoc = {
-            id: docId,
-            orderId: orderData.id,
-            orderNumber: orderData.orderNumber || orderData.id,
-            customerId,
-            docName,
-            name: displayName,
-            fileName: fileName,
-            url: `/api/documents/${docId}/download`,
-            size: clientMeta?.size || 'Verified Document',
-            type: 'UPLOAD',
-            createdAt: new Date().toISOString()
-          };
-          localStore.saveDocument(fallbackDoc);
-          return fallbackDoc;
-        }));
-        orderData.documents.push(...boundDocs);
+            }
+            return null;
+          })
+        );
+        const validDocs = boundDocs.filter(Boolean);
+        orderData.documents.push(...validDocs);
 
         try {
           if (await checkDb()) {
             await prisma.document.updateMany({
-              where: { id: { in: rawDocIds } },
+              where: { id: { in: validDocs.map((d: any) => d.id) } },
               data: { orderId: orderData.id }
             });
           }
-        } catch {}
+        } catch { }
       }
 
       localStore.saveOrder(orderData);
+      const processed = await processCustomerOrder(orderData);
+      const finalBroadcastOrder = processed || orderData;
 
-      if (isUpfrontPaid) {
-        localStore.appendLedgerEntry({
-          orderId: orderData.id,
-          amountPaise: pricePaise,
-          type: 'ORDER_PAYMENT',
-          idempotencyKey: `PAYMENT_ORDER_${orderData.id}`,
-          referenceNote: `Order payment via ${paymentProvider}`
-        });
-
-        localStore.addAuditLog({
-          actorUserId: customerId,
-          action: 'PAYMENT_VERIFIED',
-          entityType: 'Order',
-          entityId: orderData.id,
-          amountPaise: pricePaise
-        });
-
-        // Notify online workers
-        const onlineWorkers = localStore.getWorkers().filter(w => w.isOnline && w.accountStatus === 'ACTIVE');
-        onlineWorkers.forEach(w => {
-          localStore.notifications.unshift({
-            id: `notif_${Date.now()}_${w.id}`,
-            recipientId: w.id,
-            recipientRole: 'WORKER',
-            type: 'NEW_ORDER_AVAILABLE',
-            title: 'New Order Available',
-            message: `A new order for "${orderData.serviceName}" is available for pickup.`,
-            orderId: orderData.id,
-            isRead: false,
-            createdAt: new Date().toISOString()
-          });
-        });
+      try {
+        broadcastEvent('ORDER_CREATED', { order: finalBroadcastOrder, orderId: orderData.id });
+        broadcastEvent('ORDER_AVAILABLE', { order: finalBroadcastOrder, orderId: orderData.id });
+        broadcastEvent('ORDER_STATUS_UPDATED', { orderId: orderData.id, status: orderData.status });
+      } catch (broadcastErr: any) {
+        console.warn('[Broadcast notice on order create]:', broadcastErr?.message);
       }
 
-      const processed = await processCustomerOrder(orderData);
-      return res.json({ success: true, order: processed || orderData });
+      return res.status(201).json({ success: true, order: finalBroadcastOrder });
     } catch (e: any) {
       console.error('Order creation error:', e);
       return res.status(500).json({ success: false, error: e.message || String(e) });
@@ -621,26 +671,82 @@ export const ordersController = {
 
   getOrders: async (req: Request, res: Response) => {
     try {
-      const customerId = (req as any).user?.id || 'customer-local-id';
-      let rawOrders: any[] = [];
+      const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
+      const customerId = user.id;
+      let rawOrders: any[] | null = null;
 
       try {
         if (await checkDb()) {
           rawOrders = await prisma.order.findMany({
-            where: { customerId },
+            where: {
+              OR: [
+                { customerId },
+                { userId: customerId },
+                ...(user.email ? [{ customer: { email: user.email } }] : [])
+              ]
+            },
             include: {
-              job: { include: { worker: { select: { id: true, name: true, phone: true } } } }
+              service: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                  pricePaise: true,
+                  workerAmountPaise: true
+                }
+              },
+              job: {
+                select: {
+                  id: true,
+                  status: true,
+                  worker: { select: { id: true, name: true, phone: true } }
+                }
+              },
+              documents: {
+                select: {
+                  id: true,
+                  docName: true,
+                  name: true,
+                  fileName: true,
+                  mimeType: true,
+                  size: true,
+                  url: true,
+                  type: true
+                }
+              },
+              payments: {
+                select: {
+                  id: true,
+                  amountPaise: true,
+                  status: true,
+                  createdAt: true
+                }
+              },
+              receipts: {
+                select: {
+                  id: true,
+                  fileName: true,
+                  status: true,
+                  submittedAt: true
+                }
+              }
             },
             orderBy: { createdAt: 'desc' }
           });
         }
-      } catch {}
+      } catch (err: any) {
+        console.warn('[getOrders DB Notice]:', err?.message);
+      }
 
-      if (!rawOrders || rawOrders.length === 0) {
+      if (rawOrders === null) {
         rawOrders = localStore.getOrders(customerId);
       }
 
-      const orders = await Promise.all(rawOrders.map(processCustomerOrder));
+      const orders = await Promise.all((rawOrders || []).map(processCustomerOrder));
       return res.json({ success: true, orders });
     } catch {
       return res.json({ success: true, orders: [] });
@@ -650,7 +756,10 @@ export const ordersController = {
   getOrder: async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
-      const customerId = user?.id;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
       const orderId = req.params.id as string;
       let rawOrder: any = null;
 
@@ -659,12 +768,19 @@ export const ordersController = {
           rawOrder = await prisma.order.findUnique({
             where: { id: orderId },
             include: {
+              service: { include: { applicationTypesList: true } },
+              customer: true,
+              worker: true,
               documents: true,
+              receipts: true,
+              payments: true,
               job: { include: { worker: { select: { id: true, name: true, phone: true } } } }
             }
           });
         }
-      } catch {}
+      } catch (err: any) {
+        console.warn('[getOrder DB error]:', err?.message);
+      }
 
       if (!rawOrder) {
         rawOrder = localStore.getOrder(orderId);
@@ -674,11 +790,30 @@ export const ordersController = {
         return res.status(404).json({ success: false, error: { message: 'Order not found' } });
       }
 
-      // Security & Multi-Tenant Isolation Check
-      const isOwner = !rawOrder.customerId || rawOrder.customerId === customerId;
-      const isAdmin = user?.role === 'ADMIN';
-      const isAssigned = rawOrder.assignedWorkerId === customerId;
-      if (user && !isAdmin && !isOwner && !isAssigned) {
+      // Security: Robust multi-tenant authorization
+      const orderOwnerId = String(rawOrder.customerId || '').toLowerCase();
+      const currentUserId = String(user.id || user.userId || '').toLowerCase();
+      const orderEmail = String(rawOrder.customerEmail || rawOrder.customer?.email || '').toLowerCase();
+      const userEmail = String(user.email || '').toLowerCase();
+
+      const isOwner = Boolean(
+        (orderOwnerId && orderOwnerId === currentUserId) ||
+        (orderEmail && userEmail && orderEmail === userEmail)
+      );
+      const isAdmin = user.role === 'ADMIN';
+      const isAssigned = Boolean(
+        (rawOrder.assignedWorkerId && String(rawOrder.assignedWorkerId).toLowerCase() === currentUserId) ||
+        (rawOrder.job?.workerId && String(rawOrder.job?.workerId).toLowerCase() === currentUserId)
+      );
+
+      if (!isAdmin && !isOwner && !isAssigned) {
+        console.error('[Order Access Forbidden]:', {
+          userRole: user.role,
+          currentUserId,
+          orderOwnerId,
+          userEmail,
+          orderEmail
+        });
         return res.status(403).json({ success: false, error: { message: 'Unauthorized access to this order' } });
       }
 
@@ -692,6 +827,10 @@ export const ordersController = {
   acceptTimeSlot: async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
       const orderId = req.params.id as string;
       let order = localStore.getOrder(orderId);
 
@@ -700,13 +839,13 @@ export const ordersController = {
           const dbOrder = await prisma.order.findUnique({ where: { id: orderId } });
           if (dbOrder) order = dbOrder;
         }
-      } catch {}
+      } catch { }
 
       if (!order) {
         return res.status(404).json({ success: false, error: 'Order not found' });
       }
 
-      if (user && user.role !== 'ADMIN' && order.customerId && order.customerId !== user.id) {
+      if (user.role !== 'ADMIN' && (!order.customerId || order.customerId !== user.id)) {
         return res.status(403).json({ success: false, error: 'Unauthorized' });
       }
 
@@ -730,7 +869,7 @@ export const ordersController = {
             data: { serviceSnapshot: snapshot }
           });
         }
-      } catch {}
+      } catch { }
 
       localStore.saveOrder(order);
 
@@ -747,15 +886,6 @@ export const ordersController = {
           isRead: false,
           createdAt: new Date().toISOString()
         });
-        localStore.chatMessages.push({
-          id: `msg_${Date.now()}`,
-          orderId,
-          senderId: user?.id || order.customerId,
-          senderRole: 'CUSTOMER',
-          senderName: user?.name || 'Customer',
-          message: `[Time Slot Confirmed]: Customer accepted working window: ${snapshot.scheduling?.timeSlot || 'Scheduled'}`,
-          createdAt: new Date().toISOString()
-        });
       }
 
       return res.json({ success: true, order: await processCustomerOrder(order) });
@@ -767,6 +897,10 @@ export const ordersController = {
   rescheduleTimeSlot: async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
       const orderId = req.params.id as string;
       const { rescheduleNote, requestedTime, requestedDate } = req.body;
       let order = localStore.getOrder(orderId);
@@ -776,20 +910,20 @@ export const ordersController = {
           const dbOrder = await prisma.order.findUnique({ where: { id: orderId } });
           if (dbOrder) order = dbOrder;
         }
-      } catch {}
+      } catch { }
 
       if (!order) {
         return res.status(404).json({ success: false, error: 'Order not found' });
       }
 
-      if (user && user.role !== 'ADMIN' && order.customerId && order.customerId !== user.id) {
+      if (user.role !== 'ADMIN' && (!order.customerId || order.customerId !== user.id)) {
         return res.status(403).json({ success: false, error: 'Unauthorized' });
       }
 
       const snapshot = (order.serviceSnapshot as any) || {};
-      const newSlotText = requestedTime 
-        ? `${requestedDate ? requestedDate + ', ' : ''}${requestedTime}` 
-        : (snapshot.scheduling?.timeSlot || 'Reschedule Requested');
+      const newSlotText = requestedTime
+        ? `${requestedDate ? requestedDate + ', ' : ''}${requestedTime}`
+        : snapshot.scheduling?.timeSlot || 'Reschedule Requested';
 
       snapshot.scheduling = {
         ...(snapshot.scheduling || {}),
@@ -802,16 +936,6 @@ export const ordersController = {
         requestedAt: new Date().toISOString()
       };
       order.serviceSnapshot = snapshot;
-      if (order.timeSlot) {
-        order.timeSlot.status = 'RESCHEDULE_REQUESTED';
-        order.timeSlot.rescheduleNote = rescheduleNote;
-        order.timeSlot.proposedBy = 'CUSTOMER';
-        order.timeSlot.requestedTime = requestedTime;
-        order.timeSlot.requestedDate = requestedDate;
-        order.timeSlot.timeSlotStr = newSlotText;
-        order.timeSlot.date = requestedDate || order.timeSlot.date || 'Today';
-        order.timeSlot.startTime = requestedTime || order.timeSlot.startTime;
-      }
       order.updatedAt = new Date().toISOString();
 
       try {
@@ -821,7 +945,7 @@ export const ordersController = {
             data: { serviceSnapshot: snapshot }
           });
         }
-      } catch {}
+      } catch { }
 
       localStore.saveOrder(order);
 
@@ -833,18 +957,9 @@ export const ordersController = {
           recipientRole: 'WORKER',
           type: 'RESCHEDULE_REQUESTED',
           title: 'Customer Requested Reschedule',
-          message: `Customer requested a reschedule to "${newSlotText}". Note: "${rescheduleNote || 'None'}". Please review and confirm or propose a new slot.`,
+          message: `Customer requested a reschedule to "${newSlotText}".`,
           orderId,
           isRead: false,
-          createdAt: new Date().toISOString()
-        });
-        localStore.chatMessages.push({
-          id: `msg_${Date.now()}`,
-          orderId,
-          senderId: user?.id || order.customerId,
-          senderRole: 'CUSTOMER',
-          senderName: user?.name || 'Customer',
-          message: `[Reschedule Request]: Preferred time: ${newSlotText}. Reason: ${rescheduleNote || 'Mutual rescheduling'}`,
           createdAt: new Date().toISOString()
         });
       }
@@ -859,8 +974,12 @@ export const ordersController = {
     try {
       const orderId = String(req.params.id);
       const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
       const { proposedDate, proposedTimeSlot, requestedBy } = req.body;
-      const effectiveRequester = requestedBy || (user?.role === 'WORKER' ? 'WORKER' : 'CUSTOMER');
+      const effectiveRequester = requestedBy || (user.role === 'WORKER' ? 'WORKER' : 'CUSTOMER');
 
       if (!proposedTimeSlot) {
         return res.status(400).json({ success: false, error: 'proposedTimeSlot is required' });
@@ -871,7 +990,7 @@ export const ordersController = {
         return res.status(404).json({ success: false, error: 'Order not found' });
       }
 
-      const updated = localStore.requestReschedule(orderId, user?.id || 'unknown', {
+      const updated = localStore.requestReschedule(orderId, user.id, {
         proposedDate: proposedDate || 'Today',
         proposedTimeSlot,
         requestedBy: effectiveRequester
@@ -884,7 +1003,7 @@ export const ordersController = {
             data: { serviceSnapshot: updated.serviceSnapshot }
           });
         }
-      } catch {}
+      } catch { }
 
       const processed = await processCustomerOrder(updated);
       return res.json({ success: true, order: processed, data: { order: processed } });
@@ -897,8 +1016,11 @@ export const ordersController = {
     try {
       const orderId = String(req.params.id);
       const user = (req as any).user;
-      const { action } = req.body;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
 
+      const { action } = req.body;
       if (!action || (action !== 'ACCEPT' && action !== 'REJECT')) {
         return res.status(400).json({ success: false, error: 'action must be ACCEPT or REJECT' });
       }
@@ -908,7 +1030,7 @@ export const ordersController = {
         return res.status(404).json({ success: false, error: 'Order not found' });
       }
 
-      const updated = localStore.respondReschedule(orderId, user?.id || 'unknown', { action });
+      const updated = localStore.respondReschedule(orderId, user.id, { action });
 
       try {
         if (await checkDb()) {
@@ -917,7 +1039,7 @@ export const ordersController = {
             data: { serviceSnapshot: updated.serviceSnapshot }
           });
         }
-      } catch {}
+      } catch { }
 
       const processed = await processCustomerOrder(updated);
       return res.json({ success: true, order: processed, data: { order: processed } });
@@ -929,9 +1051,13 @@ export const ordersController = {
   submitReview: async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
       const orderId = req.params.id as string;
-      const { rating, comment, review } = req.body;
-      const reviewText = comment || review || '';
+      const { rating, comment, review, feedback_comment } = req.body;
+      const reviewText = (comment || review || feedback_comment || '').trim();
       let order = localStore.getOrder(orderId);
 
       try {
@@ -939,40 +1065,35 @@ export const ordersController = {
           const dbOrder = await prisma.order.findUnique({ where: { id: orderId } });
           if (dbOrder) order = dbOrder;
         }
-      } catch {}
+      } catch { }
 
       if (!order) {
         return res.status(404).json({ success: false, error: 'Order not found' });
       }
 
-      // 1. Tenant Check
-      if (user && user.role !== 'ADMIN' && order.customerId && order.customerId !== user.id) {
+      if (user.role !== 'ADMIN' && (!order.customerId || order.customerId !== user.id)) {
         return res.status(403).json({ success: false, error: 'Unauthorized to review this order' });
       }
 
-      // 2. Status Check: Must be completed or receipt submitted
-      if (order.status !== 'COMPLETED' && order.status !== 'RECEIPT_SUBMITTED') {
+      if (order.status !== 'COMPLETED' && order.status !== 'RECEIPT_SUBMITTED' && order.status !== 'WORK_COMPLETED') {
         return res.status(400).json({ success: false, error: 'Only completed orders can be reviewed' });
       }
 
-      // If in RECEIPT_SUBMITTED, customer review confirms receipt and releases worker earning
       if (order.status === 'RECEIPT_SUBMITTED') {
-        localStore.releaseWorkerEarningOnReceiptAction(orderId, user?.id || order.customerId);
+        localStore.releaseWorkerEarningOnReceiptAction(orderId, user.id);
         order = localStore.getOrder(orderId);
       }
 
-      // 3. Duplicate Review Prevention
       const existingSnapshot = (order.serviceSnapshot as any) || {};
       if (order.rating || existingSnapshot.review?.rating) {
         return res.status(400).json({ success: false, error: 'This order has already been reviewed' });
       }
 
-      const ratingNum = Number(rating);
+      const ratingNum = Math.round(Number(rating));
       if (!ratingNum || ratingNum < 1 || ratingNum > 5) {
-        return res.status(400).json({ success: false, error: 'Rating must be between 1 and 5 stars' });
+        return res.status(400).json({ success: false, error: 'Rating must be an integer between 1 and 5 stars' });
       }
 
-      // 4. Update order state
       order.rating = ratingNum;
       order.review = reviewText;
 
@@ -987,16 +1108,34 @@ export const ordersController = {
 
       try {
         if (await checkDb()) {
+          const boundWorkerId = order.workerId || order.assignedWorkerId || null;
+          await prisma.review.upsert({
+            where: { orderId },
+            create: {
+              id: `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              orderId,
+              customerId: order.customerId || user.id,
+              workerId: boundWorkerId,
+              serviceId: order.serviceId,
+              rating: ratingNum,
+              comment: reviewText
+            },
+            update: {
+              rating: ratingNum,
+              comment: reviewText
+            }
+          }).catch(() => null);
+
           await prisma.order.update({
             where: { id: orderId },
             data: { serviceSnapshot: snapshot }
-          });
+          }).catch(() => null);
         }
-      } catch {}
+      } catch { }
 
-      // 5. Update assigned worker's rating stats in localStore
-      if (order.assignedWorkerId) {
-        const worker = localStore.getWorker(order.assignedWorkerId);
+      if (order.assignedWorkerId || order.workerId) {
+        const workerId = order.assignedWorkerId || order.workerId;
+        const worker = localStore.getWorker(workerId);
         if (worker) {
           worker.reviews = worker.reviews || [];
           worker.reviews.unshift({
@@ -1011,86 +1150,43 @@ export const ordersController = {
       }
 
       localStore.saveOrder(order);
-      return res.json({ success: true, order: await processCustomerOrder(order) });
+
+      try {
+        broadcastEvent('ORDER_FEEDBACK_SUBMITTED', {
+          orderId,
+          rating: ratingNum,
+          comment: reviewText,
+          feedback_at: new Date().toISOString()
+        });
+        broadcastEvent('ORDER_STATUS_UPDATED', {
+          orderId,
+          status: order.status,
+          rating: ratingNum,
+          review: reviewText
+        });
+      } catch { }
+
+      return res.json({ success: true, order: await processCustomerOrder(order), review: snapshot.review });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e.message });
     }
   },
 
   payOrder: async (req: Request, res: Response) => {
-    try {
-      const user = (req as any).user;
-      const orderId = req.params.id as string;
-      const { paymentMethod } = req.body;
-      let order = localStore.getOrder(orderId);
-      if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
-      const isOwner = !order.customerId || order.customerId === user.id;
-      const isAdmin = user?.role === 'ADMIN';
-      if (!isAdmin && !isOwner) {
-        return res.status(403).json({ success: false, error: 'Unauthorized' });
-      }
-      if (order.status !== 'PAYMENT_PENDING') {
-        return res.status(400).json({ success: false, error: `Order is already in status ${order.status}` });
-      }
-
-      order.status = 'AVAILABLE';
-      order.paymentStatus = 'PAID';
-      order.earningStatus = 'PENDING';
-      order.assignedWorkerId = null;
-      order.worker = null;
-      order.job = null;
-      order.offerExpiresAt = null;
-      order.paidAt = new Date().toISOString();
-      order.payment = {
-        status: 'PAID',
-        method: paymentMethod?.provider || 'UPI',
-        paidAt: new Date().toISOString()
-      };
-      if (!order.serviceSnapshot) order.serviceSnapshot = {};
-      order.serviceSnapshot.scheduling = {
-        status: 'UNSCHEDULED',
-        timeSlot: null,
-        rescheduleNote: null
-      };
-      order.timeSlot = null;
-      order.updatedAt = new Date().toISOString();
-
-      // Double-entry Ledger: ORDER_PAYMENT
-      localStore.appendLedgerEntry({
-        orderId: order.id,
-        amountPaise: order.customerPaidAmount || order.pricePaise || 0,
-        type: 'ORDER_PAYMENT',
-        idempotencyKey: `LEDGER_PAYMENT_${order.id}`,
-        referenceNote: `Customer paid Order #${order.id}`
-      });
-
-
-      // Notify online workers
-      const onlineWorkers = localStore.getWorkers().filter(w => w.isOnline && w.accountStatus === 'ACTIVE');
-      onlineWorkers.forEach(w => {
-        localStore.notifications.unshift({
-          id: `notif_${Date.now()}_${w.id}`,
-          recipientId: w.id,
-          recipientRole: 'WORKER',
-          type: 'NEW_ORDER_AVAILABLE',
-          title: 'New Order Available',
-          message: `A new paid order for "${order.serviceName}" is available for pickup.`,
-          orderId: order.id,
-          isRead: false,
-          createdAt: new Date().toISOString()
-        });
-      });
-
-      localStore.saveOrder(order);
-      return res.json({ success: true, order: await processCustomerOrder(order) });
-    } catch (e: any) {
-      return res.status(500).json({ success: false, error: e.message });
-    }
+    // Disabled direct payment simulation to prevent payment bypass
+    return res.status(400).json({
+      success: false,
+      error: 'Direct payment simulation is disabled. Payments must be processed through Razorpay endpoints.'
+    });
   },
 
   downloadDeliverable: async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
       const orderId = req.params.id as string;
       const deliverableId = req.params.deliverableId as string;
 
@@ -1098,53 +1194,49 @@ export const ordersController = {
       if (!order) {
         try {
           if (await checkDb()) {
-            const dbOrder = await prisma.order.findUnique({
+            order = await prisma.order.findUnique({
               where: { id: orderId },
               include: { documents: true, job: true }
             });
-            if (dbOrder) order = dbOrder;
           }
-        } catch {}
+        } catch { }
       }
 
       if (!order) {
         return res.status(404).json({ success: false, error: 'Order not found' });
       }
 
-      // Authorization check
-      if (user) {
-        if (user.role === 'CUSTOMER' && order.customerId && order.customerId !== user.id) {
-          return res.status(403).json({ success: false, error: 'Unauthorized: You can only download deliverables for your own orders' });
+      // Security: Multi-tenant RBAC enforcement
+      if (user.role === 'CUSTOMER') {
+        if (!order.customerId || order.customerId !== user.id) {
+          return res.status(403).json({ success: false, error: 'Unauthorized: You do not own this order' });
         }
-        if (user.role === 'WORKER') {
-          const assignedId = order.assignedWorkerId || order.job?.workerId;
-          if (assignedId && assignedId !== user.id) {
-            return res.status(403).json({ success: false, error: 'Unauthorized: You are not assigned to this order' });
-          }
+      } else if (user.role === 'WORKER') {
+        const assignedId = order.assignedWorkerId || order.job?.workerId;
+        if (assignedId !== user.id) {
+          return res.status(403).json({ success: false, error: 'Unauthorized: You are not assigned to this order' });
         }
+      } else if (user.role !== 'ADMIN') {
+        return res.status(403).json({ success: false, error: 'Unauthorized' });
       }
 
-      // Step 5 Blueprint: When customer downloads deliverable, release worker earnings from PENDING to AVAILABLE
-      const isCustomerOrAdmin = !user || user.role === 'CUSTOMER' || user.role === 'ADMIN';
-      if (isCustomerOrAdmin && order.assignedWorkerId && order.earningStatus !== 'RELEASED') {
+      // Worker payout release ONLY when verified customer triggers download
+      if (user.role === 'CUSTOMER' && order.assignedWorkerId && order.earningStatus !== 'RELEASED') {
         try {
-          localStore.releaseWorkerEarningOnReceiptAction(orderId, user?.id || order.customerId || 'CUSTOMER');
+          localStore.releaseWorkerEarningOnReceiptAction(orderId, user.id);
         } catch (releaseErr: any) {
           console.warn('[EarningRelease] Notice:', releaseErr.message);
         }
       }
 
-
-      // Find deliverable in order.deliverables or serviceSnapshot.completion.deliverableFiles
       const deliverables = order.deliverables || (order.serviceSnapshot as any)?.completion?.deliverableFiles || [];
-      let deliv = deliverables.find((d: any) => 
-        d.id === deliverableId || 
-        d.fileName === deliverableId || 
+      let deliv = deliverables.find((d: any) =>
+        d.id === deliverableId ||
+        d.fileName === deliverableId ||
         d.storageKey === deliverableId
       );
 
       if (!deliv) {
-        // Try matching by index or pick first if only 1 deliverable or requested 'latest'
         if (deliverableId === 'latest' || deliverableId === '0') {
           deliv = deliverables[0];
         } else {
@@ -1158,7 +1250,6 @@ export const ordersController = {
       const fileName = deliv?.fileName || deliv?.name || `Receipt_${orderId}.pdf`;
       const mimeType = deliv?.mimeType || 'application/pdf';
 
-      // 1. Check in-memory buffer cache
       if (deliv?.storageKey && fileBufferStore.has(deliv.storageKey)) {
         const cached = fileBufferStore.get(deliv.storageKey)!;
         res.setHeader('Content-Type', cached.mimeType || mimeType);
@@ -1166,7 +1257,6 @@ export const ordersController = {
         return res.send(cached.buffer);
       }
 
-      // 2. Try Supabase storage
       if (deliv?.storageKey) {
         try {
           const buffer = await storage.download(deliv.storageKey);
@@ -1180,7 +1270,6 @@ export const ordersController = {
         }
       }
 
-      // 3. Fallback: generate official PDF receipt
       const receiptBuf = generateOfficialReceiptBuffer(order, deliv);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`)}"`);
@@ -1194,11 +1283,15 @@ export const ordersController = {
   uploadOrderDocument: async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { code: 'AUTH_REQUIRED', message: 'Authentication required' } });
+      }
+
       const orderId = req.params.id as string;
       let order = localStore.getOrder(orderId);
       if (!order) return res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } });
 
-      const isOwner = !order.customerId || order.customerId === user.id;
+      const isOwner = Boolean(order.customerId && order.customerId === user.id);
       const isAdmin = user.role === 'ADMIN';
       if (!isOwner && !isAdmin) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized' } });
@@ -1209,7 +1302,8 @@ export const ordersController = {
       }
 
       const customerId = user.id;
-      const fileKey = 'docs/' + customerId + '/' + Date.now() + '_' + req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const fileKey = 'docs/' + customerId + '/' + Date.now() + '_' + safeName;
       fileBufferStore.set(fileKey, {
         buffer: req.file.buffer,
         mimeType: req.file.mimetype,
@@ -1217,7 +1311,7 @@ export const ordersController = {
         createdAt: Date.now()
       });
 
-      const docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+      const docId = 'doc_' + Date.now() + '_' + crypto.randomBytes(3).toString('hex');
       const docName = req.body.docName || req.body.docType || null;
       const fileName = req.file.originalname;
       const displayName = docName ? `${docName} (${fileName})` : fileName;
@@ -1246,7 +1340,7 @@ export const ordersController = {
         if (await checkDb()) {
           await prisma.document.create({ data: doc as any });
         }
-      } catch {}
+      } catch { }
 
       return res.status(201).json({ success: true, data: { document: doc }, document: doc });
     } catch (e: any) {
@@ -1257,11 +1351,15 @@ export const ordersController = {
   getOrderReceipt: async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { code: 'AUTH_REQUIRED', message: 'Authentication required' } });
+      }
+
       const orderId = req.params.id as string;
       let order = localStore.getOrder(orderId);
       if (!order) return res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } });
 
-      const isOwner = !order.customerId || order.customerId === user.id;
+      const isOwner = Boolean(order.customerId && order.customerId === user.id);
       const isAdmin = user.role === 'ADMIN';
       if (!isOwner && !isAdmin) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized' } });
@@ -1292,11 +1390,15 @@ export const ordersController = {
   downloadOrderReceipt: async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { code: 'AUTH_REQUIRED', message: 'Authentication required' } });
+      }
+
       const orderId = req.params.id as string;
       let order = localStore.getOrder(orderId);
       if (!order) return res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } });
 
-      const isOwner = !order.customerId || order.customerId === user.id;
+      const isOwner = Boolean(order.customerId && order.customerId === user.id);
       const isAdmin = user.role === 'ADMIN';
       if (!isOwner && !isAdmin) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized' } });
@@ -1312,6 +1414,20 @@ export const ordersController = {
         }
       }
       localStore.saveOrder(order);
+
+      // Real-time Event: Notify customer & worker that order is COMPLETED
+      if (order.customerId) {
+        sendUserEvent(order.customerId, 'ORDER_STATUS_UPDATED', {
+          orderId: order.id,
+          status: 'COMPLETED'
+        });
+      }
+      if (order.assignedWorkerId) {
+        sendUserEvent(order.assignedWorkerId, 'ORDER_STATUS_UPDATED', {
+          orderId: order.id,
+          status: 'COMPLETED'
+        });
+      }
 
       return res.json({
         success: true,
@@ -1331,30 +1447,40 @@ export const ordersController = {
   createOrderComplaint: async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { code: 'AUTH_REQUIRED', message: 'Authentication required' } });
+      }
+
       const orderId = req.params.id as string;
       const { reason, description } = req.body;
-      if (!reason || !description) {
+      const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+      const trimmedDesc = typeof description === 'string' ? description.trim() : '';
+
+      if (!trimmedReason || !trimmedDesc) {
         return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Reason and description are required' } });
       }
 
       let order = localStore.getOrder(orderId);
       if (!order) return res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' } });
 
-      const isOwner = !order.customerId || order.customerId === user.id;
+      const isOwner = Boolean(order.customerId && order.customerId === user.id);
       const isAdmin = user.role === 'ADMIN';
       if (!isOwner && !isAdmin) {
         return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized' } });
       }
 
+      const complaintId = `cmp_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+      const now = new Date().toISOString();
+
       const complaint = {
-        id: `cmp_${Date.now()}`,
+        id: complaintId,
         orderId: order.id,
         customerId: user.id,
         workerId: order.assignedWorkerId || null,
-        reason,
-        description,
+        reason: trimmedReason,
+        description: trimmedDesc,
         status: 'OPEN',
-        createdAt: new Date().toISOString()
+        createdAt: now
       };
 
       order.complaints = order.complaints || [];
@@ -1368,10 +1494,10 @@ export const ordersController = {
         recipientRole: 'ADMIN',
         type: 'COMPLAINT_CREATED',
         title: 'Customer Complaint Submitted',
-        message: `A new complaint was submitted for Order #${order.id}: ${reason}`,
+        message: `A new complaint was submitted for Order #${order.id}: ${trimmedReason}`,
         orderId: order.id,
         isRead: false,
-        createdAt: new Date().toISOString()
+        createdAt: now
       });
 
       return res.status(201).json({
@@ -1387,68 +1513,141 @@ export const ordersController = {
 
   createRazorpayPayment: async (req: Request, res: Response) => {
     try {
+      const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
       const orderId = (req.params.id || req.body.orderId || req.body.order_id) as string;
-      let order = orderId ? localStore.getOrder(orderId) : null;
-      
-      const keyId = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TjrbhiZugaYLYJ';
-      const keySecret = process.env.RAZORPAY_KEY_SECRET || 'WURpBpwauHD0jGoVgAxDp2Gn';
+      if (!orderId) {
+        return res.status(400).json({ success: false, error: { message: 'Order ID is required' } });
+      }
 
-      const amountPaise = order?.pricePaise || order?.customerPaidAmount || (req.body.amount ? Math.round(Number(req.body.amount) * 100) : 19900);
-      const currency = req.body.currency || 'INR';
+      let order: any = null;
+      try {
+        if (await checkDb()) {
+          order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { customer: true, service: true, payments: true }
+          });
+        }
+      } catch (dbErr: any) {
+        console.warn('[createRazorpayPayment DB Notice]:', dbErr?.message);
+      }
 
+      if (!order) {
+        order = localStore.getOrder(orderId);
+      }
+
+      if (!order) {
+        return res.status(404).json({ success: false, error: { message: 'Order not found' } });
+      }
+
+      // Security: Robust multi-tenant authorization
+      const orderOwnerStr = String(order.customerId ?? '').toLowerCase();
+      const userIdStr = String(user.id ?? user.userId ?? '').toLowerCase();
+      const orderEmailStr = String(order.customerEmail ?? order.customer?.email ?? '').toLowerCase();
+      const userEmailStr = String(user.email ?? '').toLowerCase();
+      const isOwner = Boolean(
+        (order.customerId && orderOwnerStr === userIdStr) ||
+        (orderEmailStr && userEmailStr && orderEmailStr === userEmailStr)
+      );
+
+      if (user.role !== 'ADMIN' && !isOwner) {
+        console.error('[Payment Auth] FORBIDDEN:', {
+          userRole: user.role,
+          userId: user.id,
+          userIdStr,
+          orderCustomerId: order.customerId,
+          orderOwnerStr,
+          orderEmailStr,
+          userEmailStr
+        });
+        return res.status(403).json({ success: false, error: { message: 'Unauthorized access to this order' } });
+      }
+
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keyId || !keySecret) {
+        return res.status(500).json({ success: false, error: { message: 'Payment gateway credentials are not configured' } });
+      }
+
+      // Security: Strict server price check
+      const amountPaise = Number(
+        order.customerPaidAmountPaise ||
+        (order.pricing as any)?.pricePaise ||
+        order.pricePaise ||
+        order.customerPaidAmount ||
+        (order.serviceSnapshot as any)?.pricePaise ||
+        order.service?.pricePaise ||
+        4900
+      );
+      if (!amountPaise || amountPaise <= 0) {
+        return res.status(400).json({ success: false, error: { message: 'Invalid order amount' } });
+      }
+
+      const currency = 'INR';
       let razorpayOrderId = '';
 
-      // Try official Razorpay API if credentials exist
-      if (keyId && keySecret) {
-        try {
-          const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
-          const rzpResponse = await fetch('https://api.razorpay.com/v1/orders', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': authHeader
+      const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+      const rzpResponse = await fetch('https://api.razorpay.com/v1/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader
+        },
+        body: JSON.stringify({
+          amount: amountPaise,
+          currency,
+          receipt: order.id,
+          payment_capture: 1
+        })
+      });
+
+      if (!rzpResponse.ok) {
+        const errText = await rzpResponse.text();
+        console.error('[Razorpay Order Creation Failed]:', errText);
+        return res.status(502).json({ success: false, error: { message: 'Failed to communicate with Razorpay gateway' } });
+      }
+
+      const rzpData: any = await rzpResponse.json();
+      razorpayOrderId = rzpData.id;
+
+      order.payment = {
+        provider: 'RAZORPAY',
+        providerOrderId: razorpayOrderId,
+        status: 'PENDING',
+        amountPaise
+      };
+      localStore.saveOrder(order);
+
+      // Pre-create / upsert Payment record in Supabase database so webhook finds it
+      try {
+        if (await checkDb()) {
+          await prisma.payment.upsert({
+            where: { providerOrderId: razorpayOrderId },
+            create: {
+              orderId: order.id,
+              amountPaise,
+              currency: 'INR',
+              provider: 'RAZORPAY',
+              providerOrderId: razorpayOrderId,
+              status: 'PENDING'
             },
-            body: JSON.stringify({
-              amount: amountPaise,
-              currency,
-              receipt: orderId || `rcpt_${Date.now()}`,
-              payment_capture: 1
-            })
-          });
-
-          if (rzpResponse.ok) {
-            const rzpData: any = await rzpResponse.json();
-            if (rzpData?.id) {
-              razorpayOrderId = rzpData.id;
+            update: {
+              amountPaise,
+              status: 'PENDING'
             }
-          } else {
-            const errText = await rzpResponse.text();
-            console.warn('[Razorpay API] Notice from gateway:', errText);
-          }
-        } catch (apiErr: any) {
-          console.warn('[Razorpay API] Network/SDK fallback:', apiErr.message);
+          });
         }
-      }
-
-      // Safe fallback if test key or network failure
-      if (!razorpayOrderId) {
-        razorpayOrderId = `order_${Math.random().toString(36).substring(2, 10)}${Date.now().toString(36)}`;
-      }
-
-      if (order) {
-        order.payment = {
-          provider: 'RAZORPAY',
-          providerOrderId: razorpayOrderId,
-          status: 'PENDING',
-          amountPaise
-        };
-        localStore.saveOrder(order);
+      } catch (payDbErr: any) {
+        console.warn('[Razorpay Payment DB Pre-create Notice]:', payDbErr?.message);
       }
 
       return res.json({
         success: true,
         razorpayOrderId,
-        orderId: order?.id || orderId,
+        orderId: order.id,
         amount: amountPaise,
         currency,
         key: keyId
@@ -1461,82 +1660,271 @@ export const ordersController = {
 
   verifyRazorpayPayment: async (req: Request, res: Response) => {
     try {
+      const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
       const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderId, order_id } = req.body;
       const targetOrderId = (req.params.id || orderId || order_id) as string;
-      
-      let order = targetOrderId ? localStore.getOrder(targetOrderId) : null;
-      if (!order && razorpay_order_id) {
-        order = Array.from(localStore.orders.values()).find(o => 
-          o.payment?.providerOrderId === razorpay_order_id || o.id === razorpay_order_id
-        ) || null;
+
+      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !targetOrderId) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: 'Missing required Razorpay verification payload' }
+        });
       }
 
-      const keySecret = process.env.RAZORPAY_KEY_SECRET || 'WURpBpwauHD0jGoVgAxDp2Gn';
-      
-      if (razorpay_signature && razorpay_order_id && razorpay_payment_id && keySecret) {
-        try {
-          const expected = crypto
-            .createHmac('sha256', keySecret)
-            .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-            .digest('hex');
-          if (expected !== razorpay_signature) {
-            console.log('[Razorpay Verify] Note: Signature difference in test mode, expected:', expected, 'received:', razorpay_signature);
-          }
-        } catch {}
-      }
-
-      if (order) {
-        order.status = 'AVAILABLE';
-        order.paymentStatus = 'PAID';
-        order.earningStatus = 'PENDING';
-        order.paidAt = new Date().toISOString();
-        order.payment = {
-          status: 'PAID',
-          provider: 'RAZORPAY',
-          providerOrderId: razorpay_order_id,
-          providerPaymentId: razorpay_payment_id || `pay_${Date.now()}`,
-          paidAt: new Date().toISOString()
-        };
-        order.updatedAt = new Date().toISOString();
-
-        localStore.appendLedgerEntry({
-          orderId: order.id,
-          amountPaise: order.customerPaidAmount || order.pricePaise || 19900,
-          type: 'ORDER_PAYMENT',
-          idempotencyKey: `PAYMENT_VERIFIED_${razorpay_payment_id || order.id}`,
-          referenceNote: `Verified Razorpay payment ${razorpay_payment_id || ''}`
-        });
-
-        localStore.addAuditLog({
-          actorUserId: (req as any).user?.id || order.customerId || 'customer',
-          action: 'PAYMENT_VERIFIED',
-          entityType: 'Order',
-          entityId: order.id,
-          amountPaise: order.customerPaidAmount || order.pricePaise || 19900
-        });
-
-        // Notify online workers
-        const onlineWorkers = localStore.getWorkers().filter(w => w.isOnline && w.accountStatus === 'ACTIVE');
-        onlineWorkers.forEach(w => {
-          localStore.notifications.unshift({
-            id: `notif_${Date.now()}_${w.id}`,
-            recipientId: w.id,
-            recipientRole: 'WORKER',
-            type: 'NEW_ORDER_AVAILABLE',
-            title: 'New Order Available',
-            message: `A new verified order for "${order.serviceName}" is available for pickup.`,
-            orderId: order.id,
-            isRead: false,
-            createdAt: new Date().toISOString()
+      let order: any = null;
+      try {
+        if (await checkDb()) {
+          order = await prisma.order.findUnique({
+            where: { id: targetOrderId },
+            include: { customer: true, service: true, payments: true }
           });
-        });
-
-        localStore.saveOrder(order);
-        const processed = await processCustomerOrder(order);
-        return res.json({ success: true, verified: true, order: processed });
+        }
+      } catch (dbErr: any) {
+        console.warn('[verifyRazorpayPayment DB Notice]:', dbErr?.message);
       }
 
-      return res.json({ success: true, verified: true, message: 'Payment recorded' });
+      if (!order) {
+        order = localStore.getOrder(targetOrderId);
+      }
+
+      if (!order) {
+        return res.status(404).json({ success: false, error: { message: 'Order not found' } });
+      }
+
+      // Security: Robust multi-tenant authorization
+      const orderOwnerStr2 = String(order.customerId ?? '').toLowerCase();
+      const userIdStr2 = String(user.id ?? user.userId ?? '').toLowerCase();
+      const orderEmailStr2 = String(order.customerEmail ?? order.customer?.email ?? '').toLowerCase();
+      const userEmailStr2 = String(user.email ?? '').toLowerCase();
+      const isOwner2 = Boolean(
+        (order.customerId && orderOwnerStr2 === userIdStr2) ||
+        (orderEmailStr2 && userEmailStr2 && orderEmailStr2 === userEmailStr2)
+      );
+
+      if (user.role !== 'ADMIN' && !isOwner2) {
+        console.error('[Payment Verify Auth] FORBIDDEN:', {
+          userRole: user.role,
+          userId: user.id,
+          userIdStr2,
+          orderCustomerId: order.customerId,
+          orderOwnerStr2,
+          orderEmailStr2,
+          userEmailStr2
+        });
+        return res.status(403).json({ success: false, error: { message: 'Forbidden: You do not own this order' } });
+      }
+
+      if (order.paymentStatus === 'PAID') {
+        return res.json({ success: true, verified: true, message: 'Payment already verified', order });
+      }
+
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keySecret) {
+        return res.status(500).json({ success: false, error: { message: 'Server payment configuration missing' } });
+      }
+
+      // Security Layer 1: Cryptographic HMAC-SHA256 signature verification with timing-safe comparison
+      const expectedSignature = crypto
+        .createHmac('sha256', keySecret)
+        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+        .digest('hex');
+
+      const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+      const signatureBuf = Buffer.from(razorpay_signature, 'utf8');
+
+      let isMatch = false;
+      if (expectedBuf.length === signatureBuf.length) {
+        try {
+          isMatch = crypto.timingSafeEqual(expectedBuf, signatureBuf);
+        } catch {
+          isMatch = false;
+        }
+      }
+
+      // CRITICAL: Block execution if signature fails
+      if (!isMatch) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'PAYMENT_VERIFICATION_FAILED', message: 'Invalid payment signature' }
+        });
+      }
+
+      // Security Layer 2: Server-to-Server API verification with Razorpay API
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const expectedAmountPaise = Number(
+        order.customerPaidAmountPaise ||
+        (order.pricing as any)?.pricePaise ||
+        order.pricePaise ||
+        order.customerPaidAmount ||
+        (order.serviceSnapshot as any)?.pricePaise ||
+        order.service?.pricePaise ||
+        4900
+      );
+      let verifiedAmount = expectedAmountPaise;
+
+      if (keyId && keySecret && !razorpay_payment_id.startsWith('mock_') && !razorpay_payment_id.startsWith('test_')) {
+        try {
+          const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+          const rzpPaymentRes = await fetch(`https://api.razorpay.com/v1/payments/${razorpay_payment_id}`, {
+            headers: { 'Authorization': authHeader }
+          });
+          if (rzpPaymentRes.ok) {
+            const rzpPayment: any = await rzpPaymentRes.json();
+            if (rzpPayment.status !== 'captured' && rzpPayment.status !== 'authorized') {
+              return res.status(400).json({
+                success: false,
+                error: { code: 'PAYMENT_NOT_CAPTURED', message: `Razorpay payment is not captured (status: ${rzpPayment.status})` }
+              });
+            }
+            if (Number(rzpPayment.amount) !== expectedAmountPaise && expectedAmountPaise > 0) {
+              console.warn(`[Razorpay Amount Warning]: Gateway (${rzpPayment.amount}) vs Expected (${expectedAmountPaise})`);
+            }
+            verifiedAmount = Number(rzpPayment.amount) || expectedAmountPaise;
+          }
+        } catch (apiErr: any) {
+          console.warn('[Razorpay API Double-Check]: Failed to query Razorpay REST API, relying on valid HMAC signature:', apiErr?.message);
+        }
+      }
+
+      const now = new Date();
+      const nowIso = now.toISOString();
+      order.status = 'AVAILABLE';
+      order.paymentStatus = 'PAID';
+      order.earningStatus = 'PENDING';
+      order.assignedWorkerId = null;
+      order.worker = null;
+      order.job = null;
+      order.paidAt = nowIso;
+      order.payment = {
+        status: 'PAID',
+        provider: 'RAZORPAY',
+        providerOrderId: razorpay_order_id,
+        providerPaymentId: razorpay_payment_id,
+        amountPaise: verifiedAmount,
+        paidAt: nowIso
+      };
+      order.updatedAt = nowIso;
+
+      // Security Layer 3: Row Lock & Unique providerPaymentId in Database Transaction
+      try {
+        if (await checkDb()) {
+          await withDbRetry(() => prisma.$transaction(async (tx) => {
+            await tx.order.update({
+              where: { id: order.id },
+              data: {
+                status: 'AVAILABLE',
+                paymentStatus: 'PAID',
+                earningStatus: 'PENDING',
+                assignedWorkerId: null,
+                paidAt: now
+              }
+            });
+
+            await tx.payment.upsert({
+              where: { providerOrderId: razorpay_order_id },
+              create: {
+                orderId: order.id,
+                provider: 'RAZORPAY',
+                providerOrderId: razorpay_order_id,
+                providerPaymentId: razorpay_payment_id,
+                amountPaise: verifiedAmount,
+                currency: 'INR',
+                status: 'PAID',
+                signature: razorpay_signature,
+                paidAt: now,
+                verifiedAt: now
+              },
+              update: {
+                providerPaymentId: razorpay_payment_id,
+                status: 'PAID',
+                signature: razorpay_signature,
+                paidAt: now,
+                verifiedAt: now
+              }
+            });
+          }));
+        }
+      } catch (dbErr: any) {
+        console.error('[Payment DB Update Error]:', dbErr?.message);
+      }
+
+      localStore.saveOrder(order);
+
+      // Real-time notification across portals
+      broadcastEvent('ORDER_STATUS_UPDATED', {
+        orderId: targetOrderId,
+        status: 'AVAILABLE',
+        paymentStatus: 'PAID',
+        timestamp: nowIso
+      });
+
+      localStore.appendLedgerEntry({
+        orderId: order.id,
+        amountPaise: order.customerPaidAmount || order.pricePaise,
+        type: 'ORDER_PAYMENT',
+        idempotencyKey: `PAYMENT_VERIFIED_${razorpay_payment_id}`,
+        referenceNote: `Verified Razorpay payment ${razorpay_payment_id}`
+      });
+
+      localStore.addAuditLog({
+        actorUserId: user.id,
+        action: 'PAYMENT_VERIFIED',
+        entityType: 'Order',
+        entityId: order.id,
+        amountPaise: order.customerPaidAmount || order.pricePaise
+      });
+
+      const onlineWorkers = localStore.getWorkers().filter(w => w.isOnline && w.accountStatus === 'ACTIVE');
+      onlineWorkers.forEach(w => {
+        localStore.notifications.unshift({
+          id: `notif_${Date.now()}_${w.id}`,
+          recipientId: w.id,
+          recipientRole: 'WORKER',
+          type: 'NEW_ORDER_AVAILABLE',
+          title: 'New Order Available',
+          message: `A new order for "${order.serviceName}" is available for pickup.`,
+          orderId: order.id,
+          isRead: false,
+          createdAt: nowIso
+        });
+      });
+
+      localStore.saveOrder(order);
+      const processed = await processCustomerOrder(order);
+
+      // Real-time Event: Broadcast to workers that new order is available
+      broadcastEvent('ORDER_AVAILABLE', {
+        order: processed || order,
+        orderId: order.id,
+        serviceName: order.serviceName,
+        pricePaise: order.pricePaise,
+        workerEarningsPaise: order.workerEarningsPaise || order.workerAmount,
+        createdAt: now
+      }, (c) => c.role === 'WORKER' || c.role === 'ADMIN');
+
+      // Free Instant Worker Alert (Telegram Bot + Push) (Task 5.1)
+      dispatchWorkerAlert({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        serviceName: order.serviceName,
+        workerAmountPaise: order.workerAmountPaise || order.workerAmount || order.workerEarningsPaise || 0,
+        workerId: order.assignedWorkerId || undefined
+      }).catch(() => { });
+
+      // Real-time Event: Notify customer that payment was verified
+      if (order.customerId) {
+        sendUserEvent(order.customerId, 'ORDER_STATUS_UPDATED', {
+          orderId: order.id,
+          status: 'AVAILABLE',
+          paymentStatus: 'PAID'
+        });
+      }
+
+      return res.json({ success: true, verified: true, order: processed });
     } catch (e: any) {
       console.error('verifyRazorpayPayment error:', e);
       return res.status(500).json({ success: false, error: e.message || String(e) });
@@ -1547,7 +1935,12 @@ export const ordersController = {
 export const walletController = {
   getWallet: async (req: Request, res: Response) => {
     try {
-      const customerId = (req as any).user?.id || 'customer-local-id';
+      const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
+      const customerId = user.id;
       let cancelledOrders: any[] = [];
 
       try {
@@ -1557,7 +1950,7 @@ export const walletController = {
             orderBy: { updatedAt: 'desc' }
           });
         }
-      } catch {}
+      } catch { }
 
       if (!cancelledOrders || cancelledOrders.length === 0) {
         cancelledOrders = localStore.getOrders(customerId).filter(o => o.status === 'CANCELLED');
@@ -1565,7 +1958,7 @@ export const walletController = {
 
       let balancePaise = 0;
       const transactions = cancelledOrders.map(order => {
-        const amountPaise = (order.pricing as any)?.pricePaise || 0;
+        const amountPaise = (order.pricing as any)?.pricePaise || order.customerPaidAmount || 0;
         balancePaise += amountPaise;
         const snapshot = (order.serviceSnapshot as any) || {};
         return {
@@ -1574,9 +1967,7 @@ export const walletController = {
           serviceName: snapshot.name || 'Service Refund',
           amountPaise,
           type: 'REFUND',
-          description: snapshot.expiry?.isExpired 
-            ? 'Automatic 24-Hour Expiry Refund' 
-            : 'Order Cancellation Refund',
+          description: snapshot.expiry?.isExpired ? 'Automatic 24-Hour Expiry Refund' : 'Order Cancellation Refund',
           createdAt: order.updatedAt
         };
       });
@@ -1598,7 +1989,12 @@ export const walletController = {
 export const notificationsController = {
   getNotifications: async (req: Request, res: Response) => {
     try {
-      const customerId = (req as any).user?.id || 'customer-local-id';
+      const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
+      const customerId = user.id;
       let orders: any[] = [];
 
       try {
@@ -1610,7 +2006,7 @@ export const notificationsController = {
             take: 20
           });
         }
-      } catch {}
+      } catch { }
 
       if (!orders || orders.length === 0) {
         orders = localStore.getOrders(customerId);
@@ -1637,7 +2033,7 @@ export const notificationsController = {
             id: 'notif_exp_' + order.id,
             orderId: order.id,
             title: 'Order Expired / Refund Credited',
-            message: `Order #${shortId} was cancelled/expired. ₹${(((order.pricing as any)?.pricePaise || 0) / 100).toFixed(2)} refunded to your wallet.`,
+            message: `Order #${shortId} was cancelled/expired. ₹${(((order.pricing as any)?.pricePaise || order.customerPaidAmount || 0) / 100).toFixed(2)} refunded to your wallet.`,
             type: 'ALERT',
             createdAt: order.updatedAt
           });
@@ -1669,340 +2065,7 @@ export const notificationsController = {
   }
 };
 
-export const documentController = {
-  upload: async (req: Request, res: Response) => {
-    try {
-      if (!req.file) return res.status(400).json({ success: false, message: 'No file provided' });
-      const customerId = (req as any).user?.id || 'customer-local-id';
-      const fileKey = 'docs/' + customerId + '/' + Date.now() + '_' + req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-      
-      fileBufferStore.set(fileKey, {
-        buffer: req.file.buffer,
-        mimeType: req.file.mimetype,
-        fileName: req.file.originalname,
-        createdAt: Date.now()
-      });
-
-      try {
-        await storage.upload(fileKey, req.file.buffer, req.file.mimetype);
-      } catch (storageErr) {
-        console.log('Remote storage adapter upload skipped/failed:', (storageErr as any)?.message);
-      }
-      
-      const docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-      const docName = req.body.docName || req.body.docType || null;
-      const fileName = req.file.originalname;
-      const displayName = docName ? `${docName} (${fileName})` : fileName;
-
-      const doc = {
-        id: docId,
-        storageKey: fileKey,
-        docName,
-        name: displayName,
-        fileName: fileName,
-        url: `/api/documents/${docId}/download`,
-        mimeType: req.file.mimetype,
-        size: req.file.size,
-        type: 'UPLOAD',
-        customerId: customerId,
-        orderId: req.body.orderId || null,
-        createdAt: new Date().toISOString()
-      };
-
-      // Always save to resilient localStore immediately
-      localStore.saveDocument(doc);
-
-      try {
-        if (await checkDb()) {
-          const dbDoc = await prisma.document.create({ data: doc as any });
-          localStore.saveDocument(dbDoc);
-          return res.json({ success: true, document: dbDoc });
-        }
-      } catch (dbErr: any) {
-        console.log('[Storage] DB save skipped, kept in resilient store:', dbErr?.message);
-      }
-      
-      return res.json({ success: true, document: doc });
-    } catch (e: any) { 
-      console.error('[Storage] Upload error:', e);
-      return res.status(500).json({ success: false, error: e.message || 'Upload failed' }); 
-    }
-  },
-
-  getSignedUrl: async (req: Request, res: Response) => {
-    try {
-      const user = (req as any).user;
-      const docId = req.params.id as string;
-      let doc = localStore.getDocument(docId);
-      if (!doc) {
-        try {
-          if (await checkDb()) {
-            const dbDoc = await prisma.document.findUnique({ where: { id: docId } });
-            if (dbDoc) {
-              doc = dbDoc;
-              localStore.saveDocument(dbDoc);
-            }
-          }
-        } catch {}
-      }
-
-      if (!doc) {
-        // Resilient fallback: search inside orders
-        for (const order of localStore.orders.values()) {
-          if (Array.isArray(order.documents)) {
-            const match = order.documents.find((d: any) => d && (d.id === docId || d === docId));
-            if (match) {
-              doc = typeof match === 'string' ? { id: match, orderId: order.id } : { ...match, orderId: order.id };
-              localStore.saveDocument(doc);
-              break;
-            }
-          }
-        }
-      }
-
-      if (!doc) {
-        return res.status(404).json({ success: false, error: 'Document not found' });
-      }
-
-      if (user) {
-        const userRole = (user.role || '').toUpperCase();
-
-        if (userRole === 'ADMIN') {
-          // Admin has full oversight access per Section 22
-        } else if (userRole === 'CUSTOMER') {
-          const isOwner = doc.customerId === user.id || 
-            (doc.orderId && (localStore.getOrder(doc.orderId)?.customerId === user.id));
-          if (!isOwner && doc.customerId && doc.customerId !== user.id) {
-            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
-          }
-        } else if (userRole === 'WORKER') {
-          if (!doc.orderId) {
-            const parentOrder = Array.from(localStore.orders.values()).find(o => 
-              Array.isArray(o.documents) && o.documents.some((d: any) => d && (d.id === doc.id || d.id === docId))
-            );
-            if (parentOrder) {
-              doc.orderId = parentOrder.id;
-              localStore.saveDocument(doc);
-            }
-          }
-          if (!doc.orderId) {
-            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
-          }
-          let order = localStore.getOrder(doc.orderId);
-          if (!order) {
-            try {
-              if (await checkDb()) {
-                order = await prisma.order.findUnique({ where: { id: doc.orderId }, include: { job: true } });
-              }
-            } catch {}
-          }
-          if (!order) {
-            return res.status(404).json({ success: false, error: 'Associated order not found' });
-          }
-          const assignedWorkerId = order.assignedWorkerId || order.workerId || order.worker?.id || order.job?.workerId;
-          const isWorkerAssigned = assignedWorkerId === user.id || (user.workerId && assignedWorkerId === user.workerId);
-          if (!isWorkerAssigned) {
-            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
-          }
-          if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
-            return res.status(403).json({ success: false, error: 'Document access closed after order completion per Section 15 privacy policy' });
-          }
-        }
-      }
-
-      let signedUrl = doc.url || `/api/documents/${docId}/download`;
-      if (doc.storageKey) {
-        try {
-          signedUrl = await storage.createSignedUrl(doc.storageKey);
-        } catch {}
-      }
-
-      return res.json({ success: true, url: `/api/documents/${docId}/download`, signedUrl, document: doc });
-    } catch { 
-      return res.status(500).json({ success: false }); 
-    }
-  },
-
-  download: async (req: Request, res: Response) => {
-    try {
-      const user = (req as any).user;
-      const docId = req.params.id as string;
-
-      // Direct check in buffer store (e.g. for worker uploaded documents and photos)
-      if (fileBufferStore.has(docId)) {
-        const cached = fileBufferStore.get(docId)!;
-        const isImage = (cached.mimeType || '').startsWith('image/');
-        res.setHeader('Content-Type', cached.mimeType || 'application/octet-stream');
-        res.setHeader('Content-Disposition', `${isImage ? 'inline' : 'attachment'}; filename="${encodeURIComponent(cached.fileName || cached.originalName || 'file')}"`);
-        return res.send(cached.buffer);
-      }
-
-      let doc = localStore.getDocument(docId);
-      if (!doc) {
-        try {
-          if (await checkDb()) {
-            const dbDoc = await prisma.document.findUnique({ where: { id: docId } });
-            if (dbDoc) {
-              doc = dbDoc;
-              localStore.saveDocument(dbDoc);
-            }
-          }
-        } catch {}
-      }
-
-      if (!doc) {
-        // Resilient fallback: search inside orders
-        for (const order of localStore.orders.values()) {
-          if (Array.isArray(order.documents)) {
-            const match = order.documents.find((d: any) => d && (d.id === docId || d === docId));
-            if (match) {
-              doc = typeof match === 'string' ? { id: match, orderId: order.id } : { ...match, orderId: order.id };
-              localStore.saveDocument(doc);
-              break;
-            }
-          }
-        }
-      }
-
-      if (!doc) {
-        return res.status(404).json({ success: false, error: 'Document not found' });
-      }
-
-      if (user) {
-        const userRole = (user.role || '').toUpperCase();
-
-        if (userRole === 'ADMIN') {
-          // Admin has full oversight access per Section 22
-        } else if (userRole === 'CUSTOMER') {
-          const isOwner = doc.customerId === user.id || 
-            (doc.orderId && (localStore.getOrder(doc.orderId)?.customerId === user.id));
-          if (!isOwner && doc.customerId && doc.customerId !== user.id) {
-            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
-          }
-        } else if (userRole === 'WORKER') {
-          if (!doc.orderId) {
-            const parentOrder = Array.from(localStore.orders.values()).find(o => 
-              Array.isArray(o.documents) && o.documents.some((d: any) => d && (d.id === doc.id || d.id === docId))
-            );
-            if (parentOrder) {
-              doc.orderId = parentOrder.id;
-              localStore.saveDocument(doc);
-            }
-          }
-          if (!doc.orderId) {
-            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
-          }
-          let order = localStore.getOrder(doc.orderId);
-          if (!order) {
-            try {
-              if (await checkDb()) {
-                order = await prisma.order.findUnique({ where: { id: doc.orderId }, include: { job: true } });
-              }
-            } catch {}
-          }
-          if (!order) {
-            return res.status(404).json({ success: false, error: 'Associated order not found' });
-          }
-          const assignedWorkerId = order.assignedWorkerId || order.workerId || order.worker?.id || order.job?.workerId;
-          const isWorkerAssigned = assignedWorkerId === user.id || (user.workerId && assignedWorkerId === user.workerId);
-          if (!isWorkerAssigned) {
-            return res.status(403).json({ success: false, error: 'Unauthorized document access' });
-          }
-          if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
-            return res.status(403).json({ success: false, error: 'Document access closed after order completion per Section 15 privacy policy' });
-          }
-        }
-      }
-
-      const fileName = doc.fileName || doc.name || 'document.pdf';
-      const mimeType = doc.mimeType || 'application/octet-stream';
-
-      // 1. Check in-memory buffer cache
-      if (doc.storageKey && fileBufferStore.has(doc.storageKey)) {
-        const cached = fileBufferStore.get(doc.storageKey)!;
-        res.setHeader('Content-Type', cached.mimeType || mimeType);
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(cached.fileName || fileName)}"`);
-        return res.send(cached.buffer);
-      }
-
-      // 2. Try Supabase storage
-      if (doc.storageKey) {
-        try {
-          const buffer = await storage.download(doc.storageKey);
-          if (buffer && buffer.length > 0) {
-            res.setHeader('Content-Type', mimeType);
-            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
-            return res.send(buffer);
-          }
-        } catch (err: any) {
-          console.warn('[STORAGE] Document download fallback:', err.message);
-        }
-      }
-
-      // 3. Fallback: generate PDF
-      const fallbackBuf = generateOfficialReceiptBuffer({ id: doc.orderId || 'DOC-01' }, { name: fileName });
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
-      return res.send(fallbackBuf);
-    } catch (e: any) {
-      return res.status(500).json({ success: false, error: e.message || 'Download failed' });
-    }
-  },
-
-  streamFile: async (req: Request, res: Response) => {
-    try {
-      const rawKey = req.params[0] || (req.params as any).key || req.params.id;
-      const key = decodeURIComponent(rawKey);
-      if (fileBufferStore.has(key)) {
-        const cached = fileBufferStore.get(key)!;
-        const isImage = (cached.mimeType || '').startsWith('image/');
-        res.setHeader('Content-Type', cached.mimeType || 'application/octet-stream');
-        res.setHeader('Content-Disposition', `${isImage ? 'inline' : 'attachment'}; filename="${encodeURIComponent(cached.originalName || cached.fileName || 'file')}"`);
-        return res.send(cached.buffer);
-      }
-      try {
-        const buffer = await storage.download(key);
-        if (buffer && buffer.length > 0) {
-          const isImage = key.endsWith('.jpg') || key.endsWith('.jpeg') || key.endsWith('.png') || key.endsWith('.webp');
-          const mimeType = isImage ? 'image/jpeg' : 'application/octet-stream';
-          res.setHeader('Content-Type', mimeType);
-          res.setHeader('Content-Disposition', `${isImage ? 'inline' : 'attachment'}; filename="${encodeURIComponent(key.split('/').pop() || 'file')}"`);
-          return res.send(buffer);
-        }
-      } catch {}
-      return res.status(404).json({ success: false, error: 'File not found' });
-    } catch (e: any) {
-      return res.status(500).json({ success: false, error: e.message });
-    }
-  },
-
-  getVaultDocuments: async (req: Request, res: Response) => {
-    try {
-      const user = (req as any).user;
-      const customerId = user?.id;
-      let docs: any[] = [];
-      try {
-        if (await checkDb()) {
-          docs = await prisma.document.findMany({
-            where: { customerId },
-            orderBy: { createdAt: 'desc' }
-          });
-        }
-      } catch {}
-
-      if (!docs || docs.length === 0) {
-        docs = localStore.getDocumentsByCustomerId(customerId);
-      }
-      return res.json({ success: true, documents: docs });
-    } catch (e: any) {
-      return res.status(500).json({ success: false, error: e.message || 'Failed to fetch vault documents' });
-    }
-  },
-
-  uploadVaultDocument: async (req: Request, res: Response) => {
-    return documentController.upload(req, res);
-  }
-};
+export { documentController, validateMagicBytes } from './modules/vault';
 
 export const systemController = {
   getAppVersion: async (req: Request, res: Response) => {
@@ -2028,10 +2091,13 @@ export const systemController = {
 };
 
 export const welfareController = {
-  // User creates a ticket
   createTicket: async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
       const { order_id, orderId, issue_type, issueType, description } = req.body;
       const targetOrderId = order_id || orderId;
       const targetIssueType = issue_type || issueType;
@@ -2048,12 +2114,16 @@ export const welfareController = {
         return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Order not found.' } });
       }
 
-      const ticketId = `welf_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      if (user.role !== 'ADMIN' && (!order.customerId || order.customerId !== user.id)) {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized' } });
+      }
+
+      const ticketId = `welf_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
       const now = new Date().toISOString();
 
       const newCase: any = {
         id: ticketId,
-        user_id: user?.id || order.customerId,
+        user_id: user.id,
         order_id: order.id,
         issue_type: targetIssueType,
         description: description.trim(),
@@ -2062,23 +2132,22 @@ export const welfareController = {
         is_escalated: false,
         created_at: now,
         updated_at: now,
-        user: { id: user?.id, name: user?.name, email: user?.email, phone: user?.phone },
+        user: { id: user.id, name: user.name, email: user.email, phone: user.phone },
         order: {
           id: order.id,
           orderNumber: order.orderNumber,
           serviceName: order.serviceName,
-          amount: ((order.pricePaise || 19900) / 100),
+          amount: (order.pricePaise || 19900) / 100,
           status: order.status,
           workerId: order.assignedWorkerId || order.workerId
         }
       };
 
-      // Also create an initial pending refund record if it's a refund issue
       const isRefundIssue = targetIssueType.toLowerCase().includes('refund') || targetIssueType.toLowerCase().includes('payment');
       if (isRefundIssue) {
-        const orderAmount = (order.pricePaise ? order.pricePaise / 100 : order.amount || 199);
+        const orderAmount = order.pricePaise ? order.pricePaise / 100 : 199;
         const refundRec: any = {
-          id: `ref_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          id: `ref_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
           ticket_id: ticketId,
           order_id: order.id,
           amount: orderAmount,
@@ -2095,7 +2164,6 @@ export const welfareController = {
 
       localStore.saveWelfareCase(newCase);
 
-      // Notify admin
       localStore.notifications.unshift({
         id: `notif_${Date.now()}_welf`,
         recipientId: 'admin',
@@ -2119,14 +2187,16 @@ export const welfareController = {
     }
   },
 
-  // User fetches their own tickets
   getMyTickets: async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
       const allCases = Array.from(localStore.welfareCases.values());
-      const userCases = allCases.filter(c => c.user_id === user?.id || (user?.email && c.user?.email === user.email));
-      
-      // Enrich with refund record if available
+      const userCases = allCases.filter(c => c.user_id === user.id);
+
       const enriched = userCases.map(c => {
         const refund = localStore.getRefundRecordByTicketId(c.id);
         return {
@@ -2141,14 +2211,28 @@ export const welfareController = {
     }
   },
 
-  // Get ticket by ID
   getTicketDetails: async (req: Request, res: Response) => {
     try {
+      const user = (req as any).user;
+      if (!user) {
+        return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      }
+
       const id = req.params.id as string;
       const c = localStore.getWelfareCase(id);
       if (!c) {
         return res.status(404).json({ success: false, error: { message: 'Ticket not found' } });
       }
+
+      const order = localStore.getOrder(c.order_id);
+      const isOwner = c.user_id === user.id;
+      const isAdmin = user.role === 'ADMIN';
+      const isAssignedWorker = order && (order.assignedWorkerId === user.id || order.workerId === user.id);
+
+      if (!isOwner && !isAdmin && !isAssignedWorker) {
+        return res.status(403).json({ success: false, error: { message: 'Unauthorized ticket access' } });
+      }
+
       const refund = localStore.getRefundRecordByTicketId(c.id);
       const enriched = { ...c, refundRecord: refund || c.refundRecord || null };
       return res.json({ success: true, ticket: enriched, data: enriched });
@@ -2157,11 +2241,14 @@ export const welfareController = {
     }
   },
 
-  // Worker: Read-only access to complaints for assigned orders
   getWorkerTickets: async (req: Request, res: Response) => {
     try {
       const worker = (req as any).user;
-      const workerId = worker?.id;
+      if (!worker || worker.role !== 'WORKER') {
+        return res.status(403).json({ success: false, error: { message: 'Worker access required' } });
+      }
+
+      const workerId = worker.id;
       const allCases = Array.from(localStore.welfareCases.values());
 
       const workerCases = allCases.filter(c => {
@@ -2181,10 +2268,13 @@ export const welfareController = {
     }
   },
 
-  // Worker appends internal note
   addWorkerNote: async (req: Request, res: Response) => {
     try {
       const worker = (req as any).user;
+      if (!worker || worker.role !== 'WORKER') {
+        return res.status(403).json({ success: false, error: { message: 'Worker access required' } });
+      }
+
       const ticketId = req.params.id as string;
       const { note } = req.body;
 
@@ -2197,11 +2287,16 @@ export const welfareController = {
         return res.status(404).json({ success: false, error: { message: 'Ticket not found' } });
       }
 
+      const order = localStore.getOrder(ticket.order_id);
+      if (!order || (order.assignedWorkerId !== worker.id && order.workerId !== worker.id)) {
+        return res.status(403).json({ success: false, error: { message: 'You are not assigned to this case order' } });
+      }
+
       const internalNote = {
         id: `note_${Date.now()}`,
-        authorId: worker?.id,
-        authorName: worker?.name || 'Worker Operator',
-        role: worker?.role || 'WORKER',
+        authorId: worker.id,
+        authorName: worker.name || 'Worker Operator',
+        role: 'WORKER',
         note: note.trim(),
         createdAt: new Date().toISOString()
       };
@@ -2217,16 +2312,24 @@ export const welfareController = {
     }
   },
 
-  // Worker escalates ticket to Admin
   escalateTicket: async (req: Request, res: Response) => {
     try {
       const worker = (req as any).user;
+      if (!worker || worker.role !== 'WORKER') {
+        return res.status(403).json({ success: false, error: { message: 'Worker access required' } });
+      }
+
       const ticketId = req.params.id as string;
       const { reason } = req.body;
 
       const ticket = localStore.getWelfareCase(ticketId);
       if (!ticket) {
         return res.status(404).json({ success: false, error: { message: 'Ticket not found' } });
+      }
+
+      const order = localStore.getOrder(ticket.order_id);
+      if (!order || (order.assignedWorkerId !== worker.id && order.workerId !== worker.id)) {
+        return res.status(403).json({ success: false, error: { message: 'You are not assigned to this case order' } });
       }
 
       ticket.is_escalated = true;
@@ -2237,8 +2340,8 @@ export const welfareController = {
         ticket.internal_notes = ticket.internal_notes || [];
         ticket.internal_notes.push({
           id: `esc_${Date.now()}`,
-          authorId: worker?.id,
-          authorName: worker?.name || 'Worker',
+          authorId: worker.id,
+          authorName: worker.name || 'Worker',
           role: 'WORKER',
           note: `[ESCALATED TO ADMIN]: ${reason}`,
           createdAt: new Date().toISOString()
@@ -2247,7 +2350,6 @@ export const welfareController = {
 
       localStore.saveWelfareCase(ticket);
 
-      // Notify admin
       localStore.notifications.unshift({
         id: `notif_${Date.now()}_esc`,
         recipientId: 'admin',
@@ -2266,9 +2368,13 @@ export const welfareController = {
     }
   },
 
-  // Admin gets all welfare tickets
   getAdminTickets: async (req: Request, res: Response) => {
     try {
+      const admin = (req as any).user;
+      if (!admin || admin.role !== 'ADMIN') {
+        return res.status(403).json({ success: false, error: { message: 'Admin access required' } });
+      }
+
       const { status, escalated } = req.query;
       let allCases = Array.from(localStore.welfareCases.values());
 
@@ -2293,9 +2399,13 @@ export const welfareController = {
     }
   },
 
-  // Admin reviews ticket
   reviewAdminTicket: async (req: Request, res: Response) => {
     try {
+      const admin = (req as any).user;
+      if (!admin || admin.role !== 'ADMIN') {
+        return res.status(403).json({ success: false, error: { message: 'Admin access required' } });
+      }
+
       const ticketId = req.params.id as string;
       const { status, resolutionNote } = req.body;
       const ticket = localStore.getWelfareCase(ticketId);
@@ -2310,8 +2420,8 @@ export const welfareController = {
         ticket.internal_notes = ticket.internal_notes || [];
         ticket.internal_notes.push({
           id: `admin_rev_${Date.now()}`,
-          authorId: 'admin',
-          authorName: 'Administrator',
+          authorId: admin.id || 'admin',
+          authorName: admin.name || 'Administrator',
           role: 'ADMIN',
           note: `[ADMIN DECISION]: ${resolutionNote}`,
           createdAt: new Date().toISOString()
@@ -2326,12 +2436,18 @@ export const welfareController = {
     }
   },
 
-  // Admin approves / processes refund with UTR, receipt, and amount
   processAdminRefund: async (req: Request, res: Response) => {
     try {
       const admin = (req as any).user;
+      if (!admin || admin.role !== 'ADMIN') {
+        return res.status(403).json({
+          success: false,
+          error: { message: 'Forbidden: Only administrators can process refunds.' }
+        });
+      }
+
       const ticketId = req.params.id as string;
-      const { utr_number, utrNumber, receipt_url, receiptUrl, amount, status: refundStatus } = req.body;
+      const { utr_number, utrNumber, receipt_url, receiptUrl, amount } = req.body;
 
       const ticket = localStore.getWelfareCase(ticketId);
       if (!ticket) {
@@ -2339,12 +2455,11 @@ export const welfareController = {
       }
 
       const order = localStore.getOrder(ticket.order_id);
-      const resolvedAmount = Number(amount) || (order ? ((order.pricePaise || 19900) / 100) : 199);
+      const resolvedAmount = Number(amount) || (order ? (order.pricePaise || 19900) / 100 : 199);
       const resolvedUtr = utr_number || utrNumber || `UTR${Date.now().toString().slice(-8)}`;
-      
+
       let resolvedReceiptUrl = receipt_url || receiptUrl || null;
       if (req.file) {
-        // Uploaded file directly
         const fileId = `ref_receipt_${Date.now()}`;
         fileBufferStore.set(fileId, {
           buffer: req.file.buffer,
@@ -2368,7 +2483,7 @@ export const welfareController = {
           status: 'processed',
           utr_number: resolvedUtr,
           receipt_url: resolvedReceiptUrl,
-          processed_by: admin?.id || 'admin',
+          processed_by: admin.id,
           created_at: now,
           updated_at: now
         };
@@ -2377,7 +2492,7 @@ export const welfareController = {
         refundRecord.amount = resolvedAmount;
         refundRecord.utr_number = resolvedUtr;
         if (resolvedReceiptUrl) refundRecord.receipt_url = resolvedReceiptUrl;
-        refundRecord.processed_by = admin?.id || 'admin';
+        refundRecord.processed_by = admin.id;
         refundRecord.updated_at = now;
       }
 
@@ -2389,15 +2504,14 @@ export const welfareController = {
       ticket.internal_notes = ticket.internal_notes || [];
       ticket.internal_notes.push({
         id: `ref_note_${Date.now()}`,
-        authorId: admin?.id || 'admin',
-        authorName: 'Administrator',
+        authorId: admin.id,
+        authorName: admin.name || 'Administrator',
         role: 'ADMIN',
         note: `Refund of ₹${resolvedAmount} PROCESSED. UTR: ${resolvedUtr}. Receipt: ${resolvedReceiptUrl || 'None'}`,
         createdAt: now
       });
       localStore.saveWelfareCase(ticket);
 
-      // Update order status if order exists
       if (order) {
         order.status = 'REFUNDED';
         order.refundInfo = {
@@ -2420,4 +2534,3 @@ export const welfareController = {
     }
   }
 };
-

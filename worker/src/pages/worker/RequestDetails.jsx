@@ -68,11 +68,16 @@ export default function RequestDetails() {
         setShowScheduleModal(false);
         navigate(`/worker/jobs/${req.id}`);
       } else {
-        alert(res?.error || 'Failed to accept and schedule order.');
+        alert(res?.error?.message || res?.error || 'Failed to accept and schedule order.');
       }
     } catch (err) {
-      alert(err.message || 'Failed to accept order. It may have expired.');
-      navigate('/worker/requests');
+      if (err.message && (err.message.toLowerCase().includes('already accepted by you') || err.message.toLowerCase().includes('assigned to you'))) {
+        setShowScheduleModal(false);
+        navigate(`/worker/jobs/${req.id}`);
+      } else {
+        alert(err.message || 'Failed to accept order. It may have expired.');
+        navigate('/worker/requests');
+      }
     } finally {
       setAccepting(false);
     }
@@ -116,7 +121,7 @@ export default function RequestDetails() {
     );
   }
 
-  const workerPayout = (req.workerEarningsPaise || Math.round(req.pricePaise * 0.8)) / 100;
+  const workerPayout = (req.workerEarningsPaise || req.workerAmountPaise || req.workerAmount || 0) / 100;
   const mins = Math.floor(remainingSecs / 60);
   const secs = remainingSecs % 60;
   const timerFormatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;

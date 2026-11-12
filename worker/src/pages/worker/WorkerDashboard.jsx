@@ -43,15 +43,25 @@ export default function WorkerDashboard() {
         });
       }
 
-      const allJobs = jobsRes.status === 'fulfilled' ? (jobsRes.value?.jobs || []) : [];
-      const active = allJobs.filter(j => ['ACCEPTED', 'IN_PROGRESS', 'CORRECTION_REQUIRED'].includes(j.status));
-      const completed = allJobs.filter(j => j.status === 'COMPLETED');
+      const allJobs = jobsRes.status === 'fulfilled' ? (jobsRes.value?.jobs || jobsRes.value?.orders || []) : [];
+      const active = allJobs.filter(j => ['ACCEPTED', 'IN_PROGRESS', 'CORRECTION_REQUIRED', 'ASSIGNED'].includes(j.status));
+      const completed = allJobs.filter(j => ['COMPLETED', 'WORK_COMPLETED'].includes(j.status));
 
       setActiveJobs(active);
       setCompletedJobs(completed);
       
-      const orders = reqsRes.status === 'fulfilled' ? (reqsRes.value?.orders || []) : [];
-      const uniqueOrders = Array.from(new Map(orders.map(o => [o.id, o])).values());
+      const rawOrders = reqsRes.status === 'fulfilled' ? (reqsRes.value?.orders || reqsRes.value?.data?.orders || []) : [];
+      const strictlyAvailable = rawOrders.filter(o => {
+        const hasWorker = Boolean(
+          (o.workerId && o.workerId !== '') ||
+          (o.assignedWorkerId && o.assignedWorkerId !== '') ||
+          o.worker?.id ||
+          o.job?.workerId
+        );
+        const isClosed = ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'COMPLETED', 'CANCELLED', 'SUBMITTED', 'REJECTED'].includes(o.status);
+        return !hasWorker && !isClosed;
+      });
+      const uniqueOrders = Array.from(new Map(strictlyAvailable.map(o => [o.id, o])).values());
       setAvailableCount(uniqueOrders.length);
       setError('');
       setLoading(false);
@@ -65,7 +75,31 @@ export default function WorkerDashboard() {
   useEffect(() => {
     loadDashboardData();
     const interval = setInterval(loadDashboardData, 20000);
-    return () => clearInterval(interval);
+
+    let es = null;
+    try {
+      const token = localStorage.getItem('cybercafe:token') || localStorage.getItem('token') || '';
+      const streamUrl = `/api/events/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      es = new EventSource(streamUrl, { withCredentials: true });
+
+      es.addEventListener('ORDER_CLAIMED', () => {
+        setAvailableCount(prev => Math.max(0, prev - 1));
+      });
+      es.addEventListener('ORDER_ACCEPTED', () => {
+        setAvailableCount(prev => Math.max(0, prev - 1));
+      });
+      es.addEventListener('ORDER_CREATED', () => {
+        setAvailableCount(prev => prev + 1);
+      });
+      es.addEventListener('ORDER_STATUS_UPDATED', () => {
+        loadDashboardData();
+      });
+    } catch {}
+
+    return () => {
+      clearInterval(interval);
+      if (es) es.close();
+    };
   }, []);
 
   if (loading) {
@@ -280,7 +314,7 @@ export default function WorkerDashboard() {
                       </div>
                       <div style={{ fontSize: '0.82rem', color: '#64748b', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                         <span>Customer: <strong>{job.customerName || 'Customer'}</strong></span>
-                        <span>Payout: <strong style={{ color: '#059669' }}>₹{((job.workerEarningsPaise || Math.round(job.pricePaise * 0.8)) / 100).toFixed(2)}</strong></span>
+                        <span>Payout: <strong style={{ color: '#059669' }}>₹{((job.workerEarningsPaise || job.workerAmountPaise || job.workerAmount || 0) / 100).toFixed(2)}</strong></span>
                         {job.timeSlot && (
                           <span style={{ color: '#3b82f6', fontWeight: 600 }}>
                             Slot: {job.timeSlot.startTime} - {job.timeSlot.endTime}
@@ -340,7 +374,7 @@ export default function WorkerDashboard() {
                           {job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Recent'}
                         </td>
                         <td style={{ padding: '14px 0', fontWeight: 700, color: '#059669' }}>
-                          ₹{((job.workerEarningsPaise || Math.round(job.pricePaise * 0.8)) / 100).toFixed(2)}
+                          ₹{((job.workerEarningsPaise || job.workerAmountPaise || job.workerAmount || 0) / 100).toFixed(2)}
                         </td>
                         <td style={{ padding: '14px 0', textAlign: 'right' }}>
                           <Link to={`/worker/jobs/${job.id}`} className="btn btn-outline" style={{ padding: '4px 10px', fontSize: '0.78rem' }}>

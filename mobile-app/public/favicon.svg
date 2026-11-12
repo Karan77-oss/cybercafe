@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#E8771B"/>
+  <g transform="translate(-14, 52)">
+    <!-- Cart Frame and Handle -->
+    <path fill="#FFFFFF" d="
+      M 32 30
+      h 35
+      c 16 0 28 10 32 25
+      l 42 165
+      h 240
+      c 14 0 25 11 25 25
+      s -11 25 -25 25
+      H 130
+      c -18 0 -33 -13 -36 -31
+      L 58 75
+      H 32
+      c -14 0 -25 -11 -25 -25
+      s 11 -20 25 -20
+      z
+    "/>
+    <!-- Middle Slat -->
+    <rect fill="#FFFFFF" x="155" y="115" width="265" height="42" rx="21"/>
+    <!-- Top Slat -->
+    <rect fill="#FFFFFF" x="135" y="35" width="310" height="42" rx="21"/>
+    <!-- Wheels -->
+    <circle fill="#FFFFFF" cx="195" cy="330" r="38"/>
+    <circle fill="#FFFFFF" cx="370" cy="330" r="38"/>
+  </g>
+</svg>
