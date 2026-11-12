@@ -39,13 +39,13 @@
     "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
     "typescript": "^7.0.2",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@types/express": "^5.0.0",
+    "@types/express-serve-static-core": "^5.0.0"
   },
   "devDependencies": {
     "@swc/core": "^1.16.1",
     "@swc/jest": "^0.2.39",
-    "@types/express": "^5.0.0",
-    "@types/express-serve-static-core": "^5.0.0",
     "@types/supertest": "^7.2.1",
     "jest-mock-extended": "^4.0.1",
     "supertest": "^7.2.2",
