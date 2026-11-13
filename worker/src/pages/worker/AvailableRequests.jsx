@@ -54,8 +54,9 @@ export default function AvailableRequests() {
           o.worker?.id ||
           o.job?.workerId
         );
-        const isClosed = ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'COMPLETED', 'CANCELLED', 'SUBMITTED', 'REJECTED', 'REFUNDED'].includes(o.status);
-        return !hasWorkerAssigned && !isClosed;
+        const isClosed = ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'COMPLETED', 'CANCELLED', 'SUBMITTED', 'REJECTED', 'REFUNDED', 'PAYMENT_PENDING'].includes(o.status);
+        const isUnpaid = o.status === 'PAYMENT_PENDING' || (o.paymentStatus && o.paymentStatus !== 'PAID');
+        return !hasWorkerAssigned && !isClosed && !isUnpaid;
       });
       const uniqueOrders = Array.from(new Map(strictlyAvailable.map(o => [o.id, o])).values());
       setRequests(uniqueOrders);
@@ -255,8 +256,9 @@ export default function AvailableRequests() {
       r.worker?.id ||
       r.job?.workerId
     );
-    const isClosed = ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'COMPLETED', 'CANCELLED', 'SUBMITTED', 'REJECTED'].includes(r.status);
-    if (hasWorker || isClosed) return false;
+    const isClosed = ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'COMPLETED', 'CANCELLED', 'SUBMITTED', 'REJECTED', 'PAYMENT_PENDING'].includes(r.status);
+    const isUnpaid = r.status === 'PAYMENT_PENDING' || (r.paymentStatus && r.paymentStatus !== 'PAID');
+    if (hasWorker || isClosed || isUnpaid) return false;
 
     const nameMatch = (r.serviceName || '').toLowerCase().includes(search.toLowerCase()) || 
                       r.id.toLowerCase().includes(search.toLowerCase());

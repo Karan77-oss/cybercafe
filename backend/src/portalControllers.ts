@@ -264,9 +264,10 @@ export const workerController = {
           ord.job?.workerId
         );
         const isClaimableStatus = ['AVAILABLE', 'PAID', 'CREATED', 'OFFERED', 'PENDING'].includes(ord.status);
-        const isClosed = ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'COMPLETED', 'CANCELLED', 'SUBMITTED', 'REJECTED', 'REFUNDED'].includes(ord.status);
+        const isClosed = ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'COMPLETED', 'CANCELLED', 'SUBMITTED', 'REJECTED', 'REFUNDED', 'PAYMENT_PENDING'].includes(ord.status);
+        const isUnpaid = ord.status === 'PAYMENT_PENDING' || (ord.paymentStatus && ord.paymentStatus !== 'PAID');
 
-        return !hasWorkerAssigned && isClaimableStatus && !isClosed;
+        return !hasWorkerAssigned && isClaimableStatus && !isClosed && !isUnpaid;
       });
 
       const safeOrders = strictlyAvailable.map(sanitizeOrderForWorker);
@@ -1971,18 +1972,18 @@ export const workerController = {
                 id: dbWorker.id,
                 name: dbWorker.name,
                 email: dbWorker.email,
-                phone: dbWorker.phone,
+                phone: dbWorker.phone || '',
                 businessName: dbWorker.businessName || '',
                 address: dbWorker.address || '',
                 city: dbWorker.city || '',
                 skills: (dbWorker.skills as string[]) || [],
-                bankDetails: (dbWorker.bankDetails as any) || { accountNumber: '', ifsc: '', accountHolderName: '', upiId: '' },
+                bankDetails: ((dbWorker as any).bankDetails as any) || { accountNumber: '', ifsc: '', accountHolderName: '', upiId: '' },
                 activeJobs: 0,
                 completedJobs: 0,
-                rating: dbWorker.rating || 5.0,
+                rating: (dbWorker as any).rating || 5.0,
                 isOnline: dbWorker.isOnline,
                 accountStatus: (dbWorker.status as any) || 'ACTIVE',
-                lastActivityAt: (dbWorker.lastActivityAt || new Date()).toISOString(),
+                lastActivityAt: ((dbWorker as any).lastActivityAt || new Date()).toISOString(),
                 walletBalancePaise: dbWorker.walletBalancePaise || 0,
                 pendingEarningsPaise: 0,
                 onHoldEarningsPaise: 0,
@@ -1990,7 +1991,7 @@ export const workerController = {
                 averageCompletionMinutes: 45,
                 reviews: []
               };
-              localStore.saveWorker(worker);
+              (localStore as any).saveWorker(worker);
             }
           }
         } catch (dbErr: any) {
@@ -2799,15 +2800,28 @@ export const adminController = {
           const where: any = {};
           if (status && status !== 'ALL' && status !== 'ALL ORDERS' && status !== 'UNDEFINED') {
             if (['PENDING', 'AVAILABLE', 'NEW', 'UNASSIGNED'].includes(status)) {
-              where.OR = [
-                { status: { in: ['CREATED', 'AVAILABLE', 'PAID', 'PENDING', 'PAYMENT_PENDING'] as any } },
+              where.AND = [
+                ...(where.AND || []),
                 {
-                  AND: [
-                    { status: { notIn: ['COMPLETED', 'CANCELLED', 'REFUNDED'] as any } },
-                    { OR: [{ workerId: null }, { workerId: '' }] },
-                    { OR: [{ assignedWorkerId: null }, { assignedWorkerId: '' }] }
+                  OR: [
+                    { status: { in: ['AVAILABLE', 'PAID'] as any } },
+                    {
+                      AND: [
+                        { status: { in: ['CREATED', 'AVAILABLE', 'PAID', 'PENDING'] as any } },
+                        { paymentStatus: 'PAID' }
+                      ]
+                    }
                   ]
-                }
+                },
+                { status: { not: 'PAYMENT_PENDING' as any } },
+                { paymentStatus: { not: 'PENDING' } },
+                { OR: [{ workerId: null }, { workerId: '' }] },
+                { OR: [{ assignedWorkerId: null }, { assignedWorkerId: '' }] }
+              ];
+            } else if (['UNPAID', 'PAYMENT_PENDING'].includes(status)) {
+              where.OR = [
+                { status: 'PAYMENT_PENDING' as any },
+                { paymentStatus: 'PENDING' }
               ];
             } else if (['IN_PROGRESS', 'ACTIVE'].includes(status)) {
               where.status = { in: ['IN_PROGRESS', 'ACCEPTED', 'ASSIGNED', 'PROCESSING', 'WAITING_FOR_CUSTOMER', 'RECEIPT_SUBMITTED'] as any };

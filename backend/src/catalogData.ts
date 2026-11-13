@@ -1417,7 +1417,7 @@ class ResilientStore {
         'REFUNDED'
       ].includes(ord.status);
 
-      if (hasWorkerAssigned || isClaimedOrClosed) {
+      if (hasWorkerAssigned || isClaimedOrClosed || ord.status === 'PAYMENT_PENDING' || ord.paymentStatus === 'PENDING') {
         return;
       }
 
@@ -4304,8 +4304,9 @@ class ResilientStore {
 
       const filteredOrders = allWorkerCompletedOrders.filter(o => {
         if (!period || period === 'all' || period === 'all_time') return true;
-        const dateStr = o.completedAt || o.updatedAt || o.createdAt;
-        if (!dateStr) return true;
+        const rawDate = o.completedAt || o.updatedAt || o.createdAt;
+        if (!rawDate) return true;
+        const dateStr = typeof rawDate === 'string' ? rawDate : (rawDate instanceof Date ? rawDate.toISOString() : new Date(rawDate).toISOString());
         if (period === 'daily' || period === 'today') return dateStr.startsWith(todayStr);
         if (period === 'monthly' || period === 'this_month') return dateStr.startsWith(monthStr);
         return true;

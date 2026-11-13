@@ -656,7 +656,9 @@ export const ordersController = {
 
       try {
         broadcastEvent('ORDER_CREATED', { order: finalBroadcastOrder, orderId: orderData.id });
-        broadcastEvent('ORDER_AVAILABLE', { order: finalBroadcastOrder, orderId: orderData.id });
+        if (orderData.paymentStatus === 'PAID' || orderData.status === 'AVAILABLE') {
+          broadcastEvent('ORDER_AVAILABLE', { order: finalBroadcastOrder, orderId: orderData.id });
+        }
         broadcastEvent('ORDER_STATUS_UPDATED', { orderId: orderData.id, status: orderData.status });
       } catch (broadcastErr: any) {
         console.warn('[Broadcast notice on order create]:', broadcastErr?.message);

@@ -239,11 +239,15 @@ export default function Orders() {
     document.body.removeChild(link);
   };
 
-  // Stats calculation
+  // Stats calculation (strictly genuine paid orders for operational metrics)
   const totalCount = orders.length;
+  const isOrderPaid = (o) => (o.paymentStatus === 'PAID' || o.status === 'AVAILABLE' || o.status === 'PAID') && o.status !== 'PAYMENT_PENDING' && o.paymentStatus !== 'PENDING';
+
   const pendingCount = orders.filter(o => 
-    ['CREATED', 'AVAILABLE', 'PAYMENT_PENDING', 'PENDING', 'OFFERED', 'NEW', 'UNASSIGNED'].includes((o.status || '').toUpperCase()) || 
-    ((!o.workerId && !o.assignedWorkerId && !o.worker) && !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes((o.status || '').toUpperCase()))
+    isOrderPaid(o) &&
+    ['CREATED', 'AVAILABLE', 'PAID', 'PENDING', 'OFFERED', 'NEW', 'UNASSIGNED'].includes((o.status || '').toUpperCase()) &&
+    (!o.workerId && !o.assignedWorkerId && !o.worker) &&
+    !['COMPLETED', 'CANCELLED', 'REFUNDED'].includes((o.status || '').toUpperCase())
   ).length;
   const inProgressCount = orders.filter(o => ['IN_PROGRESS', 'ACCEPTED', 'ASSIGNED', 'WAITING_FOR_CUSTOMER', 'RECEIPT_SUBMITTED', 'PROCESSING'].includes((o.status || '').toUpperCase())).length;
   const completedCount = orders.filter(o => ['COMPLETED', 'DELIVERED', 'WORK_COMPLETED'].includes((o.status || '').toUpperCase())).length;
@@ -292,7 +296,8 @@ export default function Orders() {
           { key: 'CORRECTION_REQUESTED', label: 'Correction Requested' },
           { key: 'ON_HOLD', label: 'On Hold' },
           { key: 'CANCELLED', label: 'Cancelled' },
-          { key: 'REFUNDED', label: 'Refunded' }
+          { key: 'REFUNDED', label: 'Refunded' },
+          { key: 'UNPAID', label: 'Unpaid / Abandoned' }
         ].map(tab => (
           <button
             key={tab.key}
@@ -386,6 +391,10 @@ export default function Orders() {
                             <div style={{ fontSize: '0.7rem', color: 'var(--brand-blue)' }}>{assignedWorker.workerId || assignedWorker.id || 'Worker'}</div>
                           </div>
                         </div>
+                      ) : (o.status === 'PAYMENT_PENDING' || o.paymentStatus === 'PENDING') ? (
+                        <span style={{ color: '#dc2626', fontSize: '0.8rem', background: '#fef2f2', padding: '3px 8px', borderRadius: '12px', border: '1px solid #fecaca', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <AlertCircle size={12} /> Unpaid Checkout
+                        </span>
                       ) : (
                         <span style={{ color: '#ea580c', fontSize: '0.8rem', background: '#fff7ed', padding: '3px 8px', borderRadius: '12px', border: '1px solid #fed7aa', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                           <Clock size={12} /> Available / Pending
