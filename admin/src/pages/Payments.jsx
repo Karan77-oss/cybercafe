@@ -53,19 +53,80 @@ export default function Payments() {
   const [rejectWithdrawalId, setRejectWithdrawalId] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [rejecting, setRejecting] = useState(false);
+  const [withdrawalFilter, setWithdrawalFilter] = useState('PENDING');
 
   const loadData = () => {
     setLoading(true);
     Promise.all([
-      adminApi.getFinancialSummary(),
-      adminApi.getPayments(),
-      adminApi.getWithdrawals(),
-      adminApi.getTopEarningWorkers(leaderboardPeriod)
+      adminApi.getFinancialSummary().catch(err => { console.warn('fin summary error:', err); return {}; }),
+      adminApi.getPayments().catch(err => { console.warn('payments error:', err); return {}; }),
+      adminApi.getWithdrawals().catch(err => { console.warn('withdrawals error:', err); return {}; }),
+      adminApi.getTopEarningWorkers(leaderboardPeriod).catch(err => { console.warn('top workers error:', err); return {}; }),
+      adminApi.getOrders().catch(err => { console.warn('orders error:', err); return {}; })
     ])
-      .then(([sumRes, payRes, wthRes, topRes]) => {
-        if (sumRes?.summary) setSummary(sumRes.summary);
-        setPayments(payRes?.payments || []);
-        setWithdrawals(wthRes?.withdrawals || wthRes?.payouts || []);
+      .then(([sumRes, payRes, wthRes, topRes, ordersRes]) => {
+        const rawSummary = sumRes?.summary || sumRes?.data || sumRes || {};
+        const ordersList = ordersRes?.orders || (Array.isArray(ordersRes) ? ordersRes : []);
+        const withdrawalsList = wthRes?.withdrawals || wthRes?.payouts || (Array.isArray(wthRes) ? wthRes : []);
+        const paymentsList = payRes?.payments || (Array.isArray(payRes) ? payRes : []);
+
+        // Enterprise Reconciled Financial Metrics from real order & payout events
+        let calcCompletedRevenuePaise = 0;
+        let calcTotalGMVPaise = 0;
+        let calcCommissionPaise = 0;
+        let calcHeldEarningsPaise = 0;
+
+        ordersList.forEach(o => {
+          const p = o.pricing || {};
+          const s = o.serviceSnapshot || {};
+          const price = o.customerPaidAmountPaise || p.pricePaise || s.pricePaise || o.pricePaise || 0;
+          const worker = o.workerAmountPaise || p.workerPayoutPaise || p.workerEarningPaise || s.workerAmountPaise || o.workerEarningsPaise || 0;
+          const comm = o.adminCommissionPaise || p.platformCommissionPaise || s.adminCommissionPaise || Math.max(0, price - worker);
+
+          if (o.status === 'COMPLETED') {
+            calcCompletedRevenuePaise += price;
+            calcTotalGMVPaise += price;
+            calcCommissionPaise += comm;
+          } else if (['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'RECEIPT_SUBMITTED'].includes(o.status)) {
+            calcTotalGMVPaise += price;
+            calcCommissionPaise += comm;
+            calcHeldEarningsPaise += worker;
+          }
+        });
+
+        const completedPayoutsPaise = withdrawalsList
+          .filter(w => w.status === 'COMPLETED' || w.status === 'APPROVED')
+          .reduce((sum, w) => sum + (w.amountPaise || 0), 0);
+
+        const pendingWithdrawalsPaise = withdrawalsList
+          .filter(w => isPendingWithdrawal(w.status))
+          .reduce((sum, w) => sum + (w.amountPaise || 0), 0);
+
+        const finalSummary = {
+          ...rawSummary,
+          totalRevenuePaise: Math.max(
+            rawSummary.totalRevenuePaise || rawSummary.totalPlatformRevenuePaise || rawSummary.grossRevenuePaise || 0,
+            calcTotalGMVPaise || calcCompletedRevenuePaise
+          ),
+          totalCommissionPaise: Math.max(
+            rawSummary.totalCommissionPaise || rawSummary.totalPlatformCommissionPaise || 0,
+            calcCommissionPaise
+          ),
+          workerPayoutsPaise: Math.max(
+            rawSummary.workerPayoutsPaise || rawSummary.completedWithdrawalsPaise || 0,
+            completedPayoutsPaise
+          ),
+          heldEarningsPaise: Math.max(
+            rawSummary.heldEarningsPaise || rawSummary.onHoldEarningsPaise || 0,
+            calcHeldEarningsPaise
+          ),
+          totalRefundsPaise: rawSummary.totalRefundsPaise || 0,
+          pendingWithdrawalsPaise
+        };
+
+        setSummary(finalSummary);
+        setPayments(paymentsList);
+        setWithdrawals(withdrawalsList);
         setTopWorkers(topRes?.rankings || []);
         setLoading(false);
       })
@@ -182,6 +243,12 @@ export default function Payments() {
   };
 
   const pendingWithdrawalsCount = withdrawals.filter(w => isPendingWithdrawal(w.status)).length;
+  const completedWithdrawalsCount = withdrawals.filter(w => w.status === 'COMPLETED' || w.status === 'APPROVED').length;
+  const displayedWithdrawals = withdrawals.filter(w => {
+    if (withdrawalFilter === 'ALL') return true;
+    if (withdrawalFilter === 'COMPLETED') return w.status === 'COMPLETED' || w.status === 'APPROVED';
+    return isPendingWithdrawal(w.status);
+  });
 
   return (
     <div className="view-content">
@@ -201,31 +268,31 @@ export default function Payments() {
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
         <StatCard 
           title="Total Platform Revenue" 
-          value={`₹${(((summary.totalRevenuePaise || summary.grossRevenuePaise || (summary.totalRevenue ? Number(summary.totalRevenue) * 100 : 0)) || 0) / 100).toFixed(2)}`} 
+          value={`₹${(((summary.totalRevenuePaise || summary.grossRevenuePaise || summary.totalPlatformRevenuePaise || (summary.totalRevenue ? Number(summary.totalRevenue) * 100 : 0)) || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
           icon={Wallet} 
           color="purple" 
         />
         <StatCard 
           title="Platform Commission (Markup)" 
-          value={`₹${((summary.totalCommissionPaise || 0) / 100).toFixed(2)}`} 
+          value={`₹${(((summary.totalCommissionPaise || summary.totalPlatformCommissionPaise || summary.platformCommissionPaise || (summary.platformCommission ? Number(summary.platformCommission) * 100 : 0)) || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
           icon={TrendingUp} 
           color="blue" 
         />
         <StatCard 
           title="Worker Payouts" 
-          value={`₹${(((summary.workerPayoutsPaise || summary.completedWithdrawalsPaise || summary.totalWorkerEarningsPaise || summary.totalWorkerPayoutsPaise) || 0) / 100).toFixed(2)}`} 
+          value={`₹${(((summary.workerPayoutsPaise || summary.completedWithdrawalsPaise || summary.totalWorkerEarningsPaise || summary.totalWorkerPayoutsPaise) || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
           icon={CheckCircle} 
           color="green" 
         />
         <StatCard 
           title="Earnings On Hold" 
-          value={`₹${((summary.heldEarningsPaise || 0) / 100).toFixed(2)}`} 
+          value={`₹${(((summary.heldEarningsPaise || summary.onHoldEarningsPaise || (summary.onHoldEarnings ? Number(summary.onHoldEarnings) * 100 : 0)) || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
           icon={Clock} 
           color="yellow" 
         />
         <StatCard 
           title="Total Customer Refunds" 
-          value={`₹${((summary.totalRefundsPaise || 0) / 100).toFixed(2)}`} 
+          value={`₹${(((summary.totalRefundsPaise || (summary.totalCustomerRefund ? Number(summary.totalCustomerRefund) * 100 : 0)) || 0) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
           icon={AlertTriangle} 
           color="red" 
         />
@@ -294,8 +361,8 @@ export default function Payments() {
                     </span>
                   </td>
                   <td>
-                    <div style={{ fontWeight: 500 }}>{p.customer?.name || 'Customer'}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.customer?.email}</div>
+                    <div style={{ fontWeight: 500 }}>{p.customerName || p.customer?.name || 'Customer'}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.customerEmail || p.customer?.email}</div>
                   </td>
                   <td style={{ fontWeight: 600, color: '#16a34a' }}>
                     ₹{((p.amountPaise || 0) / 100).toFixed(2)}
@@ -326,6 +393,28 @@ export default function Payments() {
       {/* TAB 2: WITHDRAWAL REQUESTS */}
       {activeTab === 'WITHDRAWALS' && (
         <div className="data-table-container">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Clock size={18} color="#ea580c" /> Worker Withdrawal Requests
+            </h3>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setWithdrawalFilter('PENDING')}
+                className={`btn ${withdrawalFilter === 'PENDING' ? 'btn-primary' : 'btn-outline'}`}
+                style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+              >
+                Pending Requests ({pendingWithdrawalsCount})
+              </button>
+              <button
+                onClick={() => setWithdrawalFilter('COMPLETED')}
+                className={`btn ${withdrawalFilter === 'COMPLETED' ? 'btn-primary' : 'btn-outline'}`}
+                style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+              >
+                Completed Transfers ({completedWithdrawalsCount})
+              </button>
+            </div>
+          </div>
+
           <table className="data-table">
             <thead>
               <tr>
@@ -339,7 +428,7 @@ export default function Payments() {
               </tr>
             </thead>
             <tbody>
-              {withdrawals.map(w => (
+              {displayedWithdrawals.map(w => (
                 <tr key={w.id}>
                   <td>
                     <span style={{ fontWeight: 600, color: 'var(--brand-blue)', fontSize: '0.85rem' }} title={w.id}>
@@ -435,8 +524,20 @@ export default function Payments() {
                   </td>
                 </tr>
               ))}
-              {withdrawals.length === 0 && (
-                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '30px' }}>No withdrawal requests found.</td></tr>
+              {displayedWithdrawals.length === 0 && (
+                <tr>
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                    <CheckCircle size={32} color="#16a34a" style={{ display: 'block', margin: '0 auto 10px' }} />
+                    <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                      {withdrawalFilter === 'PENDING' ? 'No pending withdrawal requests' : 'No completed transfers found'}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', marginTop: '4px' }}>
+                      {withdrawalFilter === 'PENDING' 
+                        ? 'All worker payout requests have been reviewed and transferred.' 
+                        : 'No past completed payouts.'}
+                    </div>
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
