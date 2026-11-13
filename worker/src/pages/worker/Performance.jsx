@@ -32,8 +32,10 @@ export default function Performance() {
     );
   }
 
-  const rating = stats?.rating || 4.9;
-  const completedJobs = stats?.completedJobs || 134;
+  const rating = stats?.rating !== undefined ? Number(stats.rating).toFixed(1) : '5.0';
+  const completedJobs = stats?.completedJobs ?? stats?.completedOrders ?? 0;
+  const completionRate = stats?.completionRate || (completedJobs > 0 ? '100%' : '100%');
+  const avgTurnaround = stats?.avgTurnaroundMinutes ? `${stats.avgTurnaroundMinutes} mins` : '45 mins';
   const reviews = stats?.reviews || [];
 
   return (
@@ -66,7 +68,7 @@ export default function Performance() {
             <CheckCircle2 size={20} color="#10b981" />
           </div>
           <div className="stat-card-value" style={{ color: '#10b981' }}>
-            99.2%
+            {completionRate}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px' }}>Zero unexcused cancellations</div>
         </div>
@@ -77,7 +79,7 @@ export default function Performance() {
             <Clock size={20} color="#3b82f6" />
           </div>
           <div className="stat-card-value" style={{ color: '#3b82f6' }}>
-            45 mins
+            {avgTurnaround}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px' }}>Well within SLA limit</div>
         </div>

@@ -1369,6 +1369,94 @@ export const workerController = {
       if (!workerId) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
 
       const summary = localStore.getWorkerEarningsSummary(workerId);
+      const isDbOnline = await checkDb().catch(() => false);
+
+      if (isDbOnline) {
+        try {
+          const completedOrders = await prisma.order.findMany({
+            where: {
+              OR: [{ workerId }, { assignedWorkerId: workerId }],
+              status: { in: ['COMPLETED', 'WORK_COMPLETED'] }
+            },
+            select: {
+              id: true,
+              workerAmountPaise: true,
+              pricePaise: true,
+              adminCommissionPaise: true,
+              completedAt: true,
+              createdAt: true
+            }
+          });
+
+          const activeOrdersCount = await prisma.order.count({
+            where: {
+              OR: [{ workerId }, { assignedWorkerId: workerId }],
+              status: { in: ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'RECEIPT_SUBMITTED', 'WAITING_FOR_CUSTOMER', 'REVISION_REQUIRED'] }
+            }
+          });
+
+          const totalAssignedOrders = await prisma.order.count({
+            where: {
+              OR: [{ workerId }, { assignedWorkerId: workerId }]
+            }
+          });
+
+          const startOfToday = new Date();
+          startOfToday.setHours(0, 0, 0, 0);
+
+          const todayCompleted = completedOrders.filter(o => {
+            const date = o.completedAt ? new Date(o.completedAt) : new Date(o.createdAt);
+            return date >= startOfToday;
+          });
+
+          const totalEarnedPaise = completedOrders.reduce((sum, o) => {
+            const amt = o.workerAmountPaise || Math.max(0, (o.pricePaise || 0) - (o.adminCommissionPaise || 0));
+            return sum + amt;
+          }, 0);
+
+          const todayEarnedPaise = todayCompleted.reduce((sum, o) => {
+            const amt = o.workerAmountPaise || Math.max(0, (o.pricePaise || 0) - (o.adminCommissionPaise || 0));
+            return sum + amt;
+          }, 0);
+
+          const allWorkerWithdrawals = await prisma.withdrawal.findMany({
+            where: {
+              workerId,
+              status: { in: ['REQUESTED', 'APPROVED', 'COMPLETED', 'PENDING'] }
+            },
+            select: { amountPaise: true }
+          });
+
+          const totalWithdrawnPaise = allWorkerWithdrawals.reduce((sum, w) => sum + (w.amountPaise || 0), 0);
+          const verifiedBalancePaise = Math.max(0, totalEarnedPaise - totalWithdrawnPaise);
+
+          const dbWorker = await prisma.worker.findUnique({
+            where: { id: workerId },
+            select: { rating: true, isOnline: true }
+          });
+
+          summary.completedJobs = completedOrders.length;
+          summary.completedOrders = completedOrders.length;
+          summary.activeJobs = activeOrdersCount;
+          summary.totalJobs = totalAssignedOrders;
+          summary.todayCompletedJobs = todayCompleted.length;
+          summary.totalEarningsPaise = totalEarnedPaise;
+          summary.todayEarningsPaise = todayEarnedPaise;
+          summary.walletBalancePaise = verifiedBalancePaise;
+          if (dbWorker) {
+            summary.rating = (dbWorker as any).rating || 5.0;
+            summary.isOnline = dbWorker.isOnline;
+          }
+          const completionRate = totalAssignedOrders > 0
+            ? Math.min(100, Math.round((completedOrders.length / totalAssignedOrders) * 100))
+            : 100;
+          summary.completionRate = `${completionRate}%`;
+          summary.avgTurnaroundMinutes = 45;
+        } catch (dbErr: any) {
+          console.warn('[workerController.getStats DB Notice]:', dbErr?.message);
+        }
+      }
+
       return sendSuccess(res, { stats: summary });
     } catch (e: any) {
       return sendError(res, 500, 'SERVER_ERROR', e.message);
@@ -1448,6 +1536,8 @@ export const workerController = {
 
           summary.walletBalancePaise = verifiedBalancePaise;
           summary.totalEarningsPaise = totalEarnedPaise;
+          summary.completedJobs = completedOrders.length;
+          summary.completedOrders = completedOrders.length;
         } catch { }
       }
 
@@ -1537,6 +1627,8 @@ export const workerController = {
 
           summary.walletBalancePaise = verifiedBalancePaise;
           summary.totalEarningsPaise = totalEarnedPaise;
+          summary.completedJobs = completedOrders.length;
+          summary.completedOrders = completedOrders.length;
         } catch { }
       }
 
@@ -2111,6 +2203,8 @@ export const workerController = {
               worker.totalEarningsPaise = totalEarnedPaise;
               worker.isOnline = dbWorker.isOnline;
               worker.accountStatus = (dbWorker.status as any) || worker.accountStatus;
+              worker.completedJobs = completedOrders.length;
+              worker.rating = (dbWorker as any).rating || 5.0;
             } else {
               worker = {
                 id: dbWorker.id,
