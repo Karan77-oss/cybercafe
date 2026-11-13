@@ -128,6 +128,18 @@ export default function JobWorkspace() {
       const res = await workerApi.getJobDetails(jobId);
       const jobData = res?.job || res?.order || res?.data?.job || res?.data?.order;
       if (jobData) {
+        // Guarantee documents are populated from dedicated endpoint if empty
+        if (!jobData.documents || jobData.documents.length === 0) {
+          try {
+            const docsRes = await workerApi.getOrderDocuments(jobId);
+            const fetched = docsRes?.documents || docsRes?.data?.documents || [];
+            if (fetched && fetched.length > 0) {
+              jobData.documents = fetched;
+            }
+          } catch (docErr) {
+            console.warn('Fallback document fetch notice:', docErr);
+          }
+        }
         setJob(jobData);
         const isClosed = ['WORK_COMPLETED', 'RECEIPT_SUBMITTED', 'SUBMITTED', 'COMPLETED', 'CANCELLED'].includes(jobData.status);
         setIsChatClosed(isClosed);
@@ -870,69 +882,81 @@ export default function JobWorkspace() {
                 <ShieldCheck size={24} color="#10b981" style={{ margin: '0 auto 8px' }} />
                 Customer personal identity files have been permanently cleared from your workspace in compliance with data privacy policies.
               </div>
-            ) : (!job.documents || job.documents.length === 0) ? (
-              <p style={{ color: '#94a3b8', fontSize: '0.88rem' }}>No customer documents uploaded.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {job.documents.map((doc, idx) => {
-                  const token = localStorage.getItem('cybercafe:token');
-                  const docUrl = doc.url || `/api/documents/${doc.id}/download`;
-                  const authenticatedViewUrl = `${docUrl}${token ? (docUrl.includes('?') ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`) : ''}`;
-                  const docDisplayName = doc.name || doc.fileName || `Document #${idx + 1}`;
-                  const docSizeText = doc.sizeFormatted || (typeof doc.size === 'number' 
-                    ? (doc.size > 1048576 ? `${(doc.size / 1048576).toFixed(1)} MB` : `${Math.round(doc.size / 1024)} KB`) 
-                    : (doc.size || 'Verified document'));
+            ) : (() => {
+              const docsList = (Array.isArray(job?.documents) && job.documents.length > 0)
+                ? job.documents
+                : (Array.isArray(job?.job?.documents) && job.job.documents.length > 0)
+                  ? job.job.documents
+                  : (Array.isArray(job?.order?.documents) && job.order.documents.length > 0)
+                    ? job.order.documents
+                    : [];
 
-                  return (
-                    <div
-                      key={doc.id || idx}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '12px 14px',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        background: '#ffffff',
-                        gap: '10px',
-                        flexWrap: 'wrap'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <FileText size={20} color="#3b82f6" />
-                        <div>
-                          <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1e293b' }}>
-                            {docDisplayName}
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                            {docSizeText}
+              if (docsList.length === 0) {
+                return <p style={{ color: '#94a3b8', fontSize: '0.88rem' }}>No customer documents uploaded.</p>;
+              }
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {docsList.map((doc, idx) => {
+                    const token = localStorage.getItem('cybercafe:token');
+                    const docUrl = doc.url || `/api/documents/${doc.id}/download`;
+                    const authenticatedViewUrl = `${docUrl}${token ? (docUrl.includes('?') ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`) : ''}`;
+                    const docDisplayName = doc.name || doc.docName || doc.fileName || `Document #${idx + 1}`;
+                    const docSizeText = doc.sizeFormatted || (typeof doc.size === 'number' 
+                      ? (doc.size > 1048576 ? `${(doc.size / 1048576).toFixed(1)} MB` : `${Math.round(doc.size / 1024)} KB`) 
+                      : (doc.size || 'Verified document'));
+
+                    return (
+                      <div
+                        key={doc.id || idx}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '12px 14px',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '8px',
+                          background: '#ffffff',
+                          gap: '10px',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <FileText size={20} color="#3b82f6" />
+                          <div>
+                            <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1e293b' }}>
+                              {docDisplayName}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                              {docSizeText}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedViewingDoc(doc)}
-                          className="btn btn-outline"
-                          style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
-                        >
-                          <Eye size={12} /> View Securely
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadDoc(doc)}
-                          className="btn btn-outline"
-                          style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
-                        >
-                          <Download size={12} /> Download
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedViewingDoc(doc)}
+                            className="btn btn-outline"
+                            style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                          >
+                            <Eye size={12} /> View Securely
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadDoc(doc)}
+                            className="btn btn-outline"
+                            style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                          >
+                            <Download size={12} /> Download
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </div>
 

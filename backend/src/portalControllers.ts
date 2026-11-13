@@ -212,7 +212,8 @@ export const workerController = {
               customer: true,
               user: true,
               service: true,
-              job: true
+              job: true,
+              documents: true
             },
             orderBy: { createdAt: 'desc' }
           });
@@ -301,7 +302,7 @@ export const workerController = {
         try {
           order = await prisma.order.findUnique({
             where: { id: orderId },
-            include: { customer: true, user: true, service: true, worker: true, job: true }
+            include: { customer: true, user: true, service: true, worker: true, job: true, documents: true }
           });
         } catch (dbErr: any) {
           console.warn('[acceptJob DB find notice]:', dbErr?.message);
@@ -476,7 +477,7 @@ export const workerController = {
         try {
           order = await prisma.order.findUnique({
             where: { id: orderId },
-            include: { customer: true, user: true, service: true, worker: true, job: true }
+            include: { customer: true, user: true, service: true, worker: true, job: true, documents: true }
           });
         } catch (dbErr: any) {
           console.warn('[acceptAndSchedule DB find notice]:', dbErr?.message);
@@ -704,25 +705,78 @@ export const workerController = {
 
       if (!workerId) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
 
-      let job = localStore.getOrderForWorker(orderId, workerId);
-      if (!job) {
-        const isDbOnline = await checkDb().catch(() => false);
-        if (isDbOnline) {
-          try {
-            const dbOrder = await prisma.order.findUnique({
-              where: { id: orderId },
-              include: { customer: true, service: true, documents: true, receipts: true, job: true }
-            });
-            if (dbOrder && (dbOrder.assignedWorkerId === workerId || req.user?.role === 'ADMIN')) {
-              localStore.saveOrder(dbOrder);
-              job = localStore.getOrderForWorker(orderId, workerId) || dbOrder;
+      let job: any = null;
+      const isDbOnline = await checkDb().catch(() => false);
+      if (isDbOnline) {
+        try {
+          const dbOrder = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { customer: true, user: true, service: true, documents: true, receipts: true, job: true }
+          });
+          if (dbOrder && (dbOrder.assignedWorkerId === workerId || dbOrder.workerId === workerId || req.user?.role === 'ADMIN')) {
+            let docs = dbOrder.documents || [];
+            if (docs.length === 0) {
+              docs = await prisma.document.findMany({
+                where: {
+                  OR: [
+                    { orderId: orderId },
+                    { orderId: dbOrder.orderNumber }
+                  ]
+                }
+              });
             }
-          } catch {}
+            (dbOrder as any).documents = docs;
+            localStore.saveOrder(dbOrder);
+            job = dbOrder;
+          }
+        } catch (dbErr: any) {
+          console.warn('[getOrderDetails DB notice]:', dbErr?.message);
         }
       }
 
       if (!job) {
+        job = localStore.getOrderForWorker(orderId, workerId);
+      }
+
+      if (!job) {
         return sendError(res, 404, 'ORDER_NOT_FOUND', 'Order not found or access denied');
+      }
+
+      // If memory job documents is empty, check prisma.document
+      if ((!job.documents || job.documents.length === 0) && isDbOnline) {
+        try {
+          const fallbackDocs = await prisma.document.findMany({
+            where: {
+              OR: [
+                { orderId: orderId },
+                { orderId: job.orderNumber || orderId }
+              ]
+            }
+          });
+          if (fallbackDocs.length > 0) {
+            job.documents = fallbackDocs;
+            const loc = localStore.getOrder(orderId);
+            if (loc) loc.documents = fallbackDocs;
+          }
+        } catch {}
+      }
+
+      // Format documents
+      if (job && Array.isArray(job.documents)) {
+        job.documents = job.documents.map((d: any, idx: number) => {
+          const docName = d.docName || null;
+          const fileName = d.fileName || d.name || `document_${idx + 1}.pdf`;
+          const displayName = d.name || (docName ? `${docName} (${fileName})` : fileName);
+          return {
+            ...d,
+            name: displayName,
+            fileName,
+            url: d.url || `/api/documents/${d.id}/download`,
+            sizeFormatted: typeof d.size === 'number'
+              ? (d.size > 1048576 ? `${(d.size / 1048576).toFixed(1)} MB` : `${Math.round(d.size / 1024)} KB`)
+              : (d.size || 'Verified document')
+          };
+        });
       }
 
       const safeJob = sanitizeOrderForWorker(job);
@@ -747,16 +801,42 @@ export const workerController = {
 
       if (!user) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
 
-      const order = localStore.getOrder(orderId);
-      if (!order) return sendError(res, 404, 'ORDER_NOT_FOUND', 'Order not found');
-
-      const isAdmin = user.role === 'ADMIN';
-      if (!isAdmin && order.assignedWorkerId !== user.id) {
-        return sendError(res, 403, 'FORBIDDEN', 'Access denied: You are not assigned to this order');
+      let documents: any[] = [];
+      const isDbOnline = await checkDb().catch(() => false);
+      if (isDbOnline) {
+        try {
+          const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { documents: true }
+          });
+          if (order && (order.assignedWorkerId === user.id || order.workerId === user.id || user.role === 'ADMIN' || order.customerId === user.id || (order as any).userId === user.id)) {
+            documents = order.documents || [];
+            if (documents.length === 0) {
+              documents = await prisma.document.findMany({
+                where: { OR: [{ orderId }, { orderId: order.orderNumber }] }
+              });
+            }
+          }
+        } catch {}
       }
 
-      const documents = order.documents || [];
-      return sendSuccess(res, { documents, data: { documents } });
+      if (documents.length === 0) {
+        const order = localStore.getOrder(orderId);
+        if (order) {
+          documents = order.documents || [];
+        }
+      }
+
+      const formatted = documents.map((d: any, idx: number) => ({
+        ...d,
+        name: d.name || d.docName || d.fileName || `Document #${idx + 1}`,
+        url: d.url || `/api/documents/${d.id}/download`,
+        sizeFormatted: typeof d.size === 'number'
+          ? (d.size > 1048576 ? `${(d.size / 1048576).toFixed(1)} MB` : `${Math.round(d.size / 1024)} KB`)
+          : (d.size || 'Verified document')
+      }));
+
+      return sendSuccess(res, { documents: formatted, data: { documents: formatted } });
     } catch (e: any) {
       return sendError(res, 500, 'INTERNAL_ERROR', e.message || 'Failed to fetch documents');
     }

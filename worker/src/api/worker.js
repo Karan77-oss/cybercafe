@@ -11,6 +11,7 @@ export const workerApi = {
   // Active / Completed Jobs
   getMyJobs: (status) => apiClient(`/worker/jobs${status ? `?status=${status}` : ''}`),
   getJobDetails: (id) => apiClient(`/worker/jobs/${id}`),
+  getOrderDocuments: (id) => apiClient(`/worker/orders/${id}/documents`),
   startWork: (id) => apiClient(`/worker/jobs/${id}/start`, { method: 'POST' }),
   setTimeSlot: (id, timeSlot) => apiClient(`/worker/jobs/${id}/timeslot`, { method: 'POST', body: timeSlot }),
   acceptReschedule: (id) => apiClient(`/worker/jobs/${id}/timeslot/accept-reschedule`, { method: 'POST' }),
