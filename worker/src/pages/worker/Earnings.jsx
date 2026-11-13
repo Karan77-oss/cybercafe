@@ -15,7 +15,16 @@ import {
 import { workerApi } from '../../api/worker';
 
 export default function Earnings() {
-  const [earningsData, setEarningsData] = useState(null);
+  const [earningsData, setEarningsData] = useState({
+    walletBalancePaise: 0,
+    todayEarningsPaise: 0,
+    pendingEarningsPaise: 0,
+    onHoldEarningsPaise: 0,
+    totalEarningsPaise: 0,
+    todayCompletedJobs: 0,
+    completedJobs: 0,
+    transactions: []
+  });
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
@@ -44,17 +53,29 @@ export default function Earnings() {
           ? payload.transactions 
           : (Array.isArray(payload.history) ? payload.history : (Array.isArray(payload.list) ? payload.list : []));
         
-        setEarningsData({
+        setEarningsData(prev => ({
+          ...prev,
           ...payload,
           transactions: txs
-        });
+        }));
         setError('');
       }
       if (!silent) setLoading(false);
     } catch (err) {
       console.error('Failed to load earnings ledger:', err);
+      // Fallback: try getStats to ensure metrics don't stay blank
+      try {
+        const statsRes = await workerApi.getStats();
+        if (statsRes?.stats) {
+          setEarningsData(prev => ({
+            ...prev,
+            ...statsRes.stats,
+            transactions: statsRes.stats.transactions || prev.transactions || []
+          }));
+        }
+      } catch { }
       if (!silent) {
-        setError(err.message || 'Failed to load earnings ledger');
+        setError(err.message || 'Unable to refresh live ledger. Displaying cached records.');
         setLoading(false);
       }
     }
@@ -71,7 +92,7 @@ export default function Earnings() {
           : (Array.isArray(payload.history) ? payload.history : []);
         
         setEarningsData(prev => ({
-          ...(prev || {}),
+          ...prev,
           ...payload,
           transactions: txs.length > 0 ? txs : (prev?.transactions || [])
         }));
@@ -120,21 +141,11 @@ export default function Earnings() {
     return `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
   };
 
-  if (loading) {
+  if (loading && !earningsData) {
     return (
       <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
         <div className="spinner" style={{ margin: '0 auto 16px' }} />
         Loading earnings and financial records...
-      </div>
-    );
-  }
-
-  if (error || !earningsData) {
-    return (
-      <div style={{ padding: '32px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', color: '#991b1b', textAlign: 'center' }}>
-        <AlertCircle size={24} style={{ marginBottom: 8 }} />
-        <div>{error || 'Unable to load earnings data'}</div>
-        <button onClick={() => loadEarnings()} className="btn btn-outline" style={{ marginTop: 12 }}>Retry</button>
       </div>
     );
   }
@@ -148,6 +159,32 @@ export default function Earnings() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+      {/* Top Error Alert if API failed (Non-blocking) */}
+      {error && (
+        <div style={{
+          padding: '14px 18px',
+          background: '#fef2f2',
+          border: '1px solid #fecaca',
+          borderRadius: '10px',
+          color: '#991b1b',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <AlertCircle size={20} color="#dc2626" />
+            <span style={{ fontSize: '0.9rem' }}>{error}</span>
+          </div>
+          <button 
+            onClick={() => loadEarnings()} 
+            className="btn btn-outline" 
+            style={{ padding: '6px 14px', fontSize: '0.82rem', borderColor: '#fca5a5', color: '#991b1b' }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
