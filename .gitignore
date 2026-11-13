@@ -42,3 +42,6 @@ cyber-cafe/
 backend/src/**/*.js
 backend/src/**/*.js.map
 backend/src/**/*.d.ts
+
+*.apk
+
