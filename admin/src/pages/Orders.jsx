@@ -65,7 +65,13 @@ export default function Orders() {
       q: searchTerm || undefined
     })
       .then(res => {
-        setOrders(res.orders || []);
+        const raw = res.orders || [];
+        // Strictly enforce: never display unpaid checkouts or pending payment orders
+        const genuineOrders = raw.filter(o => 
+          o.status !== 'PAYMENT_PENDING' && 
+          !(o.paymentStatus === 'PENDING' && o.status !== 'COMPLETED' && o.status !== 'IN_PROGRESS')
+        );
+        setOrders(genuineOrders);
         if (!isSilent) setLoading(false);
       })
       .catch(err => {
@@ -296,8 +302,7 @@ export default function Orders() {
           { key: 'CORRECTION_REQUESTED', label: 'Correction Requested' },
           { key: 'ON_HOLD', label: 'On Hold' },
           { key: 'CANCELLED', label: 'Cancelled' },
-          { key: 'REFUNDED', label: 'Refunded' },
-          { key: 'UNPAID', label: 'Unpaid / Abandoned' }
+          { key: 'REFUNDED', label: 'Refunded' }
         ].map(tab => (
           <button
             key={tab.key}
@@ -391,10 +396,6 @@ export default function Orders() {
                             <div style={{ fontSize: '0.7rem', color: 'var(--brand-blue)' }}>{assignedWorker.workerId || assignedWorker.id || 'Worker'}</div>
                           </div>
                         </div>
-                      ) : (o.status === 'PAYMENT_PENDING' || o.paymentStatus === 'PENDING') ? (
-                        <span style={{ color: '#dc2626', fontSize: '0.8rem', background: '#fef2f2', padding: '3px 8px', borderRadius: '12px', border: '1px solid #fecaca', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <AlertCircle size={12} /> Unpaid Checkout
-                        </span>
                       ) : (
                         <span style={{ color: '#ea580c', fontSize: '0.8rem', background: '#fff7ed', padding: '3px 8px', borderRadius: '12px', border: '1px solid #fed7aa', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                           <Clock size={12} /> Available / Pending

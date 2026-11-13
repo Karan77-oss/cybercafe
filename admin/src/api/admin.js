@@ -61,7 +61,11 @@ export const adminApi = {
   getPayouts: () => apiClient('/admin/payouts'),
   approveWithdrawal: (id) => apiClient(`/admin/withdrawals/${id}/approve`, { method: 'POST' }),
   rejectWithdrawal: (id, reason) => apiClient(`/admin/withdrawals/${id}/reject`, { method: 'POST', body: { reason } }),
-  getTopEarningWorkers: (period = 'daily') => apiClient(`/admin/workers/top-earning?period=${period}`),
+  getTopEarningWorkers: (period = 'daily') => 
+    apiClient(`/admin/workers/top-earning?period=${period}`).catch(err => {
+      console.warn('[Admin API] getTopEarningWorkers error:', err);
+      return { rankings: [], workers: [] };
+    }),
 
   // 7. Complaints & Disputes
   getComplaints: (params = {}) => {

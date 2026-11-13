@@ -81,21 +81,38 @@ export default function Dashboard() {
   const [hireError, setHireError] = useState('');
   const [hireSuccess, setHireSuccess] = useState('');
 
-  const loadData = () => {
-    Promise.all([
-      adminApi.getDashboardStats(),
-      adminApi.getTopEarningWorkers('monthly')
-    ])
-      .then(([statsRes, workersRes]) => {
-        if (statsRes.stats) setStats(statsRes.stats);
-        if (workersRes.rankings) setTopWorkers(workersRes.rankings);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setError('Failed to load dashboard data');
-        setLoading(false);
-      });
+  const loadData = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [statsRes, workersRes] = await Promise.all([
+        adminApi.getDashboardStats(),
+        adminApi.getTopEarningWorkers('monthly')
+      ]);
+
+      if (statsRes && (statsRes.stats || statsRes.success !== false)) {
+        const data = statsRes.stats || statsRes;
+        setStats(prev => ({
+          ...prev,
+          ...data,
+          totalRevenuePaise: data.totalRevenuePaise || (data.revenuePaise ?? prev.totalRevenuePaise),
+          totalCommissionPaise: data.totalCommissionPaise || prev.totalCommissionPaise
+        }));
+      }
+
+      if (workersRes?.rankings) {
+        setTopWorkers(workersRes.rankings);
+      } else if (workersRes?.workers) {
+        setTopWorkers(workersRes.workers);
+      } else {
+        setTopWorkers([]);
+      }
+    } catch (err) {
+      console.error('[Dashboard] Error loading data:', err);
+      setError(err?.message || 'Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -196,7 +213,20 @@ export default function Dashboard() {
   };
 
   if (loading) return <div style={{ padding: '60px', textAlign: 'center' }}>Loading Admin Dashboard...</div>;
-  if (error) return <div style={{ padding: '60px', color: 'red', textAlign: 'center' }}>{error}</div>;
+  if (error) {
+    return (
+      <div style={{ padding: '60px', textAlign: 'center' }}>
+        <div style={{ color: '#ef4444', fontSize: '1.1rem', fontWeight: 600, marginBottom: '16px' }}>{error}</div>
+        <button 
+          className="btn btn-primary" 
+          onClick={() => { setError(''); loadData(); }}
+          style={{ margin: '0 auto', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="view-content">

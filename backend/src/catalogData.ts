@@ -1035,7 +1035,10 @@ class ResilientStore {
     try {
       const dataDir = this.getDataDir();
       const filePath = path.join(dataDir, 'persisted_orders.json');
-      const ordersArray = Array.from(this.orders.values());
+      const ordersArray = Array.from(this.orders.values()).filter(o => 
+        o.status !== 'PAYMENT_PENDING' && 
+        !(o.paymentStatus === 'PENDING' && o.status !== 'COMPLETED' && o.status !== 'IN_PROGRESS')
+      );
       fs.writeFileSync(filePath, JSON.stringify(ordersArray, null, 2), 'utf-8');
     } catch (err: any) {
       console.warn('[ResilientStore] Failed to persist orders to disk:', err.message);
@@ -1239,7 +1242,10 @@ class ResilientStore {
   }
 
   getOrders(customerId?: string): any[] {
-    const list = Array.from(this.orders.values());
+    const list = Array.from(this.orders.values()).filter(o => 
+      o.status !== 'PAYMENT_PENDING' && 
+      !(o.paymentStatus === 'PENDING' && o.status !== 'COMPLETED' && o.status !== 'IN_PROGRESS')
+    );
     if (customerId) {
       return list.filter(o => o.customerId === customerId || (o as any).userId === customerId);
     }
@@ -3403,15 +3409,19 @@ class ResilientStore {
         customerName: customer?.name || o.customerName || 'Customer',
         customerPhone: customer?.phone || o.customerPhone
       };
-    });
+    }).filter(o => 
+      o.status !== 'PAYMENT_PENDING' && 
+      !(o.paymentStatus === 'PENDING' && o.status !== 'COMPLETED' && o.status !== 'IN_PROGRESS')
+    );
 
     const status = filter?.status;
     if (status && status !== 'ALL' && status !== 'All Status' && status !== 'All Orders' && status !== 'undefined') {
       const s = status.toUpperCase();
       if (['PENDING', 'AVAILABLE', 'NEW', 'UNASSIGNED'].includes(s)) {
         list = list.filter(o => 
-          ['CREATED', 'AVAILABLE', 'PAID', 'PAYMENT_PENDING', 'PENDING', 'OFFERED'].includes(o.status) ||
-          ((!o.workerId && !o.assignedWorkerId) && !['CANCELLED', 'COMPLETED', 'REFUNDED'].includes(o.status))
+          ['AVAILABLE', 'PAID'].includes(o.status) ||
+          ((o.status === 'CREATED' || o.status === 'PENDING') && o.paymentStatus === 'PAID') ||
+          ((!o.workerId && !o.assignedWorkerId) && o.paymentStatus === 'PAID' && !['CANCELLED', 'COMPLETED', 'REFUNDED'].includes(o.status))
         );
       } else if (['IN_PROGRESS', 'ACTIVE'].includes(s)) {
         list = list.filter(o => ['IN_PROGRESS', 'ACCEPTED', 'ASSIGNED', 'PROCESSING', 'WAITING_FOR_CUSTOMER', 'RECEIPT_SUBMITTED'].includes(o.status));

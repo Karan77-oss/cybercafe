@@ -199,13 +199,14 @@ export const workerController = {
             if (memW) isOnline = memW.isOnline;
           }
 
-          // Strict DB Query: Unassigned AND Open Claimable status only
+          // Strict DB Query: Unassigned AND Open Claimable status only (strictly genuine paid orders)
           const dbOrders = await prisma.order.findMany({
             where: {
               AND: [
                 { OR: [{ workerId: null }, { workerId: '' }] },
                 { OR: [{ assignedWorkerId: null }, { assignedWorkerId: '' }] },
-                { status: { in: ['AVAILABLE', 'PAID', 'CREATED'] } }
+                { status: { in: ['AVAILABLE', 'PAID'] } },
+                { paymentStatus: 'PAID' }
               ]
             },
             include: {
@@ -2798,30 +2799,27 @@ export const adminController = {
       if (await checkDb().catch(() => false)) {
         try {
           const where: any = {};
+
+          // Mandatory Security & Integrity Filter: NEVER show unpaid checkouts or payment pending orders
+          where.AND = [
+            ...(where.AND || []),
+            { status: { not: 'PAYMENT_PENDING' } },
+            {
+              OR: [
+                { paymentStatus: 'PAID' },
+                { status: { in: ['COMPLETED', 'DELIVERED', 'WORK_COMPLETED', 'REFUNDED'] } }
+              ]
+            }
+          ];
+
           if (status && status !== 'ALL' && status !== 'ALL ORDERS' && status !== 'UNDEFINED') {
             if (['PENDING', 'AVAILABLE', 'NEW', 'UNASSIGNED'].includes(status)) {
               where.AND = [
                 ...(where.AND || []),
-                {
-                  OR: [
-                    { status: { in: ['AVAILABLE', 'PAID'] as any } },
-                    {
-                      AND: [
-                        { status: { in: ['CREATED', 'AVAILABLE', 'PAID', 'PENDING'] as any } },
-                        { paymentStatus: 'PAID' }
-                      ]
-                    }
-                  ]
-                },
-                { status: { not: 'PAYMENT_PENDING' as any } },
-                { paymentStatus: { not: 'PENDING' } },
+                { status: { in: ['AVAILABLE', 'PAID'] as any } },
+                { paymentStatus: 'PAID' },
                 { OR: [{ workerId: null }, { workerId: '' }] },
                 { OR: [{ assignedWorkerId: null }, { assignedWorkerId: '' }] }
-              ];
-            } else if (['UNPAID', 'PAYMENT_PENDING'].includes(status)) {
-              where.OR = [
-                { status: 'PAYMENT_PENDING' as any },
-                { paymentStatus: 'PENDING' }
               ];
             } else if (['IN_PROGRESS', 'ACTIVE'].includes(status)) {
               where.status = { in: ['IN_PROGRESS', 'ACCEPTED', 'ASSIGNED', 'PROCESSING', 'WAITING_FOR_CUSTOMER', 'RECEIPT_SUBMITTED'] as any };

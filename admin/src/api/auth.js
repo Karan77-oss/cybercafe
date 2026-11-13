@@ -33,5 +33,7 @@ export const authApi = {
   logout: () => {
     localStorage.removeItem('cybercafe:token');
     localStorage.removeItem('cybercafe:auth_role');
+    localStorage.removeItem('cybercafe:user');
+    localStorage.removeItem('user');
   }
 };

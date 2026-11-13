@@ -494,7 +494,7 @@ export const ordersController = {
               workerId: null,
               assignedWorkerId: null,
               serviceId,
-              status: 'CREATED',
+              status: 'PAYMENT_PENDING',
               paymentStatus: 'PENDING',
               earningStatus: 'PENDING',
               workerAmountPaise: workerPayoutPaise,
@@ -513,8 +513,8 @@ export const ordersController = {
             }
           });
           orderData.id = dbOrder.id;
-          orderData.status = 'CREATED' as any;
-          broadcastEvent('ORDER_CREATED', { order: dbOrder });
+          orderData.status = 'PAYMENT_PENDING' as any;
+          // Unpaid checkouts are NOT broadcast until payment is verified
         }
       } catch (err: any) {
         console.error('Database persist error on order create:', err?.message);
@@ -654,16 +654,7 @@ export const ordersController = {
       const processed = await processCustomerOrder(orderData);
       const finalBroadcastOrder = processed || orderData;
 
-      try {
-        broadcastEvent('ORDER_CREATED', { order: finalBroadcastOrder, orderId: orderData.id });
-        if (orderData.paymentStatus === 'PAID' || orderData.status === 'AVAILABLE') {
-          broadcastEvent('ORDER_AVAILABLE', { order: finalBroadcastOrder, orderId: orderData.id });
-        }
-        broadcastEvent('ORDER_STATUS_UPDATED', { orderId: orderData.id, status: orderData.status });
-      } catch (broadcastErr: any) {
-        console.warn('[Broadcast notice on order create]:', broadcastErr?.message);
-      }
-
+      // Unpaid checkout session: DO NOT broadcast to admin/workers until payment is verified
       return res.status(201).json({ success: true, order: finalBroadcastOrder });
     } catch (e: any) {
       console.error('Order creation error:', e);
@@ -685,10 +676,21 @@ export const ordersController = {
         if (await checkDb()) {
           rawOrders = await prisma.order.findMany({
             where: {
-              OR: [
-                { customerId },
-                { userId: customerId },
-                ...(user.email ? [{ customer: { email: user.email } }] : [])
+              AND: [
+                {
+                  OR: [
+                    { customerId },
+                    { userId: customerId },
+                    ...(user.email ? [{ customer: { email: user.email } }] : [])
+                  ]
+                },
+                { status: { not: 'PAYMENT_PENDING' } },
+                {
+                  OR: [
+                    { paymentStatus: 'PAID' },
+                    { status: { in: ['COMPLETED', 'WORK_COMPLETED', 'REFUNDED'] as any } }
+                  ]
+                }
               ]
             },
             include: {
@@ -1856,7 +1858,9 @@ export const ordersController = {
 
       localStore.saveOrder(order);
 
-      // Real-time notification across portals
+      // Real-time notification across portals for genuine paid order
+      broadcastEvent('ORDER_CREATED', { order, orderId: targetOrderId });
+      broadcastEvent('ORDER_AVAILABLE', { order, orderId: targetOrderId });
       broadcastEvent('ORDER_STATUS_UPDATED', {
         orderId: targetOrderId,
         status: 'AVAILABLE',

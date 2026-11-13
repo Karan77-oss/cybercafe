@@ -91,6 +91,9 @@ export const apiClient = async (endpoint, { method = 'GET', body, ...customConfi
         localStorage.removeItem('cybercafe:token');
         localStorage.removeItem('cybercafe:auth_role');
         localStorage.removeItem('token');
+        localStorage.removeItem('cybercafe:user');
+        localStorage.removeItem('user');
+        window.dispatchEvent(new Event('auth_change'));
       }
       throw new Error(data?.error?.message || data?.error || data?.message || 'API Error');
     }
