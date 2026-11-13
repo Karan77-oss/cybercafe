@@ -70,6 +70,7 @@ export default function JobWorkspace() {
   const [sendingMsg, setSendingMsg] = useState(false);
   const [isChatClosed, setIsChatClosed] = useState(false);
   const chatBottomRef = useRef(null);
+  const chatContainerRef = useRef(null);
 
   // Customer Welfare Case for this Order (Read-only with notes & escalation)
   const [welfareTicket, setWelfareTicket] = useState(null);
@@ -251,8 +252,16 @@ export default function JobWorkspace() {
     }
   };
 
+  // Ensure workspace page always opens at the top
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [jobId]);
+
+  // Scroll ONLY the inner chat box container to the latest message, never the whole page
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
   }, [chatMessages]);
 
   // Section 10: Propose / Confirm Time Slot
@@ -1373,7 +1382,7 @@ export default function JobWorkspace() {
             </div>
 
             {/* Chat Body */}
-            <div style={{ flex: 1, padding: '16px', overflowY: 'auto', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div ref={chatContainerRef} style={{ flex: 1, padding: '16px', overflowY: 'auto', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {chatMessages.length === 0 ? (
                 <div style={{ margin: 'auto', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', padding: '24px' }}>
                   <Info size={28} style={{ margin: '0 auto 8px' }} />
