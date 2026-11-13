@@ -1420,6 +1420,37 @@ export const workerController = {
       }
 
       const summary = localStore.getWorkerEarningsSummary(workerId);
+      if (await checkDb().catch(() => false)) {
+        try {
+          const completedOrders = await prisma.order.findMany({
+            where: {
+              OR: [{ workerId }, { assignedWorkerId: workerId }],
+              status: { in: ['COMPLETED', 'WORK_COMPLETED'] }
+            },
+            select: { workerAmountPaise: true, pricePaise: true, adminCommissionPaise: true }
+          });
+
+          const totalEarnedPaise = completedOrders.reduce((sum, o) => {
+            const amt = o.workerAmountPaise || Math.max(0, (o.pricePaise || 0) - (o.adminCommissionPaise || 0));
+            return sum + amt;
+          }, 0);
+
+          const allWorkerWithdrawals = await prisma.withdrawal.findMany({
+            where: {
+              workerId,
+              status: { in: ['REQUESTED', 'APPROVED', 'COMPLETED', 'PENDING'] }
+            },
+            select: { amountPaise: true }
+          });
+
+          const totalWithdrawnPaise = allWorkerWithdrawals.reduce((sum, w) => sum + (w.amountPaise || 0), 0);
+          const verifiedBalancePaise = Math.max(0, totalEarnedPaise - totalWithdrawnPaise);
+
+          summary.walletBalancePaise = verifiedBalancePaise;
+          summary.totalEarningsPaise = totalEarnedPaise;
+        } catch { }
+      }
+
       const formatted = {
         todayEarnings: paiseToRupees(summary.todayEarningsPaise),
         pendingEarnings: paiseToRupees(summary.pendingEarningsPaise),
@@ -1478,6 +1509,37 @@ export const workerController = {
       }
 
       const summary = localStore.getWorkerEarningsSummary(workerId);
+      if (await checkDb().catch(() => false)) {
+        try {
+          const completedOrders = await prisma.order.findMany({
+            where: {
+              OR: [{ workerId }, { assignedWorkerId: workerId }],
+              status: { in: ['COMPLETED', 'WORK_COMPLETED'] }
+            },
+            select: { workerAmountPaise: true, pricePaise: true, adminCommissionPaise: true }
+          });
+
+          const totalEarnedPaise = completedOrders.reduce((sum, o) => {
+            const amt = o.workerAmountPaise || Math.max(0, (o.pricePaise || 0) - (o.adminCommissionPaise || 0));
+            return sum + amt;
+          }, 0);
+
+          const allWorkerWithdrawals = await prisma.withdrawal.findMany({
+            where: {
+              workerId,
+              status: { in: ['REQUESTED', 'APPROVED', 'COMPLETED', 'PENDING'] }
+            },
+            select: { amountPaise: true }
+          });
+
+          const totalWithdrawnPaise = allWorkerWithdrawals.reduce((sum, w) => sum + (w.amountPaise || 0), 0);
+          const verifiedBalancePaise = Math.max(0, totalEarnedPaise - totalWithdrawnPaise);
+
+          summary.walletBalancePaise = verifiedBalancePaise;
+          summary.totalEarningsPaise = totalEarnedPaise;
+        } catch { }
+      }
+
       const formatted = {
         todayEarnings: paiseToRupees(summary.todayEarningsPaise),
         pendingEarnings: paiseToRupees(summary.pendingEarningsPaise),
@@ -1636,6 +1698,50 @@ export const workerController = {
     try {
       const workerId = req.user?.id;
       if (!workerId) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
+
+      if (await checkDb().catch(() => false)) {
+        try {
+          const dbWithdrawals = await prisma.withdrawal.findMany({
+            where: { workerId },
+            orderBy: { requestedAt: 'desc' }
+          });
+
+          // Sync into localStore.withdrawals cache
+          for (const w of dbWithdrawals) {
+            localStore.withdrawals.set(w.id, {
+              id: w.id,
+              workerId: w.workerId,
+              amountPaise: w.amountPaise,
+              method: (w.method as any) || 'BANK',
+              payoutDetails: w.payoutDetails,
+              status: (w.status as any) || 'PENDING',
+              paymentReference: w.paymentReference || undefined,
+              processedAt: w.processedAt ? new Date(w.processedAt).toISOString() : undefined,
+              createdAt: w.requestedAt ? new Date(w.requestedAt).toISOString() : new Date().toISOString()
+            });
+          }
+
+          const formatted = dbWithdrawals.map(w => ({
+            id: w.id,
+            workerId: w.workerId,
+            amountPaise: w.amountPaise,
+            amount: (w.amountPaise / 100).toFixed(2),
+            status: w.status,
+            method: w.method,
+            payoutDetails: w.payoutDetails,
+            paymentReference: w.paymentReference,
+            adminNote: w.adminNote,
+            requestedAt: w.requestedAt,
+            createdAt: w.requestedAt,
+            processedAt: w.processedAt,
+            completedAt: w.completedAt
+          }));
+
+          return sendSuccess(res, { withdrawals: formatted, data: { withdrawals: formatted } });
+        } catch (dbErr: any) {
+          console.warn('[Worker getWithdrawals DB Notice]:', dbErr?.message);
+        }
+      }
 
       const withdrawals = localStore.getWorkerWithdrawals(workerId);
       return sendSuccess(res, { withdrawals, data: { withdrawals } });
@@ -1965,7 +2071,44 @@ export const workerController = {
             where: { id: workerId }
           });
           if (dbWorker) {
+            // Authoritative calculation from DB orders & withdrawals
+            const completedOrders = await prisma.order.findMany({
+              where: {
+                OR: [{ workerId }, { assignedWorkerId: workerId }],
+                status: { in: ['COMPLETED', 'WORK_COMPLETED'] }
+              },
+              select: { workerAmountPaise: true, pricePaise: true, adminCommissionPaise: true }
+            });
+
+            const totalEarnedPaise = completedOrders.reduce((sum, o) => {
+              const amt = o.workerAmountPaise || Math.max(0, (o.pricePaise || 0) - (o.adminCommissionPaise || 0));
+              return sum + amt;
+            }, 0);
+
+            const allWorkerWithdrawals = await prisma.withdrawal.findMany({
+              where: {
+                workerId,
+                status: { in: ['REQUESTED', 'APPROVED', 'COMPLETED', 'PENDING'] }
+              },
+              select: { amountPaise: true }
+            });
+
+            const totalWithdrawnPaise = allWorkerWithdrawals.reduce((sum, w) => sum + (w.amountPaise || 0), 0);
+            const verifiedBalancePaise = Math.max(0, totalEarnedPaise - totalWithdrawnPaise);
+
+            if (dbWorker.walletBalancePaise !== verifiedBalancePaise || dbWorker.totalEarningsPaise !== totalEarnedPaise) {
+              await prisma.worker.update({
+                where: { id: workerId },
+                data: {
+                  walletBalancePaise: verifiedBalancePaise,
+                  totalEarningsPaise: totalEarnedPaise
+                }
+              }).catch(() => null);
+            }
+
             if (worker) {
+              worker.walletBalancePaise = verifiedBalancePaise;
+              worker.totalEarningsPaise = totalEarnedPaise;
               worker.isOnline = dbWorker.isOnline;
               worker.accountStatus = (dbWorker.status as any) || worker.accountStatus;
             } else {
@@ -1980,15 +2123,15 @@ export const workerController = {
                 skills: (dbWorker.skills as string[]) || [],
                 bankDetails: ((dbWorker as any).bankDetails as any) || { accountNumber: '', ifsc: '', accountHolderName: '', upiId: '' },
                 activeJobs: 0,
-                completedJobs: 0,
+                completedJobs: completedOrders.length,
                 rating: (dbWorker as any).rating || 5.0,
                 isOnline: dbWorker.isOnline,
                 accountStatus: (dbWorker.status as any) || 'ACTIVE',
                 lastActivityAt: ((dbWorker as any).lastActivityAt || new Date()).toISOString(),
-                walletBalancePaise: dbWorker.walletBalancePaise || 0,
+                walletBalancePaise: verifiedBalancePaise,
                 pendingEarningsPaise: 0,
                 onHoldEarningsPaise: 0,
-                totalEarningsPaise: 0,
+                totalEarningsPaise: totalEarnedPaise,
                 averageCompletionMinutes: 45,
                 reviews: []
               };
@@ -3846,10 +3989,14 @@ export const adminController = {
             grossRevenuePaise,
             grossRevenueRupees: (grossRevenuePaise / 100).toFixed(2),
             totalRevenue: (grossRevenuePaise / 100).toFixed(2),
+            totalRevenuePaise: grossRevenuePaise,
             totalCommissionPaise,
             totalCommissionRupees: (totalCommissionPaise / 100).toFixed(2),
             totalWorkerPayoutsPaise,
             totalWorkerPayoutsRupees: (totalWorkerPayoutsPaise / 100).toFixed(2),
+            totalWorkerEarningsPaise: completedWithdrawalsPaise || totalWorkerPayoutsPaise,
+            workerPayoutsPaise: completedWithdrawalsPaise || totalWorkerPayoutsPaise,
+            workerPayoutsRupees: ((completedWithdrawalsPaise || totalWorkerPayoutsPaise) / 100).toFixed(2),
             pendingWithdrawalsPaise,
             pendingWithdrawalsRupees: (pendingWithdrawalsPaise / 100).toFixed(2),
             completedWithdrawalsPaise,
@@ -3959,9 +4106,11 @@ export const adminController = {
             amount: (w.amountPaise / 100).toFixed(2),
             status: w.status,
             method: w.method,
+            payoutDetails: w.payoutDetails || (w.worker as any)?.bankDetails,
             paymentReference: w.paymentReference,
             adminNote: w.adminNote,
             requestedAt: w.requestedAt,
+            createdAt: w.requestedAt,
             processedAt: w.processedAt
           }));
           return sendSuccess(res, { withdrawals: formatted, payouts: formatted, data: formatted });
@@ -4033,8 +4182,19 @@ export const adminController = {
         });
       }
 
-      const withdrawal = localStore.approveWithdrawalAdmin(withdrawalId, adminId, paymentRef);
-      return sendSuccess(res, { withdrawal: dbWithdrawal || withdrawal, message: 'Withdrawal approved and processed' });
+      let localWithdrawal: any = null;
+      try {
+        localWithdrawal = localStore.approveWithdrawalAdmin(withdrawalId, adminId, paymentRef);
+      } catch {
+        // Fall back gracefully if found and updated in DB
+      }
+
+      const finalWithdrawal = dbWithdrawal || localWithdrawal;
+      if (!finalWithdrawal) {
+        return sendError(res, 404, 'NOT_FOUND', 'Withdrawal request not found');
+      }
+
+      return sendSuccess(res, { withdrawal: finalWithdrawal, message: 'Withdrawal approved and processed' });
     } catch (e: any) {
       const statusCode = e.code === 'WITHDRAWAL_ALREADY_REJECTED' || e.code === 'WITHDRAWAL_ALREADY_COMPLETED' ? 409 : 400;
       return sendError(res, statusCode, e.code || 'APPROVE_FAILED', e.message);
@@ -4047,23 +4207,59 @@ export const adminController = {
       const withdrawalId = String(req.params.id);
       const { reason } = req.body;
 
+      let dbWithdrawal: any = null;
       const isDbConnected = await checkDb().catch(() => false);
       if (isDbConnected) {
         try {
-          await prisma.withdrawal.updateMany({
-            where: { id: withdrawalId, status: 'REQUESTED' },
-            data: {
-              status: 'REJECTED',
-              adminNote: reason || 'Rejected by Admin',
-              processedBy: adminId,
-              rejectedAt: new Date()
+          const existing = await prisma.withdrawal.findUnique({ where: { id: withdrawalId } });
+          if (existing) {
+            if (existing.status === 'COMPLETED') {
+              return sendError(res, 409, 'WITHDRAWAL_ALREADY_COMPLETED', 'Withdrawal has already been completed');
             }
-          });
-        } catch { }
+            if (existing.status === 'REJECTED') {
+              return sendSuccess(res, { withdrawal: existing, message: 'Withdrawal is already rejected' });
+            }
+
+            dbWithdrawal = await prisma.withdrawal.update({
+              where: { id: withdrawalId },
+              data: {
+                status: 'REJECTED',
+                adminNote: reason || 'Rejected by Admin',
+                processedBy: adminId,
+                rejectedAt: new Date()
+              }
+            });
+
+            await prisma.financialLedger.create({
+              data: {
+                workerId: existing.workerId,
+                withdrawalId,
+                type: 'WITHDRAWAL_REFUND',
+                amountPaise: existing.amountPaise,
+                status: 'COMPLETED',
+                referenceNote: `Refund for rejected withdrawal: ${reason || 'Admin rejection'}`,
+                idempotencyKey: `withdrawal_refund_${withdrawalId}`
+              }
+            }).catch(() => {});
+          }
+        } catch (dbErr: any) {
+          console.warn('[Admin rejectWithdrawal DB notice]:', dbErr?.message);
+        }
       }
 
-      const withdrawal = localStore.rejectWithdrawalAdmin(withdrawalId, adminId, reason);
-      return sendSuccess(res, { withdrawal, message: 'Withdrawal rejected and funds restored' });
+      let localWithdrawal: any = null;
+      try {
+        localWithdrawal = localStore.rejectWithdrawalAdmin(withdrawalId, adminId, reason);
+      } catch {
+        // Fall back gracefully if handled in DB
+      }
+
+      const finalWithdrawal = dbWithdrawal || localWithdrawal;
+      if (!finalWithdrawal) {
+        return sendError(res, 404, 'NOT_FOUND', 'Withdrawal request not found');
+      }
+
+      return sendSuccess(res, { withdrawal: finalWithdrawal, message: 'Withdrawal rejected and funds restored' });
     } catch (e: any) {
       const statusCode = e.code === 'WITHDRAWAL_ALREADY_COMPLETED' ? 409 : 400;
       return sendError(res, statusCode, e.code || 'REJECT_FAILED', e.message);

@@ -59,7 +59,7 @@ export const adminApi = {
   getPayments: () => apiClient('/admin/payments'),
   getWithdrawals: () => apiClient('/admin/withdrawals'),
   getPayouts: () => apiClient('/admin/payouts'),
-  approveWithdrawal: (id) => apiClient(`/admin/withdrawals/${id}/approve`, { method: 'POST' }),
+  approveWithdrawal: (id, data = {}) => apiClient(`/admin/withdrawals/${id}/approve`, { method: 'POST', body: data }),
   rejectWithdrawal: (id, reason) => apiClient(`/admin/withdrawals/${id}/reject`, { method: 'POST', body: { reason } }),
   getTopEarningWorkers: (period = 'daily') => 
     apiClient(`/admin/workers/top-earning?period=${period}`).catch(err => {

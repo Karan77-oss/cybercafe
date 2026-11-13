@@ -11,14 +11,23 @@ import {
   Award, 
   ArrowUpRight, 
   TrendingUp, 
-  X 
+  X,
+  ExternalLink
 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
 import { adminApi } from '../api/admin';
 
+const isPendingWithdrawal = (status) => {
+  return ['PENDING', 'REQUESTED', 'UNDER_REVIEW', 'PROCESSING'].includes(String(status || '').toUpperCase());
+};
+
 export default function Payments() {
-  const [activeTab, setActiveTab] = useState('PAYMENTS'); // PAYMENTS | LEDGER | WITHDRAWALS | LEADERBOARD
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => {
+    return searchParams.get('tab')?.toUpperCase() === 'WITHDRAWALS' ? 'WITHDRAWALS' : 'PAYMENTS';
+  });
   const [summary, setSummary] = useState({
     totalRevenuePaise: 0,
     totalCommissionPaise: 0,
@@ -33,10 +42,17 @@ export default function Payments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Approve Withdrawal Modal
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [approveWithdrawalTarget, setApproveWithdrawalTarget] = useState(null);
+  const [paymentReference, setPaymentReference] = useState('');
+  const [approving, setApproving] = useState(false);
+
   // Reject Withdrawal Modal
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectWithdrawalId, setRejectWithdrawalId] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
 
   const loadData = () => {
     setLoading(true);
@@ -47,10 +63,10 @@ export default function Payments() {
       adminApi.getTopEarningWorkers(leaderboardPeriod)
     ])
       .then(([sumRes, payRes, wthRes, topRes]) => {
-        if (sumRes.summary) setSummary(sumRes.summary);
-        setPayments(payRes.payments || []);
-        setWithdrawals(wthRes.withdrawals || []);
-        setTopWorkers(topRes.rankings || []);
+        if (sumRes?.summary) setSummary(sumRes.summary);
+        setPayments(payRes?.payments || []);
+        setWithdrawals(wthRes?.withdrawals || wthRes?.payouts || []);
+        setTopWorkers(topRes?.rankings || []);
         setLoading(false);
       })
       .catch(err => {
@@ -64,26 +80,55 @@ export default function Payments() {
     loadData();
   }, [leaderboardPeriod]);
 
-  const handleApproveWithdrawal = async (id) => {
-    if (!window.confirm('Approve and mark this worker payout as transferred?')) return;
+  // Synchronize tab if search params change
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && tabParam.toUpperCase() === 'WITHDRAWALS') {
+      setActiveTab('WITHDRAWALS');
+    }
+  }, [searchParams]);
+
+  const handleApproveSubmit = async () => {
+    if (!approveWithdrawalTarget) return;
+    setApproving(true);
     try {
-      await adminApi.approveWithdrawal(id);
+      await adminApi.approveWithdrawal(approveWithdrawalTarget.id, {
+        paymentReference: paymentReference.trim() || undefined
+      });
+      setShowApproveModal(false);
+      setApproveWithdrawalTarget(null);
+      setPaymentReference('');
       loadData();
+      alert('Withdrawal approved and marked as transferred successfully!');
     } catch (err) {
-      alert(err.message || 'Failed to approve withdrawal');
+      if (err.message && err.message.toLowerCase().includes('already completed')) {
+        setShowApproveModal(false);
+        setApproveWithdrawalTarget(null);
+        setPaymentReference('');
+        loadData();
+        alert('Withdrawal has been confirmed and marked as transferred!');
+      } else {
+        alert(err.message || 'Failed to approve withdrawal');
+      }
+    } finally {
+      setApproving(false);
     }
   };
 
   const handleRejectWithdrawal = async () => {
     if (!rejectWithdrawalId) return;
+    setRejecting(true);
     try {
-      await adminApi.rejectWithdrawal(rejectWithdrawalId, rejectReason || 'Administrative payout rejection');
+      await adminApi.rejectWithdrawal(rejectWithdrawalId, rejectReason.trim() || 'Administrative payout rejection');
       setShowRejectModal(false);
       setRejectWithdrawalId(null);
       setRejectReason('');
       loadData();
+      alert('Withdrawal rejected successfully. Reserved balance restored to worker.');
     } catch (err) {
       alert(err.message || 'Failed to reject withdrawal');
+    } finally {
+      setRejecting(false);
     }
   };
 
@@ -107,11 +152,11 @@ export default function Payments() {
       headers = ['Withdrawal ID', 'Worker', 'Amount (Rs)', 'Method/UPI', 'Status', 'Requested Date'];
       rows = withdrawals.map(w => [
         w.id,
-        `"${w.worker?.name || 'Worker'}"`,
+        `"${w.workerName || w.worker?.name || 'Worker'}"`,
         ((w.amountPaise || 0) / 100).toFixed(2),
-        `"${w.payoutDetails?.upiId || w.payoutDetails?.accountNumber || 'UPI'}"`,
+        `"${w.payoutDetails?.upiId || w.payoutDetails?.accountNumber || w.method || 'Bank'}"`,
         w.status,
-        new Date(w.createdAt).toLocaleDateString()
+        w.requestedAt || w.createdAt ? new Date(w.requestedAt || w.createdAt).toLocaleDateString() : 'N/A'
       ]);
       filename = `worker_withdrawals_${new Date().toISOString().slice(0,10)}.csv`;
     } else {
@@ -136,6 +181,8 @@ export default function Payments() {
     document.body.removeChild(link);
   };
 
+  const pendingWithdrawalsCount = withdrawals.filter(w => isPendingWithdrawal(w.status)).length;
+
   return (
     <div className="view-content">
       <div className="view-header">
@@ -154,7 +201,7 @@ export default function Payments() {
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
         <StatCard 
           title="Total Platform Revenue" 
-          value={`₹${((summary.totalRevenuePaise || 0) / 100).toFixed(2)}`} 
+          value={`₹${(((summary.totalRevenuePaise || summary.grossRevenuePaise || (summary.totalRevenue ? Number(summary.totalRevenue) * 100 : 0)) || 0) / 100).toFixed(2)}`} 
           icon={Wallet} 
           color="purple" 
         />
@@ -166,7 +213,7 @@ export default function Payments() {
         />
         <StatCard 
           title="Worker Payouts" 
-          value={`₹${((summary.totalWorkerEarningsPaise || 0) / 100).toFixed(2)}`} 
+          value={`₹${(((summary.workerPayoutsPaise || summary.completedWithdrawalsPaise || summary.totalWorkerEarningsPaise || summary.totalWorkerPayoutsPaise) || 0) / 100).toFixed(2)}`} 
           icon={CheckCircle} 
           color="green" 
         />
@@ -204,10 +251,11 @@ export default function Payments() {
             padding: '10px 14px', background: 'none', border: 'none',
             borderBottom: activeTab === 'WITHDRAWALS' ? '2px solid var(--brand-blue)' : '2px solid transparent',
             color: activeTab === 'WITHDRAWALS' ? 'var(--brand-blue)' : 'var(--text-muted)',
-            fontWeight: activeTab === 'WITHDRAWALS' ? 600 : 500, cursor: 'pointer', fontSize: '0.9rem'
+            fontWeight: activeTab === 'WITHDRAWALS' ? 600 : 500, cursor: 'pointer', fontSize: '0.9rem',
+            display: 'inline-flex', alignItems: 'center', gap: '6px'
           }}
         >
-          Withdrawal Requests ({withdrawals.filter(w => w.status === 'PENDING').length} Pending)
+          Withdrawal Requests ({pendingWithdrawalsCount} Pending)
         </button>
 
         <button
@@ -261,7 +309,9 @@ export default function Payments() {
                     <StatusBadge status={p.status || 'PAID'} />
                   </td>
                   <td>
-                    <div style={{ fontSize: '0.85rem' }}>{new Date(p.createdAt).toLocaleDateString()}</div>
+                    <div style={{ fontSize: '0.85rem' }}>
+                      {p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -292,51 +342,95 @@ export default function Payments() {
               {withdrawals.map(w => (
                 <tr key={w.id}>
                   <td>
-                    <span style={{ fontWeight: 600, color: 'var(--brand-blue)', fontSize: '0.85rem' }}>
+                    <span style={{ fontWeight: 600, color: 'var(--brand-blue)', fontSize: '0.85rem' }} title={w.id}>
                       {w.id.slice(0, 10)}
                     </span>
                   </td>
                   <td>
-                    <div style={{ fontWeight: 500 }}>{w.worker?.name || 'Worker'}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{w.worker?.workerId || w.worker?.phone}</div>
+                    <div style={{ fontWeight: 600 }}>{w.workerName || w.worker?.name || 'Worker'}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      {w.workerId || w.worker?.workerId || w.worker?.phone || w.workerEmail || ''}
+                    </div>
                   </td>
                   <td style={{ fontWeight: 700, fontSize: '1rem', color: '#16a34a' }}>
                     ₹{((w.amountPaise || 0) / 100).toFixed(2)}
                   </td>
                   <td>
                     <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>
-                      {w.payoutDetails?.upiId ? `UPI: ${w.payoutDetails.upiId}` : `A/C: ${w.payoutDetails?.accountNumber || '9876543210'}`}
+                      {w.payoutDetails?.upiId 
+                        ? `UPI: ${w.payoutDetails.upiId}` 
+                        : w.payoutDetails?.accountNumber 
+                          ? `A/C: ${w.payoutDetails.accountNumber}`
+                          : w.method === 'UPI' ? 'UPI Transfer' : 'Bank Transfer'}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      IFSC: {w.payoutDetails?.ifsc || 'HDFC0001234'}
-                    </div>
+                    {(w.payoutDetails?.ifsc || w.payoutDetails?.accountHolderName) && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {w.payoutDetails?.ifsc ? `IFSC: ${w.payoutDetails.ifsc}` : ''}
+                        {w.payoutDetails?.accountHolderName ? ` (${w.payoutDetails.accountHolderName})` : ''}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <StatusBadge status={w.status} />
                   </td>
                   <td>
-                    <div style={{ fontSize: '0.85rem' }}>{new Date(w.createdAt).toLocaleDateString()}</div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>
+                      {w.requestedAt || w.createdAt ? new Date(w.requestedAt || w.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+                    </div>
+                    {(w.requestedAt || w.createdAt) && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {new Date(w.requestedAt || w.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
                   </td>
                   <td>
-                    {w.status === 'PENDING' ? (
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                    {isPendingWithdrawal(w.status) ? (
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <button 
                           className="btn btn-primary" 
-                          style={{ background: '#16a34a', fontSize: '0.8rem', padding: '4px 10px' }}
-                          onClick={() => handleApproveWithdrawal(w.id)}
+                          style={{ background: '#16a34a', fontSize: '0.8rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          onClick={() => {
+                            setApproveWithdrawalTarget(w);
+                            setPaymentReference('');
+                            setShowApproveModal(true);
+                          }}
                         >
-                          <CheckCircle size={14} /> Approve Payout
+                          <CheckCircle size={14} /> Approve / Pay
                         </button>
                         <button 
                           className="btn btn-outline" 
-                          style={{ color: '#dc2626', borderColor: '#fca5a5', fontSize: '0.8rem', padding: '4px 10px' }}
-                          onClick={() => { setRejectWithdrawalId(w.id); setShowRejectModal(true); }}
+                          style={{ color: '#dc2626', borderColor: '#fca5a5', fontSize: '0.8rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          onClick={() => { 
+                            setRejectWithdrawalId(w.id); 
+                            setRejectReason('');
+                            setShowRejectModal(true); 
+                          }}
                         >
                           <XCircle size={14} /> Reject
                         </button>
                       </div>
+                    ) : (w.status === 'COMPLETED' || w.status === 'APPROVED') ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#16a34a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle size={14} /> Transferred
+                        </span>
+                        {w.paymentReference && (
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }} title={w.paymentReference}>
+                            Ref: {w.paymentReference}
+                          </span>
+                        )}
+                      </div>
+                    ) : w.status === 'REJECTED' ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <XCircle size={14} /> Rejected
+                        </span>
+                        {w.adminNote && (
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{w.adminNote}</span>
+                        )}
+                      </div>
                     ) : (
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Processed</span>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{w.status}</span>
                     )}
                   </td>
                 </tr>
@@ -430,33 +524,167 @@ export default function Payments() {
         </div>
       )}
 
+      {/* APPROVE & PAY WITHDRAWAL MODAL */}
+      {showApproveModal && approveWithdrawalTarget && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          zIndex: 1200,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div style={{ background: '#ffffff', borderRadius: '12px', padding: '24px', maxWidth: '480px', width: '100%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: '#16a34a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle size={20} /> Approve Worker Payout
+              </h3>
+              <button 
+                onClick={() => setShowApproveModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Worker:</span>
+                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                  {approveWithdrawalTarget.workerName || approveWithdrawalTarget.worker?.name || 'Worker'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Payout Amount:</span>
+                <span style={{ fontWeight: 700, fontSize: '1.1rem', color: '#16a34a' }}>
+                  ₹{((approveWithdrawalTarget.amountPaise || 0) / 100).toFixed(2)}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Method:</span>
+                <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>
+                  {approveWithdrawalTarget.method || 'BANK'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Destination:</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                    {approveWithdrawalTarget.payoutDetails?.upiId 
+                      ? `UPI: ${approveWithdrawalTarget.payoutDetails.upiId}` 
+                      : approveWithdrawalTarget.payoutDetails?.accountNumber 
+                        ? `A/C: ${approveWithdrawalTarget.payoutDetails.accountNumber}`
+                        : 'Registered Bank Account'}
+                  </div>
+                  {approveWithdrawalTarget.payoutDetails?.ifsc && (
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      IFSC: {approveWithdrawalTarget.payoutDetails.ifsc}
+                    </div>
+                  )}
+                  {approveWithdrawalTarget.payoutDetails?.accountHolderName && (
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      Holder: {approveWithdrawalTarget.payoutDetails.accountHolderName}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '18px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                Bank Reference / UTR / Transaction ID (Optional)
+              </label>
+              <input 
+                type="text"
+                className="form-input"
+                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
+                placeholder="e.g. UTR12345678, UPI-99887766, IMPS-5544"
+                value={paymentReference}
+                onChange={e => setPaymentReference(e.target.value)}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                Enter the bank/UPI reference ID after transferring funds to the worker.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button 
+                type="button" 
+                className="btn btn-outline" 
+                onClick={() => setShowApproveModal(false)}
+                disabled={approving}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                style={{ background: '#16a34a', borderColor: '#16a34a' }}
+                onClick={handleApproveSubmit}
+                disabled={approving}
+              >
+                {approving ? 'Processing...' : 'Confirm Payout Done'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* REJECT WITHDRAWAL MODAL */}
       {showRejectModal && (
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
           zIndex: 1200,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '20px'
+          padding: '20px',
+          backdropFilter: 'blur(4px)'
         }}>
-          <div style={{ background: 'white', borderRadius: '8px', padding: '24px', maxWidth: '440px', width: '100%' }}>
-            <h3 style={{ margin: '0 0 8px 0', color: '#dc2626' }}>Reject Worker Withdrawal</h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
-              Please provide the administrative reason for rejecting this withdrawal request. The funds will remain in the worker's balance.
+          <div style={{ background: '#ffffff', borderRadius: '12px', padding: '24px', maxWidth: '440px', width: '100%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h3 style={{ margin: 0, color: '#dc2626', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <XCircle size={20} /> Reject Worker Withdrawal
+              </h3>
+              <button 
+                onClick={() => setShowRejectModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '14px', lineHeight: 1.5 }}>
+              Please provide the administrative reason for rejecting this withdrawal request. The reserved funds will immediately be returned to the worker's wallet balance.
             </p>
+
             <textarea 
-              style={{ width: '100%', height: '80px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', marginBottom: '14px' }}
-              placeholder="Reason for rejection (e.g. UPI ID inactive, account number mismatch)..."
+              style={{ width: '100%', height: '80px', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1', marginBottom: '16px', fontSize: '0.875rem' }}
+              placeholder="Reason for rejection (e.g. Invalid IFSC, Bank account details mismatch, UPI inactive)..."
               value={rejectReason}
               onChange={e => setRejectReason(e.target.value)}
             />
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button className="btn btn-outline" onClick={() => setShowRejectModal(false)}>Cancel</button>
-              <button className="btn btn-primary" style={{ background: '#dc2626' }} onClick={handleRejectWithdrawal}>
-                Confirm Rejection
+              <button 
+                className="btn btn-outline" 
+                onClick={() => setShowRejectModal(false)}
+                disabled={rejecting}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-primary" 
+                style={{ background: '#dc2626', borderColor: '#dc2626' }} 
+                onClick={handleRejectWithdrawal}
+                disabled={rejecting}
+              >
+                {rejecting ? 'Rejecting...' : 'Confirm Rejection'}
               </button>
             </div>
           </div>

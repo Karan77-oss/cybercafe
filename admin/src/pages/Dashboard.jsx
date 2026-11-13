@@ -339,7 +339,7 @@ export default function Dashboard() {
         </div>
 
         {/* 10. Pending Withdrawals */}
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/payments')}>
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => navigate('/admin/payments?tab=withdrawals')}>
           <div className="stat-icon purple"><ArrowDownToLine size={20}/></div>
           <div className="stat-info">
             <h3>Pending Withdrawals</h3>
