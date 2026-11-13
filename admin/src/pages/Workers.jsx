@@ -22,7 +22,10 @@ import {
   Pause,
   Play,
   Trash2,
-  Key 
+  Key,
+  Wallet,
+  ArrowUpRight,
+  Hourglass
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
@@ -327,12 +330,17 @@ export default function Workers() {
   const pendingCount = workers.filter(w => w.status === 'PENDING_APPROVAL' || (w.workerProfile && !w.workerProfile.idVerified)).length;
   const blockedCount = workers.filter(w => ['BLOCKED', 'SUSPENDED', 'DELETED'].includes(w.status)).length;
 
+  const totalPlatformWorkerEarned = workers.reduce((sum, w) => sum + (w.totalEarningsPaise || w.workerProfile?.totalEarningsPaise || 0), 0);
+  const totalPlatformWorkerWallet = workers.reduce((sum, w) => sum + (w.walletBalancePaise || w.workerProfile?.walletBalancePaise || 0), 0);
+  const totalPlatformWorkerPipeline = workers.reduce((sum, w) => sum + (w.pendingEarningsPaise || w.workerProfile?.pendingEarningsPaise || 0), 0);
+  const totalPlatformWorkerWithdrawn = workers.reduce((sum, w) => sum + (w.withdrawnPaise || w.workerProfile?.withdrawnPaise || 0), 0);
+
   return (
     <div className="view-content">
       <div className="view-header">
         <div>
           <h1>Workers Management</h1>
-          <p className="subtitle">Search, verify documents, track performance, and hire platform workers.</p>
+          <p className="subtitle">Audit worker earnings, track wallet balances, review payouts, and manage operator accounts.</p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button className="btn btn-outline" onClick={exportCSV}>
@@ -341,6 +349,53 @@ export default function Workers() {
           <button className="btn btn-primary" onClick={() => setShowHireModal(true)}>
             <Plus size={16}/> Hire / Add Worker
           </button>
+        </div>
+      </div>
+
+      {/* Aggregate Financial Overview for Operators */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '18px' }}>
+        <div style={{ background: '#fff', padding: '14px 18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Lifetime Earned</span>
+            <span style={{ padding: '6px', borderRadius: '8px', background: '#dcfce7', color: '#15803d' }}><Wallet size={16} /></span>
+          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#15803d', marginTop: '6px' }}>
+            ₹{(totalPlatformWorkerEarned / 100).toFixed(2)}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Gross worker order earnings</div>
+        </div>
+
+        <div style={{ background: '#fff', padding: '14px 18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Available Wallets</span>
+            <span style={{ padding: '6px', borderRadius: '8px', background: '#ecfdf5', color: '#047857' }}><CreditCard size={16} /></span>
+          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#047857', marginTop: '6px' }}>
+            ₹{(totalPlatformWorkerWallet / 100).toFixed(2)}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Total withdrawable right now</div>
+        </div>
+
+        <div style={{ background: '#fff', padding: '14px 18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Pipeline Pending</span>
+            <span style={{ padding: '6px', borderRadius: '8px', background: '#fff7ed', color: '#c2410c' }}><Hourglass size={16} /></span>
+          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#c2410c', marginTop: '6px' }}>
+            ₹{(totalPlatformWorkerPipeline / 100).toFixed(2)}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Locked in active orders</div>
+        </div>
+
+        <div style={{ background: '#fff', padding: '14px 18px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Total Paid Out</span>
+            <span style={{ padding: '6px', borderRadius: '8px', background: '#eef2ff', color: '#4338ca' }}><ArrowUpRight size={16} /></span>
+          </div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#4338ca', marginTop: '6px' }}>
+            ₹{(totalPlatformWorkerWithdrawn / 100).toFixed(2)}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Successfully transferred to bank/UPI</div>
         </div>
       </div>
       
@@ -397,7 +452,10 @@ export default function Workers() {
                 <th>Location & Skills</th>
                 <th>ID Verification</th>
                 <th>Status</th>
-                <th>Orders / Earnings</th>
+                <th>Lifetime Earnings</th>
+                <th>Pending (In Pipeline)</th>
+                <th>Available Wallet</th>
+                <th>Total Withdrawn</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -405,6 +463,12 @@ export default function Workers() {
               {workers.map((w) => {
                 const profile = w.workerProfile || {};
                 const isVerified = profile.idVerified;
+                const totalEarnedPaise = w.totalEarningsPaise ?? profile.totalEarningsPaise ?? 0;
+                const pendingPaise = w.pendingEarningsPaise ?? profile.pendingEarningsPaise ?? 0;
+                const walletBalancePaise = w.walletBalancePaise ?? profile.walletBalancePaise ?? 0;
+                const withdrawnPaise = w.withdrawnPaise ?? profile.withdrawnPaise ?? 0;
+                const completedOrdersCount = w.completedOrders ?? profile.completedOrders ?? 0;
+
                 return (
                   <tr key={w.id}>
                     <td>
@@ -447,11 +511,43 @@ export default function Workers() {
                       <StatusBadge status={w.status || 'ACTIVE'} />
                     </td>
                     <td>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-                        ₹{((profile.totalEarningsPaise || 0) / 100).toFixed(2)}
+                      <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0f766e' }}>
+                        ₹{(totalEarnedPaise / 100).toFixed(2)}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {profile.completedOrders || 0} completed
+                        {completedOrdersCount} orders done
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: pendingPaise > 0 ? '#d97706' : '#64748b' }}>
+                        ₹{(pendingPaise / 100).toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                        In active jobs
+                      </div>
+                    </td>
+                    <td>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        fontWeight: 700,
+                        fontSize: '0.85rem',
+                        backgroundColor: walletBalancePaise > 0 ? '#dcfce7' : '#f1f5f9',
+                        color: walletBalancePaise > 0 ? '#15803d' : '#64748b'
+                      }}>
+                        ₹{(walletBalancePaise / 100).toFixed(2)}
+                      </span>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Ready to withdraw
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: withdrawnPaise > 0 ? '#4338ca' : '#64748b' }}>
+                        ₹{(withdrawnPaise / 100).toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                        Paid out
                       </div>
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
@@ -755,31 +851,97 @@ export default function Workers() {
                 </div>
 
                 {/* Earnings & Performance KPI */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '24px', textAlign: 'center' }}>
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Total Earnings</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#16a34a' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px', marginBottom: '24px', textAlign: 'center' }}>
+                  <div style={{ border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', borderRadius: '8px', padding: '12px' }}>
+                    <div style={{ fontSize: '0.72rem', color: '#166534', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Lifetime Earnings</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#15803d', marginTop: '4px' }}>
                       ₹{((workerDetail.earnings?.totalEarnedPaise || 0) / 100).toFixed(2)}
                     </div>
+                    <div style={{ fontSize: '0.7rem', color: '#166534', marginTop: '2px' }}>Total all-time credited</div>
                   </div>
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pending / Held</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#ea580c' }}>
-                      ₹{(((workerDetail.earnings?.heldBalancePaise || 0) + (workerDetail.earnings?.availableBalancePaise || 0)) / 100).toFixed(2)}
+
+                  <div style={{ border: '1px solid #fed7aa', backgroundColor: '#fff7ed', borderRadius: '8px', padding: '12px' }}>
+                    <div style={{ fontSize: '0.72rem', color: '#9a3412', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Pending In Pipeline</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#c2410c', marginTop: '4px' }}>
+                      ₹{((workerDetail.earnings?.pendingEarningsPaise || 0) / 100).toFixed(2)}
                     </div>
+                    <div style={{ fontSize: '0.7rem', color: '#9a3412', marginTop: '2px' }}>Active orders in progress</div>
                   </div>
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Completed Orders</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>
+
+                  <div style={{ border: '1px solid #a7f3d0', backgroundColor: '#ecfdf5', borderRadius: '8px', padding: '12px' }}>
+                    <div style={{ fontSize: '0.72rem', color: '#065f46', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Available Wallet</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#047857', marginTop: '4px' }}>
+                      ₹{((workerDetail.earnings?.availableBalancePaise || 0) / 100).toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#065f46', marginTop: '2px' }}>Eligible to withdraw now</div>
+                  </div>
+
+                  <div style={{ border: '1px solid #c7d2fe', backgroundColor: '#eef2ff', borderRadius: '8px', padding: '12px' }}>
+                    <div style={{ fontSize: '0.72rem', color: '#3730a3', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Withdrawn</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#4338ca', marginTop: '4px' }}>
+                      ₹{((workerDetail.earnings?.withdrawnPaise || 0) / 100).toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#3730a3', marginTop: '2px' }}>Paid out to Bank/UPI</div>
+                  </div>
+
+                  <div style={{ border: '1px solid #e2e8f0', backgroundColor: '#ffffff', borderRadius: '8px', padding: '12px' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Orders Completed</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', marginTop: '4px' }}>
                       {workerDetail.performance?.completedOrders || 0}
                     </div>
-                  </div>
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Rating Score</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                      <Star size={16} fill="#eab308" color="#eab308" /> {workerDetail.performance?.rating || 4.8}
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                      <Star size={12} fill="#eab308" color="#eab308" /> {workerDetail.performance?.rating || 4.9} Rating
                     </div>
                   </div>
+                </div>
+
+                {/* Worker Withdrawal History */}
+                <div style={{ marginBottom: '24px' }}>
+                  <h3 style={{ fontSize: '1rem', marginBottom: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '6px' }}>
+                    Withdrawal & Payout History ({workerDetail.withdrawals?.length || 0})
+                  </h3>
+                  {workerDetail.withdrawals && workerDetail.withdrawals.length > 0 ? (
+                    <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                      <table className="data-table" style={{ fontSize: '0.85rem' }}>
+                        <thead>
+                          <tr>
+                            <th>Payout ID</th>
+                            <th>Amount</th>
+                            <th>Method</th>
+                            <th>Status</th>
+                            <th>Reference / UTR</th>
+                            <th>Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {workerDetail.withdrawals.map((w) => (
+                            <tr key={w.id}>
+                              <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--brand-blue)' }}>
+                                {w.id.slice(0, 8)}...
+                              </td>
+                              <td style={{ fontWeight: 700, color: '#16a34a' }}>
+                                ₹{((w.amountPaise || 0) / 100).toFixed(2)}
+                              </td>
+                              <td>{w.method || 'BANK'}</td>
+                              <td>
+                                <StatusBadge status={w.status} />
+                              </td>
+                              <td style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                                {w.paymentReference || '—'}
+                              </td>
+                              <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {w.processedAt || w.completedAt || w.requestedAt ? new Date(w.processedAt || w.completedAt || w.requestedAt).toLocaleDateString() : 'N/A'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ padding: '16px', color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '6px' }}>
+                      No withdrawal requests placed yet.
+                    </div>
+                  )}
                 </div>
 
                 {/* Assigned Orders List */}
