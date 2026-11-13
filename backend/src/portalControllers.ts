@@ -281,13 +281,52 @@ async function getWorkerFinancialsFromDbOrStore(workerId: string) {
         return sum + amt;
       }, 0);
 
+      // Calculate settled earnings vs pending 1-hour settlement
+      const settledEarnedPaise = completedOrders.reduce((sum, o) => {
+        const amt = o.workerAmountPaise || (o.pricing as any)?.workerPayoutPaise || (o.service as any)?.workerAmountPaise || Math.max(0, (o.customerPaidAmountPaise || 0) - (o.adminCommissionPaise || 0));
+        const completedTime = o.completedAt ? new Date(o.completedAt).getTime() : new Date(o.createdAt).getTime();
+        const isSettled = (now - completedTime >= ONE_HOUR_MS) || o.earningStatus === 'RELEASED';
+        return isSettled ? sum + amt : sum;
+      }, 0);
+
       const totalWithdrawnPaise = allWorkerWithdrawals
         .filter(w => ['REQUESTED', 'APPROVED', 'COMPLETED', 'PENDING'].includes(w.status))
         .reduce((sum, w) => sum + (w.amountPaise || 0), 0);
 
-      const verifiedBalancePaise = Math.max(0, totalEarnedPaise - totalWithdrawnPaise);
+      const availableBalancePaise = Math.max(0, settledEarnedPaise - totalWithdrawnPaise);
 
-      summary.walletBalancePaise = verifiedBalancePaise;
+      // Sync into localStore withdrawals and worker so in-memory store never assumes 0 withdrawals
+      for (const w of allWorkerWithdrawals) {
+        localStore.withdrawals.set(w.id, {
+          id: w.id,
+          workerId: w.workerId,
+          amountPaise: w.amountPaise,
+          method: (w.method as any) || 'BANK',
+          payoutDetails: w.payoutDetails,
+          status: (w.status as any) || 'COMPLETED',
+          paymentReference: w.paymentReference || undefined,
+          processedAt: w.processedAt ? new Date(w.processedAt).toISOString() : undefined,
+          createdAt: w.requestedAt ? new Date(w.requestedAt).toISOString() : new Date().toISOString()
+        });
+      }
+
+      const localWorker = localStore.getWorker(workerId);
+      if (localWorker) {
+        localWorker.walletBalancePaise = availableBalancePaise;
+        localWorker.totalEarningsPaise = totalEarnedPaise;
+        localWorker.pendingEarningsPaise = pendingEarningsPaise;
+      }
+
+      // Also persist to DB so Worker table in PostgreSQL is permanently in sync
+      await prisma.worker.update({
+        where: { id: workerId },
+        data: {
+          walletBalancePaise: availableBalancePaise,
+          totalEarningsPaise: totalEarnedPaise
+        }
+      }).catch(() => null);
+
+      summary.walletBalancePaise = availableBalancePaise;
       summary.totalEarningsPaise = totalEarnedPaise;
       summary.todayEarningsPaise = todayEarningsPaise;
       summary.todayCompletedJobs = todayCompletedJobs;
@@ -1514,26 +1553,11 @@ export const workerController = {
       const workerId = req.user?.id;
       if (!workerId) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
 
-      const summary = localStore.getWorkerEarningsSummary(workerId);
+      const financials = await getWorkerFinancialsFromDbOrStore(workerId);
       const isDbOnline = await checkDb().catch(() => false);
 
       if (isDbOnline) {
         try {
-          const completedOrders = await prisma.order.findMany({
-            where: {
-              OR: [{ workerId }, { assignedWorkerId: workerId }],
-              status: { in: ['COMPLETED', 'WORK_COMPLETED'] }
-            },
-            select: {
-              id: true,
-              workerAmountPaise: true,
-              pricing: true,
-              adminCommissionPaise: true,
-              completedAt: true,
-              createdAt: true
-            }
-          });
-
           const activeOrdersCount = await prisma.order.count({
             where: {
               OR: [{ workerId }, { assignedWorkerId: workerId }],
@@ -1546,37 +1570,6 @@ export const workerController = {
               OR: [{ workerId }, { assignedWorkerId: workerId }]
             }
           });
-
-          const startOfToday = new Date();
-          startOfToday.setHours(0, 0, 0, 0);
-
-          const todayCompleted = completedOrders.filter(o => {
-            const date = o.completedAt ? new Date(o.completedAt) : new Date(o.createdAt);
-            return date >= startOfToday;
-          });
-
-          const totalEarnedPaise = completedOrders.reduce((sum, o: any) => {
-            const p = (o.pricing as any) || {};
-            const amt = typeof p.workerPayoutPaise === 'number' ? p.workerPayoutPaise : (o.workerAmountPaise || 0);
-            return sum + amt;
-          }, 0);
-
-          const todayEarnedPaise = todayCompleted.reduce((sum, o: any) => {
-            const p = (o.pricing as any) || {};
-            const amt = typeof p.workerPayoutPaise === 'number' ? p.workerPayoutPaise : (o.workerAmountPaise || 0);
-            return sum + amt;
-          }, 0);
-
-          const allWorkerWithdrawals = await prisma.withdrawal.findMany({
-            where: {
-              workerId,
-              status: { in: ['REQUESTED', 'APPROVED', 'COMPLETED', 'PENDING'] }
-            },
-            select: { amountPaise: true }
-          });
-
-          const totalWithdrawnPaise = allWorkerWithdrawals.reduce((sum, w) => sum + (w.amountPaise || 0), 0);
-          const verifiedBalancePaise = Math.max(0, totalEarnedPaise - totalWithdrawnPaise);
 
           // Fetch real customer reviews from database
           const dbReviews = await prisma.review.findMany({
@@ -1614,31 +1607,25 @@ export const workerController = {
             select: { rating: true, isOnline: true }
           });
 
-          summary.completedJobs = completedOrders.length;
-          summary.completedOrders = completedOrders.length;
-          summary.activeJobs = activeOrdersCount;
-          summary.totalJobs = totalAssignedOrders;
-          summary.todayCompletedJobs = todayCompleted.length;
-          summary.totalEarningsPaise = totalEarnedPaise;
-          summary.todayEarningsPaise = todayEarnedPaise;
-          summary.walletBalancePaise = verifiedBalancePaise;
-          summary.rating = dbReviews.length > 0 ? avgRating : ((dbWorker as any)?.rating || 5.0);
+          financials.activeJobs = activeOrdersCount;
+          financials.totalJobs = totalAssignedOrders;
+          financials.rating = dbReviews.length > 0 ? avgRating : ((dbWorker as any)?.rating || 5.0);
           if (dbWorker) {
-            summary.isOnline = dbWorker.isOnline;
+            financials.isOnline = dbWorker.isOnline;
           }
-          summary.reviews = formattedReviews;
+          financials.reviews = formattedReviews;
 
           const completionRate = totalAssignedOrders > 0
-            ? Math.min(100, Math.round((completedOrders.length / totalAssignedOrders) * 100))
+            ? Math.min(100, Math.round(((financials.completedOrders || 0) / totalAssignedOrders) * 100))
             : 100;
-          summary.completionRate = `${completionRate}%`;
-          summary.avgTurnaroundMinutes = 35;
+          financials.completionRate = `${completionRate}%`;
+          financials.avgTurnaroundMinutes = 35;
         } catch (dbErr: any) {
           console.warn('[workerController.getStats DB Notice]:', dbErr?.message);
         }
       }
 
-      return sendSuccess(res, { stats: summary });
+      return sendSuccess(res, { stats: financials });
     } catch (e: any) {
       return sendError(res, 500, 'SERVER_ERROR', e.message);
     }
@@ -2122,7 +2109,15 @@ export const workerController = {
       const workerId = req.user?.id;
       if (!workerId) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
 
+      const financials = await getWorkerFinancialsFromDbOrStore(workerId);
       let worker = localStore.getWorker(workerId);
+      if (worker) {
+        worker.walletBalancePaise = financials.walletBalancePaise;
+        worker.totalEarningsPaise = financials.totalEarningsPaise;
+        worker.pendingEarningsPaise = financials.pendingEarningsPaise;
+        worker.completedJobs = financials.completedJobs;
+      }
+
       const isDbOnline = await checkDb().catch(() => false);
       if (isDbOnline) {
         try {
@@ -2130,48 +2125,14 @@ export const workerController = {
             where: { id: workerId }
           });
           if (dbWorker) {
-            // Authoritative calculation from DB orders & withdrawals
-            const completedOrders = await prisma.order.findMany({
-              where: {
-                OR: [{ workerId }, { assignedWorkerId: workerId }],
-                status: { in: ['COMPLETED', 'WORK_COMPLETED'] }
-              },
-              select: { workerAmountPaise: true, pricePaise: true, adminCommissionPaise: true }
-            });
-
-            const totalEarnedPaise = completedOrders.reduce((sum, o) => {
-              const amt = o.workerAmountPaise || Math.max(0, (o.pricePaise || 0) - (o.adminCommissionPaise || 0));
-              return sum + amt;
-            }, 0);
-
-            const allWorkerWithdrawals = await prisma.withdrawal.findMany({
-              where: {
-                workerId,
-                status: { in: ['REQUESTED', 'APPROVED', 'COMPLETED', 'PENDING'] }
-              },
-              select: { amountPaise: true }
-            });
-
-            const totalWithdrawnPaise = allWorkerWithdrawals.reduce((sum, w) => sum + (w.amountPaise || 0), 0);
-            const verifiedBalancePaise = Math.max(0, totalEarnedPaise - totalWithdrawnPaise);
-
-            if (dbWorker.walletBalancePaise !== verifiedBalancePaise || dbWorker.totalEarningsPaise !== totalEarnedPaise) {
-              await prisma.worker.update({
-                where: { id: workerId },
-                data: {
-                  walletBalancePaise: verifiedBalancePaise,
-                  totalEarningsPaise: totalEarnedPaise
-                }
-              }).catch(() => null);
-            }
-
             if (worker) {
-              worker.walletBalancePaise = verifiedBalancePaise;
-              worker.totalEarningsPaise = totalEarnedPaise;
+              worker.walletBalancePaise = financials.walletBalancePaise;
+              worker.totalEarningsPaise = financials.totalEarningsPaise;
+              worker.pendingEarningsPaise = financials.pendingEarningsPaise;
               worker.isOnline = dbWorker.isOnline;
               worker.accountStatus = (dbWorker.status as any) || worker.accountStatus;
-              worker.completedJobs = completedOrders.length;
-              worker.rating = (dbWorker as any).rating || 5.0;
+              worker.completedJobs = financials.completedJobs;
+              worker.rating = (dbWorker as any).rating || financials.rating || 5.0;
             } else {
               worker = {
                 id: dbWorker.id,
@@ -2183,16 +2144,16 @@ export const workerController = {
                 city: dbWorker.city || '',
                 skills: (dbWorker.skills as string[]) || [],
                 bankDetails: ((dbWorker as any).bankDetails as any) || { accountNumber: '', ifsc: '', accountHolderName: '', upiId: '' },
-                activeJobs: 0,
-                completedJobs: completedOrders.length,
-                rating: (dbWorker as any).rating || 5.0,
+                activeJobs: financials.activeJobs || 0,
+                completedJobs: financials.completedJobs,
+                rating: (dbWorker as any).rating || financials.rating || 5.0,
                 isOnline: dbWorker.isOnline,
                 accountStatus: (dbWorker.status as any) || 'ACTIVE',
                 lastActivityAt: ((dbWorker as any).lastActivityAt || new Date()).toISOString(),
-                walletBalancePaise: verifiedBalancePaise,
-                pendingEarningsPaise: 0,
+                walletBalancePaise: financials.walletBalancePaise,
+                pendingEarningsPaise: financials.pendingEarningsPaise,
                 onHoldEarningsPaise: 0,
-                totalEarningsPaise: totalEarnedPaise,
+                totalEarningsPaise: financials.totalEarningsPaise,
                 averageCompletionMinutes: 45,
                 reviews: []
               };
@@ -2560,9 +2521,7 @@ export const adminController = {
                 .reduce((sum, x) => sum + (x.amountPaise || 0), 0);
 
               const totalEarned = w.totalEarningsPaise || earnedPaise;
-              const walletBalancePaise = typeof w.walletBalancePaise === 'number' && w.walletBalancePaise > 0
-                ? w.walletBalancePaise
-                : Math.max(0, totalEarned - withdrawnPaise - pendingWithdrawalsPaise);
+              const walletBalancePaise = Math.max(0, totalEarned - withdrawnPaise - pendingWithdrawalsPaise);
 
               return {
                 id: w.id,
@@ -2659,9 +2618,7 @@ export const adminController = {
               .filter(w => w.status === 'REQUESTED' || w.status === 'PENDING')
               .reduce((sum, w) => sum + (w.amountPaise || 0), 0);
 
-            const walletBalancePaise = typeof dbWorker.walletBalancePaise === 'number' && dbWorker.walletBalancePaise > 0
-              ? dbWorker.walletBalancePaise
-              : Math.max(0, totalEarnedPaise - withdrawnPaise - pendingWithdrawalsPaise);
+            const walletBalancePaise = Math.max(0, totalEarnedPaise - withdrawnPaise - pendingWithdrawalsPaise);
 
             const mappedOrders = dbWorker.orders.map((o: any) => ({
               id: o.id,

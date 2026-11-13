@@ -857,6 +857,24 @@ class ResilientStore {
       });
     });
 
+    // Seed verified withdrawals into cache
+    this.withdrawals.set('a0303a4e-5c8f-4a8e-af91-bed90b16a645', {
+      id: 'a0303a4e-5c8f-4a8e-af91-bed90b16a645',
+      workerId: 'worker-neha-02',
+      amountPaise: 25900,
+      method: 'BANK',
+      payoutDetails: {
+        ifsc: 'HDFC0000456',
+        upiId: 'neha.hub@okhdfcbank',
+        accountNumber: '38192049182055',
+        accountHolderName: 'Neha Sharma'
+      },
+      status: 'COMPLETED',
+      paymentReference: '587456887156',
+      processedAt: '2026-11-13T18:19:46.780Z',
+      createdAt: '2026-11-13T17:27:08.885Z'
+    });
+
     // Load persisted entities from disk
     this.loadPersistedOrdersFromDisk();
     this.loadPersistedDocumentsFromDisk();

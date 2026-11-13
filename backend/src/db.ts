@@ -409,6 +409,9 @@ export const initDatabase = async (): Promise<boolean> => {
           serviceId: order.serviceId,
           serviceName: snapshot?.name || 'Service',
           status: order.status as any,
+          earningStatus: order.earningStatus || undefined,
+          completedAt: order.completedAt ? order.completedAt.toISOString() : undefined,
+          workerAmountPaise: order.workerAmountPaise || undefined,
           pricePaise: pricing?.basePricePaise || order.customerPaidAmountPaise || 0,
           workerEarningsPaise:
             pricing?.workerEarningsPaise ||
@@ -423,7 +426,34 @@ export const initDatabase = async (): Promise<boolean> => {
       }
     }
 
-    console.log(`[Database] Synchronization complete (${dbOrders.length} orders loaded into local cache).`);
+    // 6. Hydrate persisted withdrawals from DB into localStore for accurate balances
+    const dbWithdrawals = await prisma.withdrawal.findMany();
+    for (const w of dbWithdrawals) {
+      localStore.withdrawals.set(w.id, {
+        id: w.id,
+        workerId: w.workerId,
+        amountPaise: w.amountPaise,
+        method: (w.method as any) || 'BANK',
+        payoutDetails: w.payoutDetails,
+        status: (w.status as any) || 'COMPLETED',
+        paymentReference: w.paymentReference || undefined,
+        processedAt: w.processedAt ? w.processedAt.toISOString() : undefined,
+        createdAt: w.requestedAt ? w.requestedAt.toISOString() : new Date().toISOString()
+      });
+    }
+
+    // 7. Sync workers from DB into localStore
+    const dbWorkers = await prisma.worker.findMany();
+    for (const dw of dbWorkers) {
+      const lw = localStore.getWorker(dw.id);
+      if (lw) {
+        lw.walletBalancePaise = dw.walletBalancePaise;
+        lw.totalEarningsPaise = dw.totalEarningsPaise;
+        lw.isOnline = dw.isOnline;
+      }
+    }
+
+    console.log(`[Database] Synchronization complete (${dbOrders.length} orders, ${dbWithdrawals.length} withdrawals loaded into local cache).`);
     return true;
   } catch (err: any) {
     console.error('[Database] Sync error, fallback will handle requests:', err.message || err);
