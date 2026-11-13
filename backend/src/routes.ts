@@ -181,7 +181,8 @@ router.post('/worker/orders/:id/receipt', requireAuth, requireRole(WORKER_ROLES)
 
 // Financials, Wallet & Withdrawals
 router.get('/worker/earnings/summary', requireAuth, requireRole(WORKER_ROLES), workerController.getEarningsSummary);
-router.get('/worker/earnings', requireAuth, requireRole(WORKER_ROLES), workerController.getEarningsHistory);
+router.get('/worker/earnings', requireAuth, requireRole(WORKER_ROLES), workerController.getEarnings);
+router.get('/worker/earnings/history', requireAuth, requireRole(WORKER_ROLES), workerController.getEarningsHistory);
 router.post('/worker/wallet/sync', requireAuth, requireRole(WORKER_ROLES), workerController.syncWalletBalances);
 router.post('/worker/earnings/sync', requireAuth, requireRole(WORKER_ROLES), workerController.syncWalletBalances);
 router.get('/worker/stats', requireAuth, requireRole(WORKER_ROLES), workerController.getStats);

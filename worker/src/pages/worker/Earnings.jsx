@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   IndianRupee, 
@@ -20,6 +20,8 @@ export default function Earnings() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
+  const earningsDataRef = useRef(null);
+  earningsDataRef.current = earningsData;
 
   // 1-second interval to update live countdown timers smoothly
   useEffect(() => {
@@ -31,16 +33,28 @@ export default function Earnings() {
 
   const loadEarnings = async (silent = false) => {
     try {
-      if (!silent) setLoading(true);
+      if (!silent) {
+        setLoading(true);
+        setError('');
+      }
       const res = await workerApi.getEarnings();
-      if (res?.earnings) {
-        setEarningsData(res.earnings);
+      const payload = res?.earnings || res?.data?.earnings || res?.data?.summary || res?.data || res?.summary || res;
+      if (payload && typeof payload === 'object') {
+        const txs = Array.isArray(payload.transactions) 
+          ? payload.transactions 
+          : (Array.isArray(payload.history) ? payload.history : (Array.isArray(payload.list) ? payload.list : []));
+        
+        setEarningsData({
+          ...payload,
+          transactions: txs
+        });
+        setError('');
       }
       if (!silent) setLoading(false);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load earnings ledger:', err);
       if (!silent) {
-        setError('Failed to load earnings ledger');
+        setError(err.message || 'Failed to load earnings ledger');
         setLoading(false);
       }
     }
@@ -50,8 +64,18 @@ export default function Earnings() {
     setSyncing(true);
     try {
       const res = await workerApi.syncWalletBalances();
-      if (res?.earnings || res?.summary) {
-        setEarningsData(res.earnings || res.summary);
+      const payload = res?.earnings || res?.summary || res?.data;
+      if (payload && typeof payload === 'object') {
+        const txs = Array.isArray(payload.transactions) 
+          ? payload.transactions 
+          : (Array.isArray(payload.history) ? payload.history : []);
+        
+        setEarningsData(prev => ({
+          ...(prev || {}),
+          ...payload,
+          transactions: txs.length > 0 ? txs : (prev?.transactions || [])
+        }));
+        setError('');
       } else {
         await loadEarnings(true);
       }
@@ -67,9 +91,9 @@ export default function Earnings() {
     loadEarnings();
 
     const interval = setInterval(async () => {
-      // Check if any pending transaction has matured
-      if (earningsData?.transactions) {
-        const hasMatured = earningsData.transactions.some(tx => 
+      const current = earningsDataRef.current;
+      if (current?.transactions) {
+        const hasMatured = current.transactions.some(tx => 
           tx.type === 'CREDIT' && 
           tx.unlockAt && 
           new Date(tx.unlockAt).getTime() <= Date.now() && 
@@ -84,7 +108,7 @@ export default function Earnings() {
     }, 15000);
 
     return () => clearInterval(interval);
-  }, [earningsData]);
+  }, []);
 
   const formatCountdown = (unlockAt) => {
     if (!unlockAt) return '1 hour';

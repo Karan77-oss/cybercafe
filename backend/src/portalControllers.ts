@@ -168,6 +168,152 @@ export function sanitizeOrderForWorker(order: any): any {
   return clone;
 }
 
+async function getWorkerFinancialsFromDbOrStore(workerId: string) {
+  const summary = localStore.getWorkerEarningsSummary(workerId);
+  const isDbOnline = await checkDb().catch(() => false);
+
+  if (isDbOnline) {
+    try {
+      const ONE_HOUR_MS = 60 * 60 * 1000;
+      const now = Date.now();
+      const oneHourAgo = new Date(now - ONE_HOUR_MS);
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+
+      // 1. Auto-settle matured orders > 1 hour
+      const maturedOrders = await prisma.order.findMany({
+        where: {
+          OR: [{ workerId }, { assignedWorkerId: workerId }],
+          status: 'COMPLETED',
+          earningStatus: 'PENDING',
+          completedAt: { lte: oneHourAgo }
+        }
+      });
+
+      for (const ord of maturedOrders) {
+        await prisma.order.update({
+          where: { id: ord.id },
+          data: { earningStatus: 'RELEASED' }
+        }).catch(() => null);
+
+        await prisma.workerEarning.updateMany({
+          where: { orderId: ord.id },
+          data: { status: 'SETTLED', releasedAt: new Date() }
+        }).catch(() => null);
+
+        if (ord.workerAmountPaise > 0) {
+          await prisma.worker.update({
+            where: { id: workerId },
+            data: {
+              walletBalancePaise: { increment: ord.workerAmountPaise },
+              totalEarningsPaise: { increment: ord.workerAmountPaise }
+            }
+          }).catch(() => null);
+        }
+      }
+
+      // 2. Fetch all completed orders
+      const completedOrders = await prisma.order.findMany({
+        where: {
+          OR: [{ workerId }, { assignedWorkerId: workerId }],
+          status: { in: ['COMPLETED', 'WORK_COMPLETED'] }
+        },
+        include: { service: true },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // 3. Fetch all withdrawals
+      const allWorkerWithdrawals = await prisma.withdrawal.findMany({
+        where: { workerId },
+        orderBy: { requestedAt: 'desc' }
+      });
+
+      let pendingEarningsPaise = 0;
+      let todayEarningsPaise = 0;
+      let todayCompletedJobs = 0;
+
+      const orderTransactions = completedOrders.map(o => {
+        const amt = o.workerAmountPaise || (o.pricing as any)?.workerPayoutPaise || (o.service as any)?.workerAmountPaise || Math.max(0, (o.customerPaidAmountPaise || 0) - (o.adminCommissionPaise || 0));
+        const completedTime = o.completedAt ? new Date(o.completedAt).getTime() : new Date(o.createdAt).getTime();
+        const isCompletedToday = completedTime >= startOfToday.getTime();
+        if (isCompletedToday) {
+          todayEarningsPaise += amt;
+          todayCompletedJobs++;
+        }
+
+        const unlockAt = completedTime + ONE_HOUR_MS;
+        const isPendingSettlement = (now - completedTime < ONE_HOUR_MS) && o.earningStatus !== 'RELEASED';
+        if (isPendingSettlement) {
+          pendingEarningsPaise += amt;
+        }
+
+        return {
+          id: `tx_${o.id}`,
+          orderId: o.orderNumber || o.id,
+          serviceName: (o.service as any)?.name || (o.serviceSnapshot as any)?.name || 'Cyber Cafe Service',
+          type: 'CREDIT',
+          amountPaise: amt,
+          status: isPendingSettlement ? 'PENDING' : 'SETTLED',
+          isPendingSettlement,
+          date: (o.completedAt || o.createdAt).toISOString(),
+          unlockAt: new Date(unlockAt).toISOString(),
+          remainingMs: Math.max(0, unlockAt - now)
+        };
+      });
+
+      const withdrawalTransactions = allWorkerWithdrawals.map(w => ({
+        id: `tx_${w.id}`,
+        orderId: w.id,
+        serviceName: `Withdrawal via ${w.method || 'Bank Transfer'}`,
+        type: 'DEBIT',
+        amountPaise: w.amountPaise || 0,
+        status: w.status,
+        isPendingSettlement: false,
+        date: (w.requestedAt || new Date()).toISOString(),
+        unlockAt: null,
+        remainingMs: 0
+      }));
+
+      const allTransactions = [...orderTransactions, ...withdrawalTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      const totalEarnedPaise = completedOrders.reduce((sum, o) => {
+        const amt = o.workerAmountPaise || (o.pricing as any)?.workerPayoutPaise || (o.service as any)?.workerAmountPaise || Math.max(0, (o.customerPaidAmountPaise || 0) - (o.adminCommissionPaise || 0));
+        return sum + amt;
+      }, 0);
+
+      const totalWithdrawnPaise = allWorkerWithdrawals
+        .filter(w => ['REQUESTED', 'APPROVED', 'COMPLETED', 'PENDING'].includes(w.status))
+        .reduce((sum, w) => sum + (w.amountPaise || 0), 0);
+
+      const verifiedBalancePaise = Math.max(0, totalEarnedPaise - totalWithdrawnPaise);
+
+      summary.walletBalancePaise = verifiedBalancePaise;
+      summary.totalEarningsPaise = totalEarnedPaise;
+      summary.todayEarningsPaise = todayEarningsPaise;
+      summary.todayCompletedJobs = todayCompletedJobs;
+      summary.pendingEarningsPaise = pendingEarningsPaise;
+      summary.completedJobs = completedOrders.length;
+      summary.completedOrders = completedOrders.length;
+      summary.transactions = allTransactions;
+    } catch (dbErr: any) {
+      console.warn('[getWorkerFinancials DB query error]:', dbErr?.message);
+    }
+  }
+
+  const formatted = {
+    todayEarnings: paiseToRupees(summary.todayEarningsPaise),
+    pendingEarnings: paiseToRupees(summary.pendingEarningsPaise),
+    onHoldEarnings: paiseToRupees(summary.onHoldEarningsPaise),
+    availableEarnings: paiseToRupees(summary.walletBalancePaise),
+    lifetimeEarnings: paiseToRupees(summary.totalEarningsPaise),
+    ...summary,
+    history: summary.transactions || [],
+    list: summary.transactions || []
+  };
+
+  return formatted;
+}
+
 // ==========================================
 // WORKER CONTROLLER
 // ==========================================
@@ -1503,88 +1649,8 @@ export const workerController = {
       const workerId = req.user?.id;
       if (!workerId) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
 
-      // Auto-settlement check on DB if connected
-      if (await checkDb().catch(() => false)) {
-        try {
-          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-          const maturedOrders = await prisma.order.findMany({
-            where: {
-              workerId,
-              status: 'COMPLETED',
-              earningStatus: 'PENDING',
-              completedAt: { lte: oneHourAgo }
-            }
-          });
-
-          for (const ord of maturedOrders) {
-            await prisma.order.update({
-              where: { id: ord.id },
-              data: { earningStatus: 'RELEASED' }
-            }).catch(() => null);
-
-            await prisma.workerEarning.updateMany({
-              where: { orderId: ord.id },
-              data: { status: 'SETTLED', releasedAt: new Date() }
-            }).catch(() => null);
-
-            if (ord.workerAmountPaise > 0) {
-              await prisma.worker.update({
-                where: { id: workerId },
-                data: {
-                  walletBalancePaise: { increment: ord.workerAmountPaise },
-                  totalEarningsPaise: { increment: ord.workerAmountPaise }
-                }
-              }).catch(() => null);
-            }
-          }
-        } catch (dbErr: any) {
-          console.warn('[Prisma Wallet Settlement notice]:', dbErr?.message);
-        }
-      }
-
-      const summary = localStore.getWorkerEarningsSummary(workerId);
-      if (await checkDb().catch(() => false)) {
-        try {
-          const completedOrders = await prisma.order.findMany({
-            where: {
-              OR: [{ workerId }, { assignedWorkerId: workerId }],
-              status: { in: ['COMPLETED', 'WORK_COMPLETED'] }
-            },
-            select: { workerAmountPaise: true, pricePaise: true, adminCommissionPaise: true }
-          });
-
-          const totalEarnedPaise = completedOrders.reduce((sum, o) => {
-            const amt = o.workerAmountPaise || Math.max(0, (o.pricePaise || 0) - (o.adminCommissionPaise || 0));
-            return sum + amt;
-          }, 0);
-
-          const allWorkerWithdrawals = await prisma.withdrawal.findMany({
-            where: {
-              workerId,
-              status: { in: ['REQUESTED', 'APPROVED', 'COMPLETED', 'PENDING'] }
-            },
-            select: { amountPaise: true }
-          });
-
-          const totalWithdrawnPaise = allWorkerWithdrawals.reduce((sum, w) => sum + (w.amountPaise || 0), 0);
-          const verifiedBalancePaise = Math.max(0, totalEarnedPaise - totalWithdrawnPaise);
-
-          summary.walletBalancePaise = verifiedBalancePaise;
-          summary.totalEarningsPaise = totalEarnedPaise;
-          summary.completedJobs = completedOrders.length;
-          summary.completedOrders = completedOrders.length;
-        } catch { }
-      }
-
-      const formatted = {
-        todayEarnings: paiseToRupees(summary.todayEarningsPaise),
-        pendingEarnings: paiseToRupees(summary.pendingEarningsPaise),
-        onHoldEarnings: paiseToRupees(summary.onHoldEarningsPaise),
-        availableEarnings: paiseToRupees(summary.walletBalancePaise),
-        lifetimeEarnings: paiseToRupees(summary.totalEarningsPaise),
-        ...summary
-      };
-      return sendSuccess(res, { earnings: formatted, data: formatted });
+      const formatted = await getWorkerFinancialsFromDbOrStore(workerId);
+      return sendSuccess(res, { earnings: formatted, data: formatted, summary: formatted });
     } catch (e: any) {
       return sendError(res, 500, 'SERVER_ERROR', e.message);
     }
@@ -1595,86 +1661,7 @@ export const workerController = {
       const workerId = req.user?.id;
       if (!workerId) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
 
-      if (await checkDb().catch(() => false)) {
-        try {
-          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-          const maturedOrders = await prisma.order.findMany({
-            where: {
-              workerId,
-              status: 'COMPLETED',
-              earningStatus: 'PENDING',
-              completedAt: { lte: oneHourAgo }
-            }
-          });
-
-          for (const ord of maturedOrders) {
-            await prisma.order.update({
-              where: { id: ord.id },
-              data: { earningStatus: 'RELEASED' }
-            }).catch(() => null);
-
-            await prisma.workerEarning.updateMany({
-              where: { orderId: ord.id },
-              data: { status: 'SETTLED', releasedAt: new Date() }
-            }).catch(() => null);
-
-            if (ord.workerAmountPaise > 0) {
-              await prisma.worker.update({
-                where: { id: workerId },
-                data: {
-                  walletBalancePaise: { increment: ord.workerAmountPaise },
-                  totalEarningsPaise: { increment: ord.workerAmountPaise }
-                }
-              }).catch(() => null);
-            }
-          }
-        } catch (dbErr: any) {
-          console.warn('[Prisma Wallet Sync notice]:', dbErr?.message);
-        }
-      }
-
-      const summary = localStore.getWorkerEarningsSummary(workerId);
-      if (await checkDb().catch(() => false)) {
-        try {
-          const completedOrders = await prisma.order.findMany({
-            where: {
-              OR: [{ workerId }, { assignedWorkerId: workerId }],
-              status: { in: ['COMPLETED', 'WORK_COMPLETED'] }
-            },
-            select: { workerAmountPaise: true, pricePaise: true, adminCommissionPaise: true }
-          });
-
-          const totalEarnedPaise = completedOrders.reduce((sum, o) => {
-            const amt = o.workerAmountPaise || Math.max(0, (o.pricePaise || 0) - (o.adminCommissionPaise || 0));
-            return sum + amt;
-          }, 0);
-
-          const allWorkerWithdrawals = await prisma.withdrawal.findMany({
-            where: {
-              workerId,
-              status: { in: ['REQUESTED', 'APPROVED', 'COMPLETED', 'PENDING'] }
-            },
-            select: { amountPaise: true }
-          });
-
-          const totalWithdrawnPaise = allWorkerWithdrawals.reduce((sum, w) => sum + (w.amountPaise || 0), 0);
-          const verifiedBalancePaise = Math.max(0, totalEarnedPaise - totalWithdrawnPaise);
-
-          summary.walletBalancePaise = verifiedBalancePaise;
-          summary.totalEarningsPaise = totalEarnedPaise;
-          summary.completedJobs = completedOrders.length;
-          summary.completedOrders = completedOrders.length;
-        } catch { }
-      }
-
-      const formatted = {
-        todayEarnings: paiseToRupees(summary.todayEarningsPaise),
-        pendingEarnings: paiseToRupees(summary.pendingEarningsPaise),
-        onHoldEarnings: paiseToRupees(summary.onHoldEarningsPaise),
-        availableEarnings: paiseToRupees(summary.walletBalancePaise),
-        lifetimeEarnings: paiseToRupees(summary.totalEarningsPaise),
-        ...summary
-      };
+      const formatted = await getWorkerFinancialsFromDbOrStore(workerId);
       return sendSuccess(res, { earnings: formatted, summary: formatted, data: formatted, message: 'Wallet balances synced successfully' });
     } catch (e: any) {
       return sendError(res, 500, 'SERVER_ERROR', e.message);
@@ -1690,66 +1677,11 @@ export const workerController = {
       const workerId = req.user?.id;
       if (!workerId) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
 
-      const { status, dateFrom, dateTo, orderId } = req.query as any;
-
-      const summary = localStore.getWorkerEarningsSummary(workerId);
-      let completedOrders = Array.from(localStore.orders.values()).filter(
-        o => o.assignedWorkerId === workerId && (o.status === 'COMPLETED' || o.earningStatus === 'RELEASED' || o.earningStatus === 'PENDING')
-      );
-
-      if (orderId) completedOrders = completedOrders.filter(o => o.id === orderId);
-      if (status) completedOrders = completedOrders.filter(o => o.earningStatus === status || o.status === status);
-
-      if (dateFrom) {
-        const fromTime = new Date(dateFrom).getTime();
-        completedOrders = completedOrders.filter(o => new Date(o.createdAt).getTime() >= fromTime);
-      }
-      if (dateTo) {
-        const toDateObj = new Date(dateTo);
-        toDateObj.setHours(23, 59, 59, 999);
-        completedOrders = completedOrders.filter(o => new Date(o.createdAt).getTime() <= toDateObj.getTime());
-      }
-
-      const ONE_HOUR_MS = 60 * 60 * 1000;
-      const now = Date.now();
-
-      const earnings = completedOrders.map(o => {
-        let amountPaise = o.workerAmountPaise || o.workerAmount || o.workerEarningsPaise;
-        if (!amountPaise || amountPaise <= 0) {
-          const svc = o.serviceId ? (localStore.getService(o.serviceId) || o.service) : null;
-          if (svc?.workerAmountPaise) {
-            amountPaise = svc.workerAmountPaise;
-          } else if (o.adminCommissionPaise !== undefined) {
-            amountPaise = Math.max(0, (o.pricePaise || 0) - o.adminCommissionPaise);
-          } else {
-            amountPaise = o.pricePaise || 0;
-          }
-        }
-
-        const completedTime = o.completedAt ? new Date(o.completedAt).getTime() : new Date(o.createdAt).getTime();
-        const elapsedMs = now - completedTime;
-        const unlockAt = completedTime + ONE_HOUR_MS;
-        const isPendingSettlement = elapsedMs < ONE_HOUR_MS && o.earningStatus !== 'RELEASED';
-        const remainingMs = Math.max(0, unlockAt - now);
-
-        return {
-          orderId: o.id,
-          serviceName: o.serviceName || (o.serviceSnapshot as any)?.name || 'Cyber Cafe Service',
-          workerAmount: paiseToRupees(amountPaise),
-          workerAmountPaise: amountPaise,
-          status: isPendingSettlement ? 'PENDING' : 'RELEASED',
-          isPendingSettlement,
-          unlockAt: new Date(unlockAt).toISOString(),
-          remainingMs,
-          earnedAt: o.completedAt || o.createdAt,
-          releasedAt: isPendingSettlement ? null : (o.completedAt || o.createdAt)
-        };
-      });
-
+      const formatted = await getWorkerFinancialsFromDbOrStore(workerId);
       return sendSuccess(res, {
-        data: { earnings, summary },
-        earnings: { history: earnings, list: earnings, ...summary },
-        ...summary
+        data: { earnings: formatted.transactions, summary: formatted },
+        earnings: formatted,
+        ...formatted
       });
     } catch (e: any) {
       return sendError(res, 500, 'INTERNAL_ERROR', e.message);
