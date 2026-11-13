@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { 
   Search, 
   Clock, 
@@ -14,12 +14,21 @@ import { workerApi } from '../../api/worker';
 import AcceptAndScheduleModal from '../../components/AcceptAndScheduleModal';
 
 export default function AvailableRequests() {
+  const outlet = useOutletContext();
   const [requests, setRequests] = useState([]);
-  const [isOnline, setIsOnline] = useState(true);
+  const [localOnline, setLocalOnline] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('ALL');
+
+  const isOnline = outlet?.isOnline !== undefined ? outlet.isOnline : localOnline;
+  const setIsOnline = (val) => {
+    if (outlet?.setIsOnline) {
+      outlet.setIsOnline(val);
+    }
+    setLocalOnline(val);
+  };
 
   // Rejection modal state
   const [rejectingOrder, setRejectingOrder] = useState(null);
@@ -50,7 +59,9 @@ export default function AvailableRequests() {
       });
       const uniqueOrders = Array.from(new Map(strictlyAvailable.map(o => [o.id, o])).values());
       setRequests(uniqueOrders);
-      setIsOnline(res?.isOnline !== false);
+      if (typeof res?.isOnline === 'boolean') {
+        setIsOnline(res.isOnline);
+      }
       setLoading(false);
     } catch (err) {
       console.error(err);
@@ -212,8 +223,15 @@ export default function AvailableRequests() {
 
   const handleGoOnline = async () => {
     try {
-      await workerApi.toggleAvailability(true);
-      setIsOnline(true);
+      if (outlet?.handleToggleAvailability) {
+        await outlet.handleToggleAvailability(true);
+      } else {
+        const res = await workerApi.toggleAvailability(true);
+        if (res?.success) {
+          setIsOnline(true);
+          window.dispatchEvent(new CustomEvent('worker:online_change', { detail: { isOnline: true } }));
+        }
+      }
       loadRequests();
     } catch (err) {
       alert('Could not update status.');

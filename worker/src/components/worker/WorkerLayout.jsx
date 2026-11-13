@@ -17,36 +17,42 @@ export default function WorkerLayout() {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
 
+  // Fetch worker profile status and notifications
+  const fetchStatus = useCallback(async () => {
+    try {
+      const [profileRes, notifRes] = await Promise.all([
+        workerApi.getProfile().catch(() => null),
+        workerApi.getNotifications().catch(() => null)
+      ]);
+
+      if (profileRes?.profile) {
+        setIsOnline(profileRes.profile.isOnline !== false);
+      }
+      if (notifRes?.notifications) {
+        const unread = notifRes.notifications.filter(n => !n.isRead).length;
+        setUnreadNotifs(unread);
+      }
+    } catch (err) {
+      console.error('Error fetching worker status:', err);
+    }
+  }, []);
+
   // Load initial worker status and notifications
   useEffect(() => {
-    let mounted = true;
-    const fetchStatus = async () => {
-      try {
-        const [profileRes, notifRes] = await Promise.all([
-          workerApi.getProfile().catch(() => null),
-          workerApi.getNotifications().catch(() => null)
-        ]);
-
-        if (mounted) {
-          if (profileRes?.profile) {
-            setIsOnline(profileRes.profile.isOnline !== false);
-          }
-          if (notifRes?.notifications) {
-            const unread = notifRes.notifications.filter(n => !n.isRead).length;
-            setUnreadNotifs(unread);
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching worker status:', err);
-      }
-    };
-
     fetchStatus();
     const interval = setInterval(fetchStatus, 30000);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
+
+  // Synchronize online status across any child components or windows
+  useEffect(() => {
+    const handleOnlineEvent = (e) => {
+      if (typeof e.detail?.isOnline === 'boolean') {
+        setIsOnline(e.detail.isOnline);
+      }
     };
+    window.addEventListener('worker:online_change', handleOnlineEvent);
+    return () => window.removeEventListener('worker:online_change', handleOnlineEvent);
   }, []);
 
   // 30-minute inactivity tracker
@@ -105,15 +111,16 @@ export default function WorkerLayout() {
     };
   }, []);
 
-  const handleToggleAvailability = async () => {
+  const handleToggleAvailability = async (targetOverride) => {
     if (toggling) return;
     setToggling(true);
     try {
-      const targetState = !isOnline;
+      const targetState = typeof targetOverride === 'boolean' ? targetOverride : !isOnline;
       const res = await workerApi.toggleAvailability(targetState);
       if (res?.success) {
         setIsOnline(res.isOnline);
         lastActivityRef.current = Date.now();
+        window.dispatchEvent(new CustomEvent('worker:online_change', { detail: { isOnline: res.isOnline } }));
       }
     } catch (err) {
       console.error('Failed to toggle availability:', err);
@@ -270,7 +277,7 @@ export default function WorkerLayout() {
         </header>
 
         <div className="worker-content">
-          <Outlet />
+          <Outlet context={{ isOnline, setIsOnline, handleToggleAvailability, refreshStatus: fetchStatus }} />
         </div>
       </main>
 

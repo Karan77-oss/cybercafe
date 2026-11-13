@@ -192,6 +192,11 @@ export const workerController = {
           });
           if (dbWorker) {
             isOnline = dbWorker.isOnline;
+            const memW = localStore.getWorker(workerId);
+            if (memW) memW.isOnline = dbWorker.isOnline;
+          } else {
+            const memW = localStore.getWorker(workerId);
+            if (memW) isOnline = memW.isOnline;
           }
 
           // Strict DB Query: Unassigned AND Open Claimable status only
@@ -1201,6 +1206,21 @@ export const workerController = {
       if (!workerId) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
 
       const isOnline = Boolean(req.body.isOnline);
+      const isDbOnline = await checkDb().catch(() => false);
+      if (isDbOnline) {
+        try {
+          await prisma.worker.update({
+            where: { id: workerId },
+            data: { isOnline, lastActivityAt: new Date() }
+          }).catch(() => {});
+          await prisma.user.updateMany({
+            where: { id: workerId },
+            data: { isOnline }
+          }).catch(() => {});
+        } catch (dbErr: any) {
+          console.warn('[toggleAvailability DB Update Notice]:', dbErr?.message);
+        }
+      }
       const result = localStore.toggleWorkerAvailability(workerId, isOnline);
       return sendSuccess(res, { isOnline: result.isOnline, worker: result.worker });
     } catch (e: any) {
@@ -1212,6 +1232,16 @@ export const workerController = {
     try {
       const workerId = req.user?.id;
       if (!workerId) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
+
+      const isDbOnline = await checkDb().catch(() => false);
+      if (isDbOnline) {
+        try {
+          await prisma.worker.update({
+            where: { id: workerId },
+            data: { lastActivityAt: new Date() }
+          }).catch(() => {});
+        } catch {}
+      }
 
       const result = localStore.recordWorkerActivity(workerId);
       return sendSuccess(res, { ...result });
@@ -1227,13 +1257,21 @@ export const workerController = {
 
       const isDbOnline = await checkDb().catch(() => false);
       if (isDbOnline) {
-        await withDbRetry(() => prisma.user.update({
+        await withDbRetry(() => prisma.worker.update({
+          where: { id: workerId },
+          data: {
+            lastHeartbeatAt: new Date(),
+            lastActivityAt: new Date(),
+            isOnline: true
+          }
+        })).catch(() => {});
+        await withDbRetry(() => prisma.user.updateMany({
           where: { id: workerId },
           data: {
             lastHeartbeatAt: new Date(),
             isOnline: true
           }
-        })).catch((err: any) => console.warn('[WorkerHeartbeat] DB update notice:', err.message));
+        })).catch(() => {});
       }
 
       const result = localStore.recordWorkerActivity(workerId);
@@ -1837,7 +1875,49 @@ export const workerController = {
       const workerId = req.user?.id;
       if (!workerId) return sendError(res, 401, 'UNAUTHORIZED', 'Authentication required');
 
-      const worker = localStore.getWorker(workerId);
+      let worker = localStore.getWorker(workerId);
+      const isDbOnline = await checkDb().catch(() => false);
+      if (isDbOnline) {
+        try {
+          const dbWorker = await prisma.worker.findUnique({
+            where: { id: workerId }
+          });
+          if (dbWorker) {
+            if (worker) {
+              worker.isOnline = dbWorker.isOnline;
+              worker.accountStatus = (dbWorker.status as any) || worker.accountStatus;
+            } else {
+              worker = {
+                id: dbWorker.id,
+                name: dbWorker.name,
+                email: dbWorker.email,
+                phone: dbWorker.phone,
+                businessName: dbWorker.businessName || '',
+                address: dbWorker.address || '',
+                city: dbWorker.city || '',
+                skills: (dbWorker.skills as string[]) || [],
+                bankDetails: (dbWorker.bankDetails as any) || { accountNumber: '', ifsc: '', accountHolderName: '', upiId: '' },
+                activeJobs: 0,
+                completedJobs: 0,
+                rating: dbWorker.rating || 5.0,
+                isOnline: dbWorker.isOnline,
+                accountStatus: (dbWorker.status as any) || 'ACTIVE',
+                lastActivityAt: (dbWorker.lastActivityAt || new Date()).toISOString(),
+                walletBalancePaise: dbWorker.walletBalancePaise || 0,
+                pendingEarningsPaise: 0,
+                onHoldEarningsPaise: 0,
+                totalEarningsPaise: 0,
+                averageCompletionMinutes: 45,
+                reviews: []
+              };
+              localStore.saveWorker(worker);
+            }
+          }
+        } catch (dbErr: any) {
+          console.warn('[getProfile DB Notice]:', dbErr?.message);
+        }
+      }
+
       if (!worker) return sendError(res, 404, 'WORKER_NOT_FOUND', 'Worker profile not found');
 
       return sendSuccess(res, { profile: worker });
