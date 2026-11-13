@@ -22,7 +22,7 @@
     "build:mobile": "npm run build --workspace=cyber-cafe-mobile-app && npm --workspace=cyber-cafe-mobile-app exec cap sync android",
     "build:backend": "npm run build --workspace=backend",
     "build": "npm run build:backend",
-    "postinstall": "npm run --workspace=backend postinstall",
+    "postinstall": "npm run --workspace=backend postinstall || true",
     "test:backend": "npm run test --workspace=backend",
     "start": "npm run start --workspace=backend"
   },

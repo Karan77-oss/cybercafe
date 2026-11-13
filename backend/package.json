@@ -7,7 +7,7 @@
     "start": "node dist/server.js",
     "dev": "tsc && node dist/server.js",
     "test": "jest",
-    "postinstall": "prisma generate",
+    "postinstall": "npx --yes prisma generate || true",
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "db:generate": "prisma generate",
     "lint": "eslint src --ext .ts",
