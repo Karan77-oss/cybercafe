@@ -152,10 +152,17 @@ export default function Performance() {
                   </span>
                 </div>
                 <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', fontStyle: 'italic', lineHeight: 1.4 }}>
-                  "{rev.comment}"
+                  {rev.comment ? `"${rev.comment}"` : `Verified ${rev.rating}-star customer rating for ${rev.serviceName || 'order delivery'}.`}
                 </p>
-                <div style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600, marginTop: 'auto' }}>
-                  ✓ Verified Customer
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '4px' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>
+                    ✓ Verified Customer
+                  </span>
+                  {rev.serviceName && (
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
+                      {rev.serviceName}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
