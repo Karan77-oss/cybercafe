@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, RefreshCw, CheckCircle2, Clock,
   UserCheck, Download, AlertCircle, Phone,
@@ -9,10 +9,13 @@ import {
   Star
 } from 'lucide-react';
 import { ordersApi } from '../api/client';
+import { launchPaytmCheckout } from '../utils/paytm';
 
 export default function OrderTracking() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const paymentStatusParam = searchParams.get('status');
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -112,86 +115,34 @@ export default function OrderTracking() {
     }
   };
 
-  const loadRazorpayScript = () =>
-    new Promise((resolve) => {
-      if (window.Razorpay) return resolve(true);
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-
   const handlePayFee = async () => {
     if (isPaying) return;
     setPayError(null);
     setIsPaying(true);
     try {
-      // Step 1: Create a Razorpay order on the backend
-      const paymentRes = await ordersApi.createPayment({ orderId: order.id });
-      const razorpayOrderId = paymentRes?.razorpayOrderId;
-      const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || paymentRes?.key || 'rzp_test_TjrbhiZugaYLYJ';
+      // Step 1: Initiate Paytm payment transaction
+      const paymentRes = await ordersApi.createPayment({
+        orderId: order.id,
+        clientRedirectUrl: `${window.location.origin}/orders/${order.id}`,
+      });
 
-      // Step 2: Load Razorpay checkout.js if needed
-      const scriptLoaded = await loadRazorpayScript();
-
-      if (scriptLoaded && window.Razorpay && razorpayOrderId) {
-        // Step 3: Open Razorpay modal
-        await new Promise((resolve, reject) => {
-          const options = {
-            key: razorpayKey,
-            amount: order.pricing?.pricePaise || order.pricePaise || 4900,
-            currency: 'INR',
-            name: 'Cyber Cafe Express',
-            description: order.serviceSnapshot?.name || order.serviceName || 'Service Fee',
-            order_id: razorpayOrderId,
-            handler: async (response) => {
-              try {
-                // Step 4: Verify payment on backend
-                await ordersApi.verifyPayment({
-                  orderId: order.id,
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                });
-              } catch (verifyErr) {
-                console.warn('[PayFee] Verification notice:', verifyErr);
-              }
-              // Step 5: Refresh order so badge + button update
-              await fetchOrder(true);
-              resolve();
-            },
-            prefill: {},
-            theme: { color: '#0284C7' },
-            modal: {
-              ondismiss: () => {
-                setIsPaying(false);
-                resolve();
-              }
-            }
-          };
-          const rzp = new window.Razorpay(options);
-          rzp.on('payment.failed', (resp) => {
-            console.warn('[PayFee] Payment failed:', resp);
-            setPayError('Payment was not completed. Please try again.');
-            setIsPaying(false);
-            resolve();
-          });
-          rzp.open();
+      if (paymentRes?.gateway === 'PAYTM' || paymentRes?.paytmParams) {
+        // Step 2: Open Paytm secure gateway form
+        launchPaytmCheckout({
+          actionUrl: paymentRes.actionUrl,
+          paytmParams: paymentRes.paytmParams,
         });
-      } else {
-        // Fallback: Razorpay not available (test/dev mode) — use the per-order create-payment endpoint
-        // which updates paymentStatus to PAID via verifyPayment with a mock token if keys are test keys
-        // or directly mark paid via the order-scoped verify-payment endpoint
-        throw new Error('Razorpay checkout unavailable. Please check payment gateway configuration.');
+        return;
       }
+
+      throw new Error('Payment gateway response invalid. Please try again.');
     } catch (err) {
       console.error('[PayFee] Error:', err);
       const message =
         err?.response?.data?.error?.message ||
         err?.response?.data?.error ||
         err?.message ||
-        'Payment failed. Please try again.';
+        'Payment initiation failed. Please try again.';
       setPayError(message);
     } finally {
       setIsPaying(false);
@@ -352,6 +303,19 @@ export default function OrderTracking() {
           <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
       </div>
+
+      {/* Payment Success Notification Banner */}
+      {paymentStatusParam === 'success' && (
+        <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200/80 rounded-2xl p-3.5 shadow-sm animate-fade-in">
+          <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-extrabold text-emerald-900">Payment Confirmed Successfully!</p>
+            <p className="text-[11px] text-emerald-700 mt-0.5">Your order is now queued for immediate operator review.</p>
+          </div>
+        </div>
+      )}
 
       {/* Main Status Hero Card */}
       <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-100 shadow-neo-card p-4">
@@ -982,16 +946,16 @@ export default function OrderTracking() {
       )}
 
       {/* Pay Now Button (if pending payment) */}
-      {order.paymentStatus === 'PENDING' && (
+      {(order.paymentStatus === 'PENDING' || order.status === 'PAYMENT_PENDING') && (
         <button
           type="button"
           disabled={isPaying}
           onClick={handlePayFee}
-          className="w-full py-3 bg-slate-900 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md active:scale-[0.98] transition-transform disabled:opacity-60 disabled:scale-100 disabled:cursor-not-allowed"
+          className="w-full py-3.5 bg-sky-600 hover:bg-sky-500 text-white font-extrabold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-sky-600/25 active:scale-[0.98] transition-all disabled:opacity-60 disabled:scale-100 disabled:cursor-not-allowed"
         >
           {isPaying
-            ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Processing...</span></>
-            : <><CreditCard className="w-4 h-4" /><span>Pay Fee Now ({priceDisplay})</span></>}
+            ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Opening Paytm Gateway...</span></>
+            : <><CreditCard className="w-4 h-4" /><span>Pay with Paytm ({priceDisplay})</span></>}
         </button>
       )}
 

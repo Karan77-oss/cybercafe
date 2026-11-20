@@ -42,6 +42,7 @@ cyber-cafe/
 backend/src/**/*.js
 backend/src/**/*.js.map
 backend/src/**/*.d.ts
+!backend/src/paytmchecksum.d.ts
 
 *.apk
 

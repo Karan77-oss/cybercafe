@@ -4,9 +4,15 @@ export interface OrderAlertPayload {
   orderId: string;
   orderNumber?: string;
   serviceName: string;
-  workerAmountPaise: number;
+  workerAmountPaise?: number;
   workerId?: string;
   deadline?: string;
+  serviceCategory?: string;
+  pricePaise?: number;
+  bookingDate?: any;
+  timeSlot?: any;
+  customerId?: string;
+  [key: string]: any;
 }
 
 /**

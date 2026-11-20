@@ -121,6 +121,8 @@ router.post('/orders', requireAuth, requireRole(ORDER_ROLES), upload.any(), orde
 // Payment Gateways & Webhooks
 router.post('/orders/create-payment', requireAuth, requireRole(ORDER_ROLES), ordersController.createRazorpayPayment);
 router.post('/orders/verify-payment', requireAuth, requireRole(ORDER_ROLES), ordersController.verifyRazorpayPayment);
+router.post('/payments/paytm-callback', webhookController.paytmCallback);
+router.get('/payments/paytm-callback', webhookController.paytmCallback);
 router.post('/payments/webhook', webhookController.razorpayWebhook);
 
 // Customer Personal Vault

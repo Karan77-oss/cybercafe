@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   FileText, ChevronRight, RefreshCw,
   AlertCircle, Plus, Calendar, PhoneCall, ShieldCheck,
-  Download, Star, CheckCircle, Send, Sparkles
+  Download, Star, CheckCircle, Send, Sparkles, CreditCard
 } from 'lucide-react';
 import { ordersApi, authApi, resolveBackendUrl } from '../api/client';
 import { swrCache } from '../utils/swrCache';
@@ -465,6 +465,19 @@ export default function Orders() {
                     </div>
                   );
                 })()}
+
+                {/* Unpaid / Payment Pending Action Indicator */}
+                {status === 'PAYMENT_PENDING' && (
+                  <div className="mb-3 py-2 px-3 bg-amber-50 border border-amber-200/80 rounded-2xl flex items-center justify-between text-xs">
+                    <span className="text-[11px] font-bold text-amber-800 flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5 text-amber-600" />
+                      Payment Incomplete
+                    </span>
+                    <span className="text-[10px] font-extrabold text-sky-700 bg-white px-2 py-0.5 rounded-full border border-sky-200">
+                      Pay with Paytm &rarr;
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px]">
                   <div className="flex items-center gap-1.5 text-slate-500">

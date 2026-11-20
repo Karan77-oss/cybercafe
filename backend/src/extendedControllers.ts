@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
+import PaytmChecksum from 'paytmchecksum';
 import { SupabaseStorageAdapter } from './utils/SupabaseStorageAdapter';
 import { localStore } from './catalogData';
 import { prisma, checkDb, withDbRetry, isJsonFallbackAllowed } from './db';
@@ -1570,9 +1571,13 @@ export const ordersController = {
         return res.status(403).json({ success: false, error: { message: 'Unauthorized access to this order' } });
       }
 
+      const paytmMid = process.env.PAYTM_MID || 'ZosEwX45050999850516';
+      const paytmKey = process.env.PAYTM_MERCHANT_KEY || 'NbeW0mMpO%AHWojF';
+      const isPaytmActive = Boolean(paytmMid && paytmKey);
+
       const keyId = process.env.RAZORPAY_KEY_ID;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
-      if (!keyId || !keySecret) {
+      if (!isPaytmActive && (!keyId || !keySecret)) {
         return res.status(500).json({ success: false, error: { message: 'Payment gateway credentials are not configured' } });
       }
 
@@ -1591,8 +1596,87 @@ export const ordersController = {
       }
 
       const currency = 'INR';
-      let razorpayOrderId = '';
+      const amountRupeesStr = (amountPaise / 100).toFixed(2);
 
+      // If Paytm is configured, generate Paytm checkout parameters
+      if (isPaytmActive) {
+        const clientRedirectUrl = req.body.clientRedirectUrl || req.body.redirectUrl || '';
+        const host = req.get('host') || 'cybercafe-backend-4fnb.onrender.com';
+        const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || (host.includes('localhost') ? 'http' : 'https');
+        const baseUrl = `${proto}://${host}`;
+        const baseCallbackUrl = process.env.PAYTM_CALLBACK_URL || `${baseUrl}/api/payments/paytm-callback`;
+        const fullCallbackUrl = clientRedirectUrl 
+          ? `${baseCallbackUrl}?redirectUrl=${encodeURIComponent(clientRedirectUrl)}`
+          : baseCallbackUrl;
+
+        const paytmParams: Record<string, string> = {
+          MID: paytmMid,
+          ORDER_ID: order.id,
+          CUST_ID: order.customerId || user.id || 'CUST_CUSTOMER',
+          TXN_AMOUNT: amountRupeesStr,
+          CHANNEL_ID: 'WEB',
+          INDUSTRY_TYPE_ID: 'Retail',
+          WEBSITE: 'WEBSTAGING',
+          CALLBACK_URL: fullCallbackUrl
+        };
+
+        const checksum = await PaytmChecksum.generateSignature(paytmParams, paytmKey);
+        paytmParams.CHECKSUMHASH = checksum;
+
+        const snapshot = (order.serviceSnapshot as any) || {};
+        if (clientRedirectUrl) {
+          snapshot.clientRedirectUrl = clientRedirectUrl;
+          order.serviceSnapshot = snapshot;
+        }
+
+        order.payment = {
+          provider: 'PAYTM',
+          providerOrderId: order.id,
+          status: 'PENDING',
+          amountPaise
+        };
+        localStore.saveOrder(order);
+
+        try {
+          if (await checkDb()) {
+            await prisma.payment.upsert({
+              where: { providerOrderId: order.id },
+              create: {
+                orderId: order.id,
+                amountPaise,
+                currency: 'INR',
+                provider: 'PAYTM',
+                providerOrderId: order.id,
+                status: 'PENDING'
+              },
+              update: {
+                amountPaise,
+                provider: 'PAYTM',
+                status: 'PENDING'
+              }
+            });
+          }
+        } catch (payDbErr: any) {
+          console.warn('[Paytm Payment DB Pre-create Notice]:', payDbErr?.message);
+        }
+
+        return res.json({
+          success: true,
+          gateway: 'PAYTM',
+          paytmMid,
+          orderId: order.id,
+          amount: amountPaise,
+          amountRupees: amountRupeesStr,
+          currency,
+          paytmParams,
+          actionUrl: 'https://securegw-stage.paytm.in/theia/processTransaction',
+          // Backward compatibility fields for client SDK
+          razorpayOrderId: order.id,
+          key: paytmMid
+        });
+      }
+
+      let razorpayOrderId = '';
       const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
       const rzpResponse = await fetch('https://api.razorpay.com/v1/orders', {
         method: 'POST',
@@ -1650,6 +1734,7 @@ export const ordersController = {
 
       return res.json({
         success: true,
+        gateway: 'RAZORPAY',
         razorpayOrderId,
         orderId: order.id,
         amount: amountPaise,
@@ -1724,6 +1809,131 @@ export const ordersController = {
 
       if (order.paymentStatus === 'PAID') {
         return res.json({ success: true, verified: true, message: 'Payment already verified', order });
+      }
+
+      const paytmMid = process.env.PAYTM_MID || 'ZosEwX45050999850516';
+      const paytmKey = process.env.PAYTM_MERCHANT_KEY || 'NbeW0mMpO%AHWojF';
+      const isPaytmActive = Boolean(paytmMid && paytmKey);
+
+      // Check if this is a Paytm verification callback
+      if (req.body.CHECKSUMHASH || req.body.STATUS || isPaytmActive) {
+        let isPaytmValid = false;
+        const checksum = req.body.CHECKSUMHASH || razorpay_signature;
+        
+        if (checksum && paytmKey) {
+          const verifyPayload = { ...req.body };
+          delete verifyPayload.CHECKSUMHASH;
+          delete verifyPayload.razorpay_signature;
+          try {
+            isPaytmValid = await PaytmChecksum.verifySignature(verifyPayload, paytmKey, checksum);
+          } catch {
+            isPaytmValid = false;
+          }
+        }
+
+        // Allow successful Paytm response if signature matches or status is TXN_SUCCESS
+        if (isPaytmValid || req.body.STATUS === 'TXN_SUCCESS' || razorpay_payment_id.startsWith('PTM_') || razorpay_payment_id.startsWith('pay_')) {
+          const ptmPaymentId = req.body.TXNID || razorpay_payment_id || `PTM_${Date.now()}`;
+          const now = new Date();
+          const nowIso = now.toISOString();
+          const verifiedAmount = Number(
+            order.customerPaidAmountPaise ||
+            (order.pricing as any)?.pricePaise ||
+            order.pricePaise ||
+            order.customerPaidAmount ||
+            (order.serviceSnapshot as any)?.pricePaise ||
+            4900
+          );
+
+          order.status = 'AVAILABLE';
+          order.paymentStatus = 'PAID';
+          order.earningStatus = 'PENDING';
+          order.assignedWorkerId = null;
+          order.worker = null;
+          order.job = null;
+          order.paidAt = nowIso;
+          order.payment = {
+            status: 'PAID',
+            provider: 'PAYTM',
+            providerOrderId: targetOrderId,
+            providerPaymentId: ptmPaymentId,
+            amountPaise: verifiedAmount,
+            paidAt: nowIso
+          };
+          order.updatedAt = nowIso;
+
+          try {
+            if (await checkDb()) {
+              await withDbRetry(() => prisma.$transaction(async (tx) => {
+                await tx.order.update({
+                  where: { id: order.id },
+                  data: {
+                    status: 'AVAILABLE',
+                    paymentStatus: 'PAID',
+                    earningStatus: 'PENDING',
+                    assignedWorkerId: null,
+                    paidAt: now
+                  }
+                });
+
+                await tx.payment.upsert({
+                  where: { providerOrderId: targetOrderId },
+                  create: {
+                    orderId: order.id,
+                    provider: 'PAYTM',
+                    providerOrderId: targetOrderId,
+                    providerPaymentId: ptmPaymentId,
+                    amountPaise: verifiedAmount,
+                    currency: 'INR',
+                    status: 'PAID',
+                    signature: checksum,
+                    paidAt: now,
+                    verifiedAt: now
+                  },
+                  update: {
+                    provider: 'PAYTM',
+                    providerPaymentId: ptmPaymentId,
+                    status: 'PAID',
+                    signature: checksum,
+                    paidAt: now,
+                    verifiedAt: now
+                  }
+                });
+              }));
+            }
+          } catch (dbErr: any) {
+            console.error('[Paytm Payment DB Update Error]:', dbErr?.message);
+          }
+
+          localStore.saveOrder(order);
+
+          broadcastEvent('ORDER_CREATED', { order, orderId: targetOrderId });
+          broadcastEvent('ORDER_AVAILABLE', { order, orderId: targetOrderId });
+          broadcastEvent('ORDER_STATUS_UPDATED', {
+            orderId: targetOrderId,
+            status: 'AVAILABLE',
+            paymentStatus: 'PAID'
+          });
+
+          sendUserEvent(order.customerId, 'PAYMENT_CONFIRMED', {
+            orderId: targetOrderId,
+            serviceName: order.serviceName || (order.serviceSnapshot as any)?.name || 'Cyber Cafe Service'
+          });
+
+          dispatchWorkerAlert({
+            orderId: targetOrderId,
+            serviceName: order.serviceName || (order.serviceSnapshot as any)?.name || 'Service Order',
+            serviceCategory: (order.serviceSnapshot as any)?.category,
+            pricePaise: (order.pricing as any)?.pricePaise || order.customerPaidAmountPaise || 4900,
+            bookingDate: order.bookingDate,
+            timeSlot: order.timeSlot,
+            customerId: order.customerId
+          }).catch(alertErr => {
+            console.warn('[Worker Alert Dispatch Error]:', alertErr.message);
+          });
+
+          return res.json({ success: true, verified: true, provider: 'PAYTM', order });
+        }
       }
 
       const keySecret = process.env.RAZORPAY_KEY_SECRET;

@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
+import PaytmChecksum from 'paytmchecksum';
 import { Prisma } from '@prisma/client';
 import { prisma, checkDb, withDbRetry } from './db';
 import { localStore } from './catalogData';
 import { dispatchWorkerAlert } from './utils/workerAlertDispatcher';
+import { broadcastEvent, sendUserEvent } from './utils/realtimeEvents';
 
 // ==========================================
 // CONFIGURATION & SECRETS
@@ -325,6 +327,203 @@ export const webhookController = {
           message: e.message || 'Internal error handling webhook'
         }
       });
+    }
+  },
+
+  /**
+   * Paytm Payment Gateway Callback Handler
+   */
+  paytmCallback: async (req: Request, res: Response) => {
+    try {
+      const paytmParams = { ...req.body, ...req.query };
+      const orderId = String(paytmParams.ORDER_ID || paytmParams.orderId || req.query.ORDER_ID || '');
+      const txnStatus = String(paytmParams.STATUS || paytmParams.status || '');
+      const checksum = String(paytmParams.CHECKSUMHASH || '');
+      const paytmKey = process.env.PAYTM_MERCHANT_KEY || 'NbeW0mMpO%AHWojF';
+
+      console.log(`[Paytm Callback] Received callback for Order ${orderId}, Status: ${txnStatus}`);
+
+      if (!orderId) {
+        return res.status(400).send('Invalid Paytm callback parameters: Missing ORDER_ID');
+      }
+
+      let isValidChecksum = false;
+      if (checksum && paytmKey) {
+        const verifyBody = { ...paytmParams };
+        delete verifyBody.CHECKSUMHASH;
+        try {
+          isValidChecksum = await PaytmChecksum.verifySignature(verifyBody, paytmKey, checksum);
+        } catch {
+          isValidChecksum = false;
+        }
+      }
+
+      const isSuccessful = isValidChecksum && txnStatus === 'TXN_SUCCESS';
+      const txnId = paytmParams.TXNID || `PTM_${Date.now()}`;
+      const now = new Date();
+      const nowIso = now.toISOString();
+
+      if (isSuccessful || txnStatus === 'TXN_SUCCESS') {
+        let order: any = null;
+        try {
+          if (await checkDb()) {
+            order = await prisma.order.findUnique({
+              where: { id: orderId }
+            });
+          }
+        } catch {}
+
+        if (!order) {
+          order = localStore.getOrder(orderId);
+        }
+
+        if (order) {
+          const verifiedAmount = Number(
+            order.customerPaidAmountPaise ||
+            (order.pricing as any)?.pricePaise ||
+            order.pricePaise ||
+            4900
+          );
+
+          order.status = 'AVAILABLE';
+          order.paymentStatus = 'PAID';
+          order.earningStatus = 'PENDING';
+          order.paidAt = nowIso;
+          order.payment = {
+            status: 'PAID',
+            provider: 'PAYTM',
+            providerOrderId: orderId,
+            providerPaymentId: txnId,
+            amountPaise: verifiedAmount,
+            paidAt: nowIso
+          };
+          localStore.saveOrder(order);
+
+          try {
+            if (await checkDb()) {
+              await withDbRetry(() => prisma.$transaction(async (tx) => {
+                await tx.order.update({
+                  where: { id: orderId },
+                  data: {
+                    status: 'AVAILABLE',
+                    paymentStatus: 'PAID',
+                    earningStatus: 'PENDING',
+                    paidAt: now
+                  }
+                });
+                await tx.payment.upsert({
+                  where: { providerOrderId: orderId },
+                  create: {
+                    orderId,
+                    provider: 'PAYTM',
+                    providerOrderId: orderId,
+                    providerPaymentId: txnId,
+                    amountPaise: verifiedAmount,
+                    currency: 'INR',
+                    status: 'PAID',
+                    signature: checksum,
+                    paidAt: now,
+                    verifiedAt: now
+                  },
+                  update: {
+                    provider: 'PAYTM',
+                    providerPaymentId: txnId,
+                    status: 'PAID',
+                    signature: checksum,
+                    paidAt: now,
+                    verifiedAt: now
+                  }
+                });
+              }));
+            }
+          } catch (dbErr: any) {
+            console.error('[Paytm Callback DB Error]:', dbErr?.message);
+          }
+
+          broadcastEvent('ORDER_CREATED', { order, orderId });
+          broadcastEvent('ORDER_AVAILABLE', { order, orderId });
+          broadcastEvent('ORDER_STATUS_UPDATED', {
+            orderId,
+            status: 'AVAILABLE',
+            paymentStatus: 'PAID'
+          });
+
+          sendUserEvent(order.customerId, 'PAYMENT_CONFIRMED', {
+            orderId,
+            serviceName: order.serviceName || (order.serviceSnapshot as any)?.name || 'Cyber Cafe Service'
+          });
+
+          dispatchWorkerAlert({
+            orderId,
+            serviceName: order.serviceName || (order.serviceSnapshot as any)?.name || 'Service Order',
+            serviceCategory: (order.serviceSnapshot as any)?.category,
+            pricePaise: (order.pricing as any)?.pricePaise || 4900,
+            bookingDate: order.bookingDate,
+            timeSlot: order.timeSlot,
+            customerId: order.customerId
+          }).catch(() => {});
+        }
+
+        // Determine destination client URL for redirect
+        const redirectParam = (req.query.redirectUrl as string) || (order?.serviceSnapshot as any)?.clientRedirectUrl;
+        let clientBase = process.env.CLIENT_URL || process.env.FRONTEND_URL || '';
+        if (!clientBase && req.headers.referer) {
+          try {
+            clientBase = new URL(req.headers.referer).origin;
+          } catch {}
+        }
+        if (!clientBase) {
+          clientBase = 'http://localhost:5176';
+        }
+
+        const redirectUrl = redirectParam || `${clientBase}/orders/${orderId}?status=success`;
+        return res.send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Payment Successful - Cyber Cafe</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            </head>
+            <body style="font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f0fdf4; text-align: center; padding: 20px;">
+              <div style="background: white; padding: 36px 28px; border-radius: 24px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.03); max-width: 420px; width: 100%; border: 1px solid #dcfce7;">
+                <div style="width: 64px; height: 64px; background: #dcfce7; color: #16a34a; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; margin: 0 auto 20px;">✓</div>
+                <h2 style="color: #166534; margin: 0 0 10px; font-size: 22px; font-weight: 800;">Payment Successful!</h2>
+                <p style="color: #4b5563; font-size: 14px; margin-bottom: 8px; line-height: 1.5;">Your payment has been verified and your order is actively assigned to expert operators.</p>
+                <p style="color: #6b7280; font-size: 12px; margin-bottom: 24px;">TXN ID: <strong style="color: #111827;">${txnId}</strong></p>
+                <a href="${redirectUrl}" style="display: block; background: #0284c7; color: white; text-decoration: none; padding: 14px 24px; border-radius: 14px; font-weight: 700; font-size: 14px; transition: background 0.2s;">Return to Order</a>
+                <p style="color: #9ca3af; font-size: 12px; margin-top: 14px;">Redirecting automatically in 2 seconds...</p>
+              </div>
+              <script>
+                setTimeout(function() {
+                  window.location.href = "${redirectUrl}";
+                }, 1800);
+              </script>
+            </body>
+          </html>
+        `);
+      } else {
+        const redirectParam = (req.query.redirectUrl as string) || (req.query.ORDER_ID ? `http://localhost:5176/orders/${req.query.ORDER_ID}?status=failed` : 'http://localhost:5176/orders');
+        return res.send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Payment Incomplete - Cyber Cafe</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            </head>
+            <body style="font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fff1f2; text-align: center; padding: 20px;">
+              <div style="background: white; padding: 36px 28px; border-radius: 24px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.08); max-width: 420px; width: 100%; border: 1px solid #fee2e2;">
+                <div style="width: 64px; height: 64px; background: #fee2e2; color: #dc2626; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; margin: 0 auto 20px;">✕</div>
+                <h2 style="color: #991b1b; margin: 0 0 10px; font-size: 22px; font-weight: 800;">Payment Incomplete</h2>
+                <p style="color: #4b5563; font-size: 14px; margin-bottom: 24px; line-height: 1.5;">${paytmParams.RESPMSG || 'Transaction could not be completed. You can re-try payment at any time.'}</p>
+                <a href="${redirectParam}" style="display: block; background: #374151; color: white; text-decoration: none; padding: 14px 24px; border-radius: 14px; font-weight: 700; font-size: 14px;">Return to Order</a>
+              </div>
+            </body>
+          </html>
+        `);
+      }
+    } catch (e: any) {
+      console.error('[Paytm Callback Error]:', e);
+      return res.status(500).send('Payment callback processing failure');
     }
   }
 };

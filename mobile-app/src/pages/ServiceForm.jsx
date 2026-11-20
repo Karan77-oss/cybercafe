@@ -9,6 +9,7 @@ import { servicesApi, ordersApi, authApi, vaultApi, documentsApi } from '../api/
 import { takePhoto } from '../utils/camera';
 import { servicesConfig } from '../config/servicesConfig';
 import { validateDocumentClarity, compressDocument } from '../utils/documentProcessor';
+import { launchPaytmCheckout } from '../utils/paytm';
 
 // Derive application types dynamically from service or universal tailored defaults
 function getApplicationTypesForService(srv) {
@@ -86,6 +87,7 @@ export default function ServiceForm() {
   const [submitting, setSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(1); // 1: Documents & Notes, 2: Callback & Payment
   const [error, setError] = useState(null);
+  const [draftOrderId, setDraftOrderId] = useState(null);
 
   // Standardized application type selection
   const [selectedApplicationType, setSelectedApplicationType] = useState('New Application');
@@ -459,78 +461,45 @@ export default function ServiceForm() {
         formData.append('existingDocumentIds', JSON.stringify(existingDocIds));
       }
 
-      // 2. Submit to POST /api/orders
-      const res = await ordersApi.createOrder(formData);
-      const createdOrder = res?.order || res?.data?.order || res;
-      const orderId = createdOrder?.id || createdOrder?.orderId;
+      // 2. Submit or reuse draft order
+      let orderId = draftOrderId;
+      let orderTotalPaise = selectedService.pricePaise || ((selectedService.price || 199) * 100);
+
+      if (!orderId) {
+        const res = await ordersApi.createOrder(formData);
+        const createdOrder = res?.order || res?.data?.order || res;
+        orderId = createdOrder?.id || createdOrder?.orderId;
+        if (createdOrder?.pricePaise) {
+          orderTotalPaise = createdOrder.pricePaise;
+        }
+        if (orderId) {
+          setDraftOrderId(orderId);
+        }
+      }
 
       if (!orderId) {
         throw new Error('Order placement failed: no order ID returned from server.');
       }
 
-      const currentUser = authApi.getCurrentUser() || {};
-      const totalPaise = createdOrder.pricePaise || selectedService.pricePaise || ((selectedService.price || 199) * 100);
-      const totalRupees = Math.round(totalPaise / 100);
+      const totalRupees = Math.round(orderTotalPaise / 100);
 
-      // 3. Initiate Razorpay Checkout Gateway
-      try {
-        const paymentRes = await ordersApi.createPayment({
-          orderId,
-          amount: totalRupees,
+      // 3. Initiate Paytm Checkout Gateway
+      const paymentRes = await ordersApi.createPayment({
+        orderId,
+        amount: totalRupees,
+        clientRedirectUrl: `${window.location.origin}/orders/${orderId}`,
+      });
+
+      if (paymentRes?.gateway === 'PAYTM' || paymentRes?.paytmParams) {
+        // Redirect directly to Paytm secure gateway
+        launchPaytmCheckout({
+          actionUrl: paymentRes.actionUrl,
+          paytmParams: paymentRes.paytmParams,
         });
-
-        const razorpayOrderId = paymentRes?.razorpayOrderId;
-        const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID || paymentRes?.key || 'rzp_test_TjrbhiZugaYLYJ';
-
-        if (window.Razorpay && razorpayOrderId) {
-          const options = {
-            key: razorpayKey,
-            amount: totalPaise,
-            currency: 'INR',
-            name: 'Cyber Cafe Express',
-            description: `${selectedService.name || 'Service'} - ${selectedApplicationType || 'Assisted'}`,
-            order_id: razorpayOrderId,
-            handler: async function (response) {
-              try {
-                await ordersApi.verifyPayment({
-                  orderId,
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                });
-              } catch (verifyErr) {
-                console.warn('Payment verification callback notice:', verifyErr);
-              }
-              navigate(`/orders/${orderId}`);
-            },
-            prefill: {
-              name: currentUser.name || 'Customer',
-              email: currentUser.email || '',
-              contact: contactPhone || currentUser.phone || '',
-            },
-            theme: {
-              color: '#0284C7',
-            },
-            modal: {
-              ondismiss: function () {
-                navigate(`/orders/${orderId}`);
-              }
-            }
-          };
-
-          const rzp = new window.Razorpay(options);
-          rzp.on('payment.failed', function (resp) {
-            console.warn('Razorpay payment dismissed or failed:', resp);
-            navigate(`/orders/${orderId}`);
-          });
-          rzp.open();
-          return;
-        }
-      } catch (payGatewayErr) {
-        console.warn('Razorpay gateway notice (fallback to order tracking):', payGatewayErr);
+        return;
       }
 
-      // Default redirect to Order Tracking
+      // Fallback: If payment parameters are not returned
       navigate(`/orders/${orderId}`);
     } catch (err) {
       console.error('Order submission error:', err);

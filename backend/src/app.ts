@@ -5,6 +5,9 @@ import routes from './routes';
 
 const app = express();
 
+// Trust reverse proxies (Render, Railway, Vercel, Cloudflare) for accurate protocol and host detection
+app.set('trust proxy', 1);
+
 // 1. CORS Configuration (Seamlessly allow Vercel, Custom Domains, Capacitor, and Localhost Admin)
 const allowedOriginsEnv = (process.env.ALLOWED_ORIGINS || '')
   .split(',')

@@ -20,8 +20,8 @@ export const env = {
   SUPABASE_URL: getEnvVar('VITE_SUPABASE_URL', ''),
   SUPABASE_ANON_KEY: getEnvVar('VITE_SUPABASE_ANON_KEY', ''),
 
-  // Razorpay Gateway
-  RAZORPAY_KEY_ID: getEnvVar('VITE_RAZORPAY_KEY_ID', 'rzp_test_TjrbhiZugaY7hK'),
+  // Paytm Payment Gateway
+  PAYTM_MID: getEnvVar('VITE_PAYTM_MID', 'ZosEwX45050999850516'),
 
   // App Mode (locked to customer)
   APP_MODE: getEnvVar('VITE_APP_MODE', 'customer'),
