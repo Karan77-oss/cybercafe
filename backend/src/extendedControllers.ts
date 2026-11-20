@@ -1754,13 +1754,18 @@ export const ordersController = {
         return res.status(401).json({ success: false, error: { message: 'Authentication required' } });
       }
 
-      const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderId, order_id } = req.body;
-      const targetOrderId = (req.params.id || orderId || order_id) as string;
+      const paytmMid = process.env.PAYTM_MID || 'ZosEwX45050999850516';
+      const paytmKey = process.env.PAYTM_MERCHANT_KEY || 'NbeW0mMpO%AHWojF';
+      const isPaytmActive = Boolean(paytmMid && paytmKey);
 
-      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !targetOrderId) {
+      const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderId, order_id, ORDERID, ORDER_ID, CHECKSUMHASH } = req.body;
+      const targetOrderId = (req.params.id || orderId || order_id || ORDERID || ORDER_ID || razorpay_order_id) as string;
+
+      const isPaytmVerification = Boolean(CHECKSUMHASH || req.body.STATUS || ORDERID || isPaytmActive);
+      if (!isPaytmVerification && (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !targetOrderId)) {
         return res.status(400).json({
           success: false,
-          error: { code: 'INVALID_INPUT', message: 'Missing required Razorpay verification payload' }
+          error: { code: 'INVALID_INPUT', message: 'Missing required payment verification payload' }
         });
       }
 
@@ -1810,10 +1815,6 @@ export const ordersController = {
       if (order.paymentStatus === 'PAID') {
         return res.json({ success: true, verified: true, message: 'Payment already verified', order });
       }
-
-      const paytmMid = process.env.PAYTM_MID || 'ZosEwX45050999850516';
-      const paytmKey = process.env.PAYTM_MERCHANT_KEY || 'NbeW0mMpO%AHWojF';
-      const isPaytmActive = Boolean(paytmMid && paytmKey);
 
       // Check if this is a Paytm verification callback
       if (req.body.CHECKSUMHASH || req.body.STATUS || isPaytmActive) {

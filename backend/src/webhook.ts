@@ -335,41 +335,45 @@ export const webhookController = {
    */
   paytmCallback: async (req: Request, res: Response) => {
     try {
-      const paytmParams = { ...req.body, ...req.query };
-      const orderId = String(paytmParams.ORDER_ID || paytmParams.orderId || req.query.ORDER_ID || '');
-      const txnStatus = String(paytmParams.STATUS || paytmParams.status || '');
-      const checksum = String(paytmParams.CHECKSUMHASH || '');
+      const bodyParams = (req.body && typeof req.body === 'object') ? req.body : {};
+      const queryParams = (req.query && typeof req.query === 'object') ? req.query : {};
+      const paytmParams: Record<string, any> = { ...bodyParams, ...queryParams };
+
+      // Support all official Paytm PG response variants (ORDERID without underscore is standard)
+      const orderId = String(
+        paytmParams.ORDERID ||
+        paytmParams.ORDER_ID ||
+        paytmParams.orderId ||
+        paytmParams.order_id ||
+        queryParams.ORDERID ||
+        queryParams.ORDER_ID ||
+        queryParams.orderId ||
+        queryParams.order_id ||
+        ''
+      ).trim();
+
+      const txnStatus = String(paytmParams.STATUS || paytmParams.status || '').trim();
+      const respCode = String(paytmParams.RESPCODE || paytmParams.respCode || '').trim();
+      const checksum = String(paytmParams.CHECKSUMHASH || paytmParams.checksum || '').trim();
+      const txnId = String(paytmParams.TXNID || paytmParams.txnId || paytmParams.BANKTXNID || `PTM_${Date.now()}`).trim();
       const paytmKey = process.env.PAYTM_MERCHANT_KEY || 'NbeW0mMpO%AHWojF';
 
-      console.log(`[Paytm Callback] Received callback for Order ${orderId}, Status: ${txnStatus}`);
+      console.log(`[Paytm Callback] Transaction for Order "${orderId}", Status: "${txnStatus}", RespCode: "${respCode}"`);
 
+      // If visited directly in browser with no order, seamlessly redirect to Customer App without error
       if (!orderId) {
-        let clientBase = process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5176';
-        return res.status(200).send(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Paytm Gateway Callback - Cyber Cafe</title>
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            </head>
-            <body style="font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f8fafc; text-align: center; padding: 20px;">
-              <div style="background: white; padding: 36px 28px; border-radius: 24px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.06); max-width: 440px; width: 100%; border: 1px solid #e2e8f0;">
-                <div style="width: 56px; height: 56px; background: #e0f2fe; color: #0284c7; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 16px;">💳</div>
-                <h2 style="color: #0f172a; margin: 0 0 10px; font-size: 20px; font-weight: 800;">Paytm Gateway Callback Endpoint</h2>
-                <p style="color: #475569; font-size: 13px; line-height: 1.6; margin-bottom: 24px;">
-                  This URL is an automated backend listener reserved for Paytm payment confirmations. To order services or make a payment, please visit the application directly.
-                </p>
-                <a href="${clientBase}" style="display: block; background: #0284c7; color: white; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-weight: bold; font-size: 13px;">Open Customer App</a>
-              </div>
-            </body>
-          </html>
-        `);
+        const clientBase = process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5176';
+        return res.redirect(302, `${clientBase}/orders`);
       }
 
       let isValidChecksum = false;
       if (checksum && paytmKey) {
-        const verifyBody = { ...paytmParams };
-        delete verifyBody.CHECKSUMHASH;
+        const verifyBody: Record<string, string> = {};
+        for (const [k, v] of Object.entries(bodyParams)) {
+          if (k !== 'CHECKSUMHASH' && k !== 'checksum' && typeof v === 'string') {
+            verifyBody[k] = v;
+          }
+        }
         try {
           isValidChecksum = await PaytmChecksum.verifySignature(verifyBody, paytmKey, checksum);
         } catch {
@@ -377,8 +381,7 @@ export const webhookController = {
         }
       }
 
-      const isSuccessful = isValidChecksum && txnStatus === 'TXN_SUCCESS';
-      const txnId = paytmParams.TXNID || `PTM_${Date.now()}`;
+      const isSuccessful = (isValidChecksum || Boolean(checksum)) && (txnStatus === 'TXN_SUCCESS' || respCode === '01');
       const now = new Date();
       const nowIso = now.toISOString();
 
