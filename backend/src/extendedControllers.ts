@@ -1609,6 +1609,9 @@ export const ordersController = {
           ? `${baseCallbackUrl}?redirectUrl=${encodeURIComponent(clientRedirectUrl)}`
           : baseCallbackUrl;
 
+        const paytmWebsite = process.env.PAYTM_WEBSITE || 'DEFAULT';
+        const paytmActionUrl = process.env.PAYTM_ACTION_URL || 'https://securegw.paytm.in/theia/processTransaction';
+
         const paytmParams: Record<string, string> = {
           MID: paytmMid,
           ORDER_ID: order.id,
@@ -1616,7 +1619,7 @@ export const ordersController = {
           TXN_AMOUNT: amountRupeesStr,
           CHANNEL_ID: 'WEB',
           INDUSTRY_TYPE_ID: 'Retail',
-          WEBSITE: 'WEBSTAGING',
+          WEBSITE: paytmWebsite,
           CALLBACK_URL: fullCallbackUrl
         };
 
@@ -1669,7 +1672,7 @@ export const ordersController = {
           amountRupees: amountRupeesStr,
           currency,
           paytmParams,
-          actionUrl: 'https://securegw-stage.paytm.in/theia/processTransaction',
+          actionUrl: paytmActionUrl,
           // Backward compatibility fields for client SDK
           razorpayOrderId: order.id,
           key: paytmMid

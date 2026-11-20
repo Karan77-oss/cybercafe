@@ -8,7 +8,7 @@ export function launchPaytmCheckout({ actionUrl, paytmParams }) {
     throw new Error('Paytm parameters missing or invalid');
   }
 
-  const endpoint = actionUrl || 'https://securegw-stage.paytm.in/theia/processTransaction';
+  const endpoint = actionUrl || 'https://securegw.paytm.in/theia/processTransaction';
 
   // Create form element
   const form = document.createElement('form');

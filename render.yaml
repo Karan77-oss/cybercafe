@@ -41,4 +41,8 @@ services:
       - key: PAYTM_MERCHANT_KEY
         sync: false
       - key: PAYTM_ENV
-        value: "staging"
+        value: "production"
+      - key: PAYTM_WEBSITE
+        value: "DEFAULT"
+      - key: PAYTM_ACTION_URL
+        value: "https://securegw.paytm.in/theia/processTransaction"
