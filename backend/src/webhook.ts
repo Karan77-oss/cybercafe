@@ -344,7 +344,26 @@ export const webhookController = {
       console.log(`[Paytm Callback] Received callback for Order ${orderId}, Status: ${txnStatus}`);
 
       if (!orderId) {
-        return res.status(400).send('Invalid Paytm callback parameters: Missing ORDER_ID');
+        let clientBase = process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5176';
+        return res.status(200).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Paytm Gateway Callback - Cyber Cafe</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            </head>
+            <body style="font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f8fafc; text-align: center; padding: 20px;">
+              <div style="background: white; padding: 36px 28px; border-radius: 24px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.06); max-width: 440px; width: 100%; border: 1px solid #e2e8f0;">
+                <div style="width: 56px; height: 56px; background: #e0f2fe; color: #0284c7; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 16px;">💳</div>
+                <h2 style="color: #0f172a; margin: 0 0 10px; font-size: 20px; font-weight: 800;">Paytm Gateway Callback Endpoint</h2>
+                <p style="color: #475569; font-size: 13px; line-height: 1.6; margin-bottom: 24px;">
+                  This URL is an automated backend listener reserved for Paytm payment confirmations. To order services or make a payment, please visit the application directly.
+                </p>
+                <a href="${clientBase}" style="display: block; background: #0284c7; color: white; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-weight: bold; font-size: 13px;">Open Customer App</a>
+              </div>
+            </body>
+          </html>
+        `);
       }
 
       let isValidChecksum = false;
