@@ -16,10 +16,19 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            storeFile file(project.findProperty("KEYSTORE_PATH") ?: System.getenv("KEYSTORE_PATH") ?: "keystore/cybercafe-release.jks")
+            storePassword project.findProperty("KEYSTORE_PASSWORD") ?: System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyAlias project.findProperty("KEY_ALIAS") ?: System.getenv("KEY_ALIAS") ?: "cybercafe"
+            keyPassword project.findProperty("KEY_PASSWORD") ?: System.getenv("KEY_PASSWORD") ?: ""
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
     compileOptions {
