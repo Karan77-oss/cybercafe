@@ -2463,8 +2463,9 @@ export const adminController = {
     try {
       let status = String(req.query.status || '');
       if (status === 'ALL' || status === 'All Status' || status === 'undefined') status = '';
-      const search = String(req.query.search || '').trim();
+      const search = String(req.query.search || req.query.q || '').trim();
 
+      let formatted: any[] = [];
       if (await checkDb().catch(() => false)) {
         try {
           const where: any = {};
@@ -2475,7 +2476,8 @@ export const adminController = {
               { email: { contains: search, mode: 'insensitive' } },
               { phone: { contains: search, mode: 'insensitive' } },
               { id: { contains: search, mode: 'insensitive' } },
-              { specialization: { contains: search, mode: 'insensitive' } }
+              { specialization: { contains: search, mode: 'insensitive' } },
+              { businessName: { contains: search, mode: 'insensitive' } }
             ];
           }
 
@@ -2497,7 +2499,7 @@ export const adminController = {
           });
 
           if (dbWorkers && dbWorkers.length > 0) {
-            const formatted = dbWorkers.map(w => {
+            formatted = dbWorkers.map(w => {
               const completedOrders = w.orders.filter(o => o.status === 'COMPLETED');
               const activeOrders = w.orders.filter(o => ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'RECEIPT_SUBMITTED', 'WAITING_FOR_CUSTOMER'].includes(o.status));
               
@@ -2523,13 +2525,20 @@ export const adminController = {
               const totalEarned = w.totalEarningsPaise || earnedPaise;
               const walletBalancePaise = Math.max(0, totalEarned - withdrawnPaise - pendingWithdrawalsPaise);
 
+              let skillsDisplay = 'General Services';
+              if (Array.isArray(w.skills)) {
+                skillsDisplay = w.skills.join(', ');
+              } else if (typeof w.skills === 'string') {
+                skillsDisplay = w.skills;
+              }
+
               return {
                 id: w.id,
                 workerId: w.id,
                 name: w.name,
                 email: w.email,
                 phone: w.phone || 'N/A',
-                specialization: w.specialization || 'Operator',
+                specialization: w.specialization || w.businessName || 'Operator',
                 status: w.status,
                 kycStatus: w.kycStatus,
                 isOnline: w.isOnline,
@@ -2548,8 +2557,8 @@ export const adminController = {
                 workerProfile: {
                   idVerified: w.kycStatus === 'VERIFIED' || w.status === 'ACTIVE',
                   city: w.city || 'Remote',
-                  skills: w.skills || 'General Services',
-                  businessName: w.businessName,
+                  skills: skillsDisplay,
+                  businessName: w.businessName || w.name,
                   totalEarningsPaise: totalEarned,
                   walletBalancePaise,
                   pendingEarningsPaise: pendingPaise,
@@ -2560,15 +2569,25 @@ export const adminController = {
                 updatedAt: w.updatedAt
               };
             });
-            return sendSuccess(res, { workers: formatted });
           }
         } catch (dbErr: any) {
           console.warn('[AdminController] DB getWorkers fallback:', dbErr.message);
         }
       }
 
-      const workers = localStore.getAllWorkersAdmin({ status, search });
-      return sendSuccess(res, { workers });
+      const localWorkers = localStore.getAllWorkersAdmin({ status, search });
+      if (formatted.length === 0) {
+        return sendSuccess(res, { workers: localWorkers });
+      }
+
+      const existingIds = new Set(formatted.map(w => String(w.id || w.workerId).toLowerCase()));
+      const existingEmails = new Set(formatted.map(w => String(w.email || '').toLowerCase()));
+      const extraLocal = localWorkers.filter(lw => 
+        !existingIds.has(String(lw.id || lw.workerId).toLowerCase()) &&
+        !existingEmails.has(String(lw.email || '').toLowerCase())
+      );
+
+      return sendSuccess(res, { workers: [...formatted, ...extraLocal] });
     } catch (e: any) {
       return sendError(res, 500, 'SERVER_ERROR', e.message);
     }
@@ -2580,16 +2599,14 @@ export const adminController = {
 
       if (await checkDb().catch(() => false)) {
         try {
-          const dbWorker = await prisma.worker.findUnique({
-            where: { id: workerId },
+          const dbWorker = await prisma.worker.findFirst({
+            where: {
+              OR: [
+                { id: workerId },
+                { email: { equals: workerId, mode: 'insensitive' } }
+              ]
+            },
             include: {
-              orders: {
-                include: {
-                  customer: { select: { id: true, name: true, email: true, phone: true } },
-                  service: { select: { id: true, name: true } }
-                },
-                orderBy: { createdAt: 'desc' }
-              },
               withdrawals: {
                 orderBy: { requestedAt: 'desc' }
               }
@@ -2597,8 +2614,38 @@ export const adminController = {
           });
 
           if (dbWorker) {
-            const completedOrders = dbWorker.orders.filter(o => o.status === 'COMPLETED');
-            const activeOrders = dbWorker.orders.filter(o => ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'RECEIPT_SUBMITTED', 'WAITING_FOR_CUSTOMER'].includes(o.status));
+            const dbOrders = await prisma.order.findMany({
+              where: {
+                OR: [
+                  { workerId: dbWorker.id },
+                  { assignedWorkerId: dbWorker.id }
+                ]
+              },
+              include: {
+                customer: { select: { id: true, name: true, email: true, phone: true } },
+                service: { select: { id: true, name: true } }
+              },
+              orderBy: { createdAt: 'desc' }
+            });
+
+            const proposals = await prisma.serviceProposal.findMany({
+              where: { workerId: dbWorker.id },
+              orderBy: { createdAt: 'desc' }
+            }).catch(() => []);
+
+            const activityLogs = await prisma.auditLog.findMany({
+              where: {
+                OR: [
+                  { entityId: dbWorker.id },
+                  { actorUserId: dbWorker.id }
+                ]
+              },
+              orderBy: { createdAt: 'desc' },
+              take: 20
+            }).catch(() => []);
+
+            const completedOrders = dbOrders.filter(o => o.status === 'COMPLETED');
+            const activeOrders = dbOrders.filter(o => ['ASSIGNED', 'IN_PROGRESS', 'ACCEPTED', 'RECEIPT_SUBMITTED', 'WAITING_FOR_CUSTOMER'].includes(o.status));
 
             const totalEarnedPaise = completedOrders.reduce((sum, o: any) => {
               const p = (o.pricing as any) || {};
@@ -2618,9 +2665,9 @@ export const adminController = {
               .filter(w => w.status === 'REQUESTED' || w.status === 'PENDING')
               .reduce((sum, w) => sum + (w.amountPaise || 0), 0);
 
-            const walletBalancePaise = Math.max(0, totalEarnedPaise - withdrawnPaise - pendingWithdrawalsPaise);
+            const walletBalancePaise = Math.max(0, (dbWorker.totalEarningsPaise || totalEarnedPaise) - withdrawnPaise - pendingWithdrawalsPaise);
 
-            const mappedOrders = dbWorker.orders.map((o: any) => ({
+            const mappedOrders = dbOrders.map((o: any) => ({
               id: o.id,
               orderNumber: o.orderNumber || o.id,
               serviceId: o.serviceId,
@@ -2629,10 +2676,17 @@ export const adminController = {
               serviceSnapshot: { name: o.service?.name || 'Service' },
               pricing: {
                 workerEarningPaise: (o.pricing as any)?.workerPayoutPaise ?? o.workerAmountPaise ?? 0,
-                pricePaise: (o.pricing as any)?.pricePaise ?? o.totalAmountPaise ?? 0
+                pricePaise: (o.pricing as any)?.pricePaise ?? o.customerPaidAmountPaise ?? 0
               },
               createdAt: o.createdAt
             }));
+
+            let skillsDisplay = 'General Services';
+            if (Array.isArray(dbWorker.skills)) {
+              skillsDisplay = dbWorker.skills.join(', ');
+            } else if (typeof dbWorker.skills === 'string') {
+              skillsDisplay = dbWorker.skills;
+            }
 
             const workerData = {
               id: dbWorker.id,
@@ -2640,17 +2694,17 @@ export const adminController = {
               name: dbWorker.name,
               email: dbWorker.email,
               phone: dbWorker.phone || 'N/A',
-              specialization: dbWorker.specialization || 'Operator',
+              specialization: dbWorker.specialization || dbWorker.businessName || 'Operator',
               status: dbWorker.status,
               kycStatus: dbWorker.kycStatus,
               isOnline: dbWorker.isOnline,
               walletBalancePaise,
               workerProfile: {
                 idVerified: dbWorker.kycStatus === 'VERIFIED' || dbWorker.status === 'ACTIVE',
-                businessName: dbWorker.businessName,
-                skills: dbWorker.skills || 'General Services',
+                businessName: dbWorker.businessName || dbWorker.name,
+                skills: skillsDisplay,
                 city: dbWorker.city || 'Remote',
-                address: dbWorker.address,
+                address: dbWorker.address || 'Registered Center Address',
                 idProof: 'Identity_Proof_Verified.pdf'
               }
             };
@@ -2660,8 +2714,8 @@ export const adminController = {
               orders: mappedOrders,
               withdrawals: dbWorker.withdrawals,
               complaints: [],
-              activityLogs: [],
-              proposals: [],
+              activityLogs,
+              proposals,
               earnings: {
                 totalEarnedPaise,
                 totalEarnedRupees: totalEarnedPaise / 100,
@@ -2677,8 +2731,8 @@ export const adminController = {
               performance: {
                 completedOrders: completedOrders.length,
                 activeOrders: activeOrders.length,
-                totalOrders: dbWorker.orders.length,
-                rating: 4.9
+                totalOrders: dbOrders.length,
+                rating: 5.0
               }
             });
           }
@@ -2777,6 +2831,24 @@ export const adminController = {
 
       const hashedPassword = await bcrypt.hash(pass, 10);
 
+      // Robust skills parsing: handles Array, JSON string, or comma-separated string
+      let parsedSkills: any = null;
+      if (skills) {
+        if (Array.isArray(skills)) {
+          parsedSkills = skills;
+        } else if (typeof skills === 'string') {
+          try {
+            parsedSkills = JSON.parse(skills);
+          } catch {
+            parsedSkills = skills.split(',').map((s: string) => s.trim()).filter(Boolean);
+          }
+        } else {
+          parsedSkills = skills;
+        }
+      } else {
+        parsedSkills = ['PAN Card', 'Voter ID', 'Aadhaar Print'];
+      }
+
       // Check DB duplication and insert strictly into Worker table
       let createdWorker: any = null;
       if (await checkDb().catch(() => false)) {
@@ -2795,18 +2867,61 @@ export const adminController = {
               name,
               passwordHash: hashedPassword,
               phone: phone || null,
-              specialization: businessName || skills || 'Digital Seva Specialist',
-              skills: skills ? (typeof skills === 'string' ? JSON.parse(skills) : skills) : null,
+              specialization: businessName || (typeof skills === 'string' ? skills : 'Digital Seva Specialist'),
+              skills: parsedSkills,
               status: 'ACTIVE',
               kycStatus: 'VERIFIED',
               walletBalancePaise: 0,
               totalEarningsPaise: 0,
               profileImage: photoUrl || undefined,
-              businessName,
-              address,
-              city
+              businessName: businessName || name,
+              address: address || null,
+              city: city || null
             }
           });
+
+          // Also upsert User record with WORKER role
+          await prisma.user.upsert({
+            where: { email: emailLower },
+            create: {
+              id: workerId,
+              email: emailLower,
+              password: hashedPassword,
+              name,
+              role: 'WORKER',
+              phone: phone || null,
+              businessName: businessName || name,
+              address: address || null,
+              city: city || null,
+              status: 'ACTIVE',
+              verificationStatus: 'VERIFIED',
+              isOnline: true,
+              bankDetails: {
+                accountNumber: accountNumber || '',
+                ifsc: ifsc || '',
+                accountHolderName: accountHolderName || name,
+                upiId: upiId || ''
+              }
+            },
+            update: {
+              name,
+              role: 'WORKER',
+              password: hashedPassword,
+              phone: phone || null,
+              businessName: businessName || name,
+              address: address || null,
+              city: city || null,
+              status: 'ACTIVE',
+              verificationStatus: 'VERIFIED',
+              isOnline: true,
+              bankDetails: {
+                accountNumber: accountNumber || '',
+                ifsc: ifsc || '',
+                accountHolderName: accountHolderName || name,
+                upiId: upiId || ''
+              }
+            }
+          }).catch((uErr: any) => console.warn('[AdminController] DB user upsert warning:', uErr.message));
 
           const actorInDb = req.user?.id ? await prisma.user.findUnique({ where: { id: req.user.id } }).catch(() => null) : null;
           await prisma.auditLog.create({
@@ -2815,11 +2930,14 @@ export const adminController = {
               action: 'WORKER_HIRED',
               entityType: 'Worker',
               entityId: workerId,
-              metadata: { name, email: emailLower, specialization: businessName || skills, actor: req.user?.id || 'ADMIN' }
+              metadata: { name, email: emailLower, specialization: businessName || (typeof skills === 'string' ? skills : 'Digital Seva Specialist'), actor: req.user?.id || 'ADMIN' }
             }
           }).catch(() => {});
         } catch (dbErr: any) {
-          console.warn('[AdminController] DB worker creation error:', dbErr.message);
+          console.error('[AdminController] DB worker creation error:', dbErr);
+          if (dbErr.code === 'P2002') {
+            return sendError(res, 409, 'DUPLICATE_USER', 'Worker ID or Email is already registered');
+          }
         }
       }
 
@@ -2834,7 +2952,7 @@ export const adminController = {
         businessName,
         address,
         city,
-        skills,
+        skills: parsedSkills,
         idProof: idProofUrl,
         photo: photoUrl,
         accountNumber,
@@ -2867,6 +2985,10 @@ export const adminController = {
             where: { OR: [{ id: workerId }, { email: workerId }] },
             data: { passwordHash: hashedPassword }
           });
+          await prisma.user.updateMany({
+            where: { OR: [{ id: workerId }, { email: workerId }] },
+            data: { password: hashedPassword }
+          });
         } catch { }
       }
 
@@ -2895,6 +3017,13 @@ export const adminController = {
               status: approved ? 'ACTIVE' : 'SUSPENDED'
             }
           });
+          await prisma.user.updateMany({
+            where: { OR: [{ id: workerId }, { email: workerId }] },
+            data: {
+              verificationStatus: approved ? 'VERIFIED' : 'REJECTED',
+              status: approved ? 'ACTIVE' : 'SUSPENDED'
+            }
+          });
         } catch { }
       }
 
@@ -2919,6 +3048,10 @@ export const adminController = {
             where: { OR: [{ id: workerId }, { email: workerId }] },
             data: { status }
           });
+          await prisma.user.updateMany({
+            where: { OR: [{ id: workerId }, { email: workerId }] },
+            data: { status }
+          });
         } catch { }
       }
 
@@ -2938,6 +3071,10 @@ export const adminController = {
       if (await checkDb().catch(() => false)) {
         try {
           await prisma.worker.updateMany({
+            where: { OR: [{ id: workerId }, { email: workerId }] },
+            data: { status: 'DELETED' }
+          });
+          await prisma.user.updateMany({
             where: { OR: [{ id: workerId }, { email: workerId }] },
             data: { status: 'DELETED' }
           });
